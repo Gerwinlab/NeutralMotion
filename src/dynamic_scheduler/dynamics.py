@@ -1,0 +1,2 @@
+#TODO: helper file that has dynamics equations for solving for time using the parameters in the JSON file between.
+#If there is an atom there you must first offload it, then load the site. If there is nothing there then we can load it. 

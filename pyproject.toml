@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "Phys765"
+version = "0.1.0"
+description = "A solver for the shuttling problem in Neutral Atom quantum computers."
+readme = "README.md"
+authors = [
+    { name = "Gage Erwin", email = "gnerwin@wisc.edu"}
+]
+requires-python = ">=3.9"
+dependencies = [
+    "qiskit>=1.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

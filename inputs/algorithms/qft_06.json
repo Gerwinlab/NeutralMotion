@@ -1,0 +1,26 @@
+{
+    "dimensions": [3,3],
+    "num_NA":6,
+    "qasm_base_dir": "inputs/qasm_files",
+    "parallel":false,
+    "transfer_SLM_AOD": {
+        "value": 60,
+        "units": "microseconds"
+    },
+    "max_acceleration": {
+        "value": 2500,
+        "units": "m/s^2"
+    },
+    "jerk": "constant",
+    "movement_shape" :"trapezoidal",
+    "max_velocity": {
+        "value":0.13,
+        "units": "m/s"
+    },
+    "rydberg_radius": {
+        "value": 15,
+        "units": "micrometers"
+    },
+    "max_future_steps":5,
+    "qasm_dir": "inputs/qasm_files"
+}
