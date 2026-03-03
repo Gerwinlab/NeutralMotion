@@ -4,7 +4,7 @@ import json
 import pathlib
 from typing import Any, Mapping
 
-
+#TODO: check if number of qubits matches the number of qubits in the qasm file.
 PathLike = str | pathlib.Path
 
 def load_config(path: PathLike) -> dict[str, Any]:
@@ -42,6 +42,8 @@ def main(config: Mapping[str, Any], *, config_path: pathlib.Path | None = None, 
         qasm_dir = config.get("qasm_dir") or config.get("qasm_base_dir")
         print("Dynamic scheduler config loaded")
         print(f"dimensions={dims} num_NA={num_na} qasm_dir={qasm_dir}")
+
+    
 
     # TODO: wire into scheduling pipeline
     return 0

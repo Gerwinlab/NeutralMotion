@@ -6,7 +6,7 @@ import pathlib
 
 from .main import load_config, main as naive_dag_main, resolve_config_paths
 
-
+#TODO: Update the pyproject.toml and README.md
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="naive_dag",
