@@ -4,18 +4,22 @@ import argparse
 import json
 import pathlib
 
-from .main import load_config, main as dynamic_scheduler_main, resolve_config_paths
+from .main import load_config, main as naive_dag_main, resolve_config_paths
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="dynamic_scheduler",
-        description="Run the dynamic scheduler with a JSON configuration file.",
+        prog="naive_dag",
+        description="Run the naive scheduler with a JSON configuration file.",
     )
     parser.add_argument(
         "config",
         type=pathlib.Path,
         help="Path to a JSON configuration file.",
+    )
+    parser.add_argument(
+        "qasm_file",
+        help="QASM filename or path (resolved relative to qasm_base_dir in the JSON).",
     )
     parser.add_argument(
         "--dump-config",
@@ -36,13 +40,14 @@ def main() -> None:
 
     config_path: pathlib.Path = args.config
     config = load_config(config_path)
+    qasm_file = args.qasm_file
 
     if args.dump_config:
         resolved = resolve_config_paths(config, config_path.parent)
         print(json.dumps(resolved, indent=2, sort_keys=True))
         return
 
-    exit_code = dynamic_scheduler_main(config, config_path=config_path, quiet=args.quiet)
+    exit_code = naive_dag_main(config, qasm_file, config_path=config_path, quiet=args.quiet)
     raise SystemExit(exit_code)
 
 

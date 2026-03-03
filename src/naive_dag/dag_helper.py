@@ -1,0 +1,1 @@
+#TODO: write functions that searches for next entry and removes nodes/updates.

@@ -1,0 +1,1 @@
+#TODO: write code that treats the problem as a dynamic problem what has a length(dag) x sqrt(N) x sqrt(N) x 2^n matrix where n is number is future time steps.
