@@ -13,6 +13,7 @@ from .scheduling import write_timed_schedule
 
 #TODO: Add backend for qiskit such that users can write a another json file that specifies duration of gates.
 #TODO: Add comments to all the functions and make it well documented.
+#TODO: Double check if everything is alright
 PathLike = str | pathlib.Path
 ureg = pint.UnitRegistry()
 
