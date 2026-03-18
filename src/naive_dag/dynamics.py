@@ -50,9 +50,9 @@ def _format_gate_line(gate_name: str, gate_params: list, qubit_ids: list[int]) -
     return f"{gate_name} " + ",".join(f"q[{qid}]" for qid in qubit_ids) + ";"
 
 
-def _merged_single_qubit_gate_line(ops: list[DAGOpNode], gate_index: int) -> str | None:
+def collect_single_qubit_gate_block(ops: list[DAGOpNode], start_index: int) -> tuple[str | None, int]:
     lines: list[str] = []
-    i = gate_index + 1
+    i = start_index
     while i < len(ops):
         gate_name, gate_params, qubit_ids = op_node_signature(ops[i])
         if len(qubit_ids) == 2:
@@ -61,8 +61,8 @@ def _merged_single_qubit_gate_line(ops: list[DAGOpNode], gate_index: int) -> str
             lines.append(_format_gate_line(gate_name, gate_params, qubit_ids))
         i += 1
     if not lines:
-        return None
-    return " ".join(lines)
+        return None, i
+    return " ".join(lines), i
 
 
 def gate_qubit_ids(ops: list[DAGOpNode], gate_index: int) -> list[int]:
@@ -235,7 +235,7 @@ def best_path_for_gate(
     gate_name, gate_params, qubit_ids = op_node_signature(ops[gate_index])
     gate_line = _format_gate_line(gate_name, gate_params, qubit_ids)
     events.append(("gate", gate_line))
-    merged_one_qubit_line = _merged_single_qubit_gate_line(ops, gate_index)
+    merged_one_qubit_line, _ = collect_single_qubit_gate_block(ops, gate_index + 1)
     if merged_one_qubit_line is not None:
         events.append(("gate", merged_one_qubit_line))
 

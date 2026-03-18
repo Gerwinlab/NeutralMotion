@@ -3,15 +3,16 @@ from __future__ import annotations
 import json
 import pint
 import pathlib
+import warnings
 from typing import Any, Mapping
 from .dag_helper import load_qasm_to_gate_dag
 from .grid import generate_grid
 from .grid import naive_fill
-from .dynamics import best_path_for_gate, find_next_two_qubit_gate
+from .dynamics import best_path_for_gate, collect_single_qubit_gate_block, find_next_two_qubit_gate
 from .scheduling import write_timed_schedule
 
 #TODO: Add backend for qiskit such that users can write a another json file that specifies duration of gates.
-
+#TODO: Add comments to all the functions and make it well documented.
 PathLike = str | pathlib.Path
 ureg = pint.UnitRegistry()
 
@@ -73,6 +74,7 @@ def main(
     config: Mapping[str, Any],
     qasm_file: PathLike,
     *,
+    schedule_output_dir: PathLike | None = None,
     config_path: pathlib.Path | None = None,
     quiet: bool = False,
 ) -> int:
@@ -112,6 +114,12 @@ def main(
     T = 0
     event_log: list[tuple] = []
     i = 0
+    leading_one_qubit_line, first_two_qubit_index = collect_single_qubit_gate_block(qc, 0)
+    if leading_one_qubit_line is not None:
+        event_log.append(("gate", leading_one_qubit_line))
+        T += 1
+        time += config["Average_Gate_Time"]
+    i = first_two_qubit_index
     while i < len(qc):
         if len(qc[i].qargs) != 2:
             i += 1
@@ -124,7 +132,18 @@ def main(
             break
         i = next_two_qubit
 
-    schedule_output = qasm_path.with_suffix(".schedule.txt")
+    if schedule_output_dir is None:
+        warnings.warn(
+            "No schedule output directory provided. Writing schedule next to qasm_file.",
+            stacklevel=2,
+        )
+        schedule_output = qasm_path.with_suffix(".schedule.txt")
+    else:
+        out_dir = pathlib.Path(schedule_output_dir).expanduser()
+        if not out_dir.is_absolute():
+            out_dir = pathlib.Path.cwd() / out_dir
+        out_dir.mkdir(parents=True, exist_ok=True)
+        schedule_output = out_dir / f"{qasm_path.stem}.schedule.txt"
     write_timed_schedule(
         schedule_output,
         qasm_filename=qasm_path.name,
@@ -137,6 +156,5 @@ def main(
     print(T)
     print(time)
     print(f"schedule_file={schedule_output}")
-    # TODO: wire into printing pipeline
 
     return 0
