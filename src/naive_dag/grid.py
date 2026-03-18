@@ -1,8 +1,15 @@
-#TODO: Check if the number of traps is enough for the number of qubits and warn if your is an excess number of traps
-#TODO: Test if it actually works
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 import random
+from pint import Quantity
+
+@dataclass
+class GridNode:
+    x: Quantity
+    y: Quantity
+    row: int
+    col: int
+    qubit: Optional[int] = None
 """
 grid.py
 
@@ -19,8 +26,8 @@ class GridNode:
     """
     Represents a single lattice site in the neutral atom array.
     """
-    x: float
-    y: float
+    x: Quantity
+    y: Quantity
     row: int
     col: int
     qubit: Optional[int] = None
@@ -43,7 +50,7 @@ class Qubit:
         """Returns row and col"""
         return self.node.row,self.node.col
     
-def generate_grid(dimensions: List[int],rydberg_radius:float) -> List[List[GridNode]]:
+def generate_grid(dimensions: List[int],rydberg_radius) -> List[List[GridNode]]:
     """
     Construct a 2D grid of Nodes spaced according to the given Rydberg radius.
 
@@ -89,14 +96,24 @@ def place_qubit(grid: List[List[GridNode]],row:int, col:int,qubit_id: int) ->Qub
 
 def move_qubit(qubit: Qubit, new_node: GridNode) -> None:
     """
-    Place a qubit in a different grid location
+    Move a qubit to a new grid location.
+    If the qubit is already at that location, do nothing.
     """
-    if new_node.is_occupied():
-        raise ValueError("Target node is already occupied.")
+    # If the node is occupied by a *different* qubit, error
+    if new_node.is_occupied() and new_node.qubit is not qubit:
+        raise ValueError("Target node is already occupied by another qubit.")
+
+    # If it's the same node, nothing to do
+    if new_node is qubit.node:
+        return
+
+    # Free the old node
     qubit.node.qubit = None
 
+    # Occupy the new node
     new_node.qubit = qubit
     qubit.node = new_node
+
 
 def naive_fill(grid: List[List[GridNode]], n:int, seed: int=0, random_fill: bool = True) -> List[Qubit]:
     """
