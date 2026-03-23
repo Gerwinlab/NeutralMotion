@@ -12,6 +12,9 @@ ScheduleEvent = MoveEvent | GateEvent
 def _is_even_even(position: tuple[int, int]) -> bool:
     x, y = position
     return (x % 2 == 0) and (y % 2 == 0)
+#TODO: Add timing for switching between pulses with a t_switch of 1.5 microseconds and max gate time of .5 microseconds for 2 qubit gate.
+#TODO: Add timing for average single qubti gate and two_qubit gate. single qubit gate could be .1 microseconds
+#TODO: Fix issue of adding time step for no movement.
 
 
 def write_timed_schedule(
