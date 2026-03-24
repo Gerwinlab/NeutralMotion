@@ -4,13 +4,14 @@ import argparse
 import json
 import pathlib
 
-from .main import load_config, main as naive_dag_main, resolve_config_paths
+from .main import load_config, main as naive_n_dag_main, resolve_config_paths
+
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Create the CLI argument parser for the naive scheduler entry point."""
+    """Create the CLI argument parser for the naive-n scheduler entry point."""
     parser = argparse.ArgumentParser(
-        prog="naive_dag",
-        description="Run the naive scheduler with a JSON configuration file.",
+        prog="naive_n_dag",
+        description="Run the naive-n scheduler with a JSON configuration file.",
     )
     parser.add_argument(
         "config",
@@ -47,7 +48,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    """Parse CLI args, resolve config, and execute the scheduler."""
+    """Parse CLI args, resolve config, and execute the naive-n scheduler."""
     parser = _build_parser()
     args = parser.parse_args()
 
@@ -61,7 +62,7 @@ def main() -> None:
         print(json.dumps(resolved, indent=2, sort_keys=True))
         return
 
-    exit_code = naive_dag_main(
+    exit_code = naive_n_dag_main(
         config,
         qasm_file,
         schedule_output_dir=schedule_output_dir,

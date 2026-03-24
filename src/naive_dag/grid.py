@@ -33,7 +33,7 @@ class GridNode:
     qubit: Optional[int] = None
 
     def is_occupied(self)->bool:
-        """Returns true if a qubit is assigned"""
+        """Return True when this lattice site currently has an assigned qubit."""
         return self.qubit is not None
 @dataclass
 class Qubit:
@@ -44,25 +44,14 @@ class Qubit:
     node: GridNode
 
     def position(self)->Tuple[float,float]:
-        """Returns (x,y) position"""
+        """Return the physical (x, y) position for this qubit."""
         return self.node.x, self.node.y
     def grid_position(self)->Tuple[int,int]:
-        """Returns row and col"""
+        """Return integer grid coordinates ``(row, col)`` for this qubit."""
         return self.node.row,self.node.col
     
 def generate_grid(dimensions: List[int],rydberg_radius) -> List[List[GridNode]]:
-    """
-    Construct a 2D grid of Nodes spaced according to the given Rydberg radius.
-
-    Parameters
-    ----------
-    dimension : List[int] - given by initializing json file.
-    rydberg_radius : float - given by initializing json file.
-
-    Returns
-    -------
-    List[List[GridNode]] - Matrix of Nodes that contain qubits.
-    """
+    """Construct a 2D lattice where adjacent logical trap points are 2 indices apart."""
     rows,cols=dimensions
     grid = []
 
@@ -77,16 +66,7 @@ def generate_grid(dimensions: List[int],rydberg_radius) -> List[List[GridNode]]:
     return grid
 
 def place_qubit(grid: List[List[GridNode]],row:int, col:int,qubit_id: int) ->Qubit:
-    """
-    Create and place a qubit at a grid location
-
-    Parameters
-    ----------
-    Matrix/Grid : List[List[GridNode]] - created by generate_grid and has dimensions specified in Json file
-    row : Int
-    col : Int - location of node in grid
-    qubit_id : int - number of qubit that is placed in spot.
-    """
+    """Create a qubit id and place it at a specific grid node."""
     node = grid[row][col]
     if node.is_occupied():
         raise ValueError(f"Node ({row},{col}) is already occupied.")
@@ -95,10 +75,7 @@ def place_qubit(grid: List[List[GridNode]],row:int, col:int,qubit_id: int) ->Qub
     return qubit
 
 def move_qubit(qubit: Qubit, new_node: GridNode) -> None:
-    """
-    Move a qubit to a new grid location.
-    If the qubit is already at that location, do nothing.
-    """
+    """Move ``qubit`` to ``new_node`` while preserving occupancy invariants."""
     # If the node is occupied by a *different* qubit, error
     if new_node.is_occupied() and new_node.qubit is not qubit:
         raise ValueError("Target node is already occupied by another qubit.")
@@ -116,23 +93,7 @@ def move_qubit(qubit: Qubit, new_node: GridNode) -> None:
 
 
 def naive_fill(grid: List[List[GridNode]], n:int, seed: int=0, random_fill: bool = True) -> List[Qubit]:
-    """
-    Assign qubits 0..n-1 to grid locations where both row and column indices are even. Qubits should be placed on the outside and have a minor node between them.
-
-    Parameters
-    ----------
-    Grid : 2D list of GridNoe
-    n : number of qubits
-    seed : random seed (used only if random_fill=True)
-    random_fill : bool
-        If True, randomly assign positions.
-        If False, fill in increasing row-major order.
-
-    Returns
-    -------
-    List[Qubit]
-        List of placed qubit objects
-    """
+    """Place ``n`` qubits on available even-even nodes, randomly or row-major."""
 
     valid_nodes = [
         node

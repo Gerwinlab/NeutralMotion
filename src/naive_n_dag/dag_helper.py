@@ -34,7 +34,7 @@ def dag_with_gate_ops_only(dag: DAGCircuit) -> list[DAGOpNode]:
 
     return gate_only.op_nodes()
 
-#TODO: This way of loading and making a dag can be limiting. Can do 1million+ gates but needs modification for future use.
+#Work on the n dags. Will reuse dynamic solver from naive_dag.
 def load_qasm_to_gate_dag(qasm_path: str | Path) -> DAGCircuit:
     """Load a QASM file and return a DAGCircuit with only gate operations."""
     return dag_with_gate_ops_only(load_qasm_to_dag(qasm_path))

@@ -1,72 +1,17 @@
 from __future__ import annotations
 
-import math
-from fractions import Fraction
-
-from typing import Iterable
-
 from qiskit.dagcircuit.dagnode import DAGOpNode
 
 from .dag_helper import op_node_signature
 from .grid import GridNode, Qubit, move_qubit
+from .scheduling import _format_gate_line, collect_single_qubit_gate_block
 
 MoveEvent = tuple[str, int, tuple[int, int], tuple[int, int]]
 GateEvent = tuple[str, str]
 ScheduleEvent = MoveEvent | GateEvent
 
-
-def _format_gate_param(param) -> str:
-    try:
-        value = float(param)
-    except (TypeError, ValueError):
-        return str(param)
-
-    if math.isclose(value, 0.0, abs_tol=1e-12):
-        return "0"
-
-    ratio = value / math.pi
-    frac = Fraction(ratio).limit_denominator(32)
-    if math.isclose(ratio, float(frac), rel_tol=0, abs_tol=1e-10):
-        n, d = frac.numerator, frac.denominator
-        if d == 1:
-            if n == 1:
-                return "pi"
-            if n == -1:
-                return "-pi"
-            return f"{n}*pi"
-        if n == 1:
-            return f"pi/{d}"
-        if n == -1:
-            return f"-pi/{d}"
-        return f"{n}*pi/{d}"
-
-    return str(param)
-
-
-def _format_gate_line(gate_name: str, gate_params: list, qubit_ids: list[int]) -> str:
-    if gate_params:
-        params_str = ", ".join(_format_gate_param(param) for param in gate_params)
-        return f"{gate_name}({params_str}) " + ",".join(f"q[{qid}]" for qid in qubit_ids) + ";"
-    return f"{gate_name} " + ",".join(f"q[{qid}]" for qid in qubit_ids) + ";"
-
-
-def collect_single_qubit_gate_block(ops: list[DAGOpNode], start_index: int) -> tuple[str | None, int]:
-    lines: list[str] = []
-    i = start_index
-    while i < len(ops):
-        gate_name, gate_params, qubit_ids = op_node_signature(ops[i])
-        if len(qubit_ids) == 2:
-            break
-        if len(qubit_ids) == 1:
-            lines.append(_format_gate_line(gate_name, gate_params, qubit_ids))
-        i += 1
-    if not lines:
-        return None, i
-    return " ".join(lines), i
-
-
 def gate_qubit_ids(ops: list[DAGOpNode], gate_index: int) -> list[int]:
-    """Return the qubit ids used by the ith gate in ops."""
+    """Return qubit ids used by the operation at ``gate_index``."""
     _, _, qubit_ids = op_node_signature(ops[gate_index])
     if len(qubit_ids) > 2:
         raise ValueError("This method does not support 3+ qubit gates")
@@ -74,7 +19,7 @@ def gate_qubit_ids(ops: list[DAGOpNode], gate_index: int) -> list[int]:
 
 
 def gate_qubits(ops: list[DAGOpNode], gate_index: int, qubits: list[Qubit]) -> list[Qubit]:
-    """Resolve qubit objects for the ith gate in ops."""
+    """Map gate qubit ids to concrete ``Qubit`` objects from ``qubits``."""
     qubit_ids = gate_qubit_ids(ops, gate_index)
     if not qubit_ids or len(qubit_ids) < 2:
         return [None,None]
@@ -83,10 +28,12 @@ def gate_qubits(ops: list[DAGOpNode], gate_index: int, qubits: list[Qubit]) -> l
 
 
 def _in_bounds(grid: list[list[GridNode]], row: int, col: int) -> bool:
+    """Return True if ``(row, col)`` is within the rectangular grid bounds."""
     return 0 <= row < len(grid) and 0 <= col < len(grid[0])
 
 
 def _start_(q1: Qubit, q2: Qubit, moves: list[tuple[int, int]], grid: list[list[GridNode]]) -> None:
+    """Append the first move that places ``q1`` onto a valid movement highway."""
     row1, col1 = q1.grid_position()
     row2, col2 = q2.grid_position()
     q1_odd = (row1 % 2 != 0) or (col1 % 2 != 0)
@@ -121,6 +68,7 @@ def _start_(q1: Qubit, q2: Qubit, moves: list[tuple[int, int]], grid: list[list[
                 moves.append((row1-1,col1))
 
 def _shuttle_(q1_pos: tuple[int, int], q2_pos: tuple[int, int], moves: list[tuple[int, int]]) -> None:
+    """Append intermediate straight-line routing moves from ``q1_pos`` toward ``q2_pos``."""
     row1, col1 = q1_pos
     row2, col2 = q2_pos
 
@@ -144,6 +92,7 @@ def _shuttle_(q1_pos: tuple[int, int], q2_pos: tuple[int, int], moves: list[tupl
             moves.append((row2,col2+1))
 
 def _return_(q1:Qubit, moves: list[tuple[int, int]], grid: list[list[GridNode]]) -> None:
+    """Route ``q1`` from highway space back to an available even-even trap site."""
     row1, col1 = q1.grid_position()
     q1_odd = (row1 % 2 != 0) or (col1 % 2 != 0)
     if not q1_odd:
@@ -165,8 +114,7 @@ def _return_(q1:Qubit, moves: list[tuple[int, int]], grid: list[list[GridNode]])
         moves.append(q1.grid_position())
 
 def find_next_two_qubit_gate(ops, start_index):
-    """Return (index, node) of the next 2-qubit gate after start_index.
-       Return (None, None) if none exists."""
+    """Return the index of the next 2Q gate after ``start_index``, else ``None``."""
     i = start_index + 1
     while i < len(ops):
         node = ops[i]
@@ -183,18 +131,20 @@ def best_path_for_gate(
     config:dict,
     T: int
 ):
-    """
-    Find the shortest valid path for the first qubit to reach the second qubit.
+    """Plan movement/events for one 2Q gate and any immediate trailing 1Q block.
 
     Movement rules:
     - If the first qubit starts on an even-even node, it must first move to an adjacent node.
     - The long move must be a straight line along an odd row or odd column.
     - The destination must be one of the 4 neighbor sites of the second qubit.
+
+    Returns the timestep duration contribution, updated timestep counter, and
+    emitted schedule events for moves and gates.
     """
     Stay_in_Highway = False
     q1, q2 = gate_qubits(ops, gate_index, qubits)
     if q1 is None:
-        return config["Average_Gate_Time"], T, []
+        return 0 * config["t_switch"], T, []
     r1, c1 = q1.grid_position()
     r2, c2 = q2.grid_position()
     #Checking which qubit to move
@@ -235,9 +185,9 @@ def best_path_for_gate(
     gate_name, gate_params, qubit_ids = op_node_signature(ops[gate_index])
     gate_line = _format_gate_line(gate_name, gate_params, qubit_ids)
     events.append(("gate", gate_line))
-    merged_one_qubit_line, _ = collect_single_qubit_gate_block(ops, gate_index + 1)
-    if merged_one_qubit_line is not None:
-        events.append(("gate", merged_one_qubit_line))
+    one_qubit_layers, _, layer_counts = collect_single_qubit_gate_block(ops, gate_index + 1)
+    for layer_line in one_qubit_layers:
+        events.append(("gate", layer_line))
 
     split_index = len(moves) - 1
     if Stay_in_Highway:
@@ -248,9 +198,10 @@ def best_path_for_gate(
         for idx in range(split_index, len(moves) - 1):
             events.append(("move", q1.id, moves[idx], moves[idx + 1]))
     T_step = len(events)
-    time = _time_trapezoid_(q1,q2,moves,config) + config["Average_Gate_Time"]
-    if merged_one_qubit_line is not None:
-        time += config["Average_Gate_Time"]
+    time = _time_trapezoid_(q1,q2,moves,config) + config["average_two_gate_time"] + config["t_switch"]
+    # Single-qubit pulses always include a pulse-switch penalty per gate pulse.
+    for layer_count in layer_counts:
+        time += layer_count * (config["average_single_gate_time"] + config["t_switch"])
 
     return time, T_step + T, events
 
@@ -263,6 +214,7 @@ def _time_trapezoid_(
     moves: list[tuple[int, int]],
     config:dict,
 ):
+    """Compute movement time using a trapezoidal/triangular velocity profile."""
     v = config["max_velocity"]        # Pint Quantity
     a = config["max_acceleration"]    # Pint Quantity
     transfer_time = config["transfer_SLM_AOD"]

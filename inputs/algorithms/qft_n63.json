@@ -1,6 +1,6 @@
 {
-    "dimensions": [3,3],
-    "num_NA":6,
+    "dimensions": [8,8],
+    "num_NA":63,
     "qasm_base_dir": "../qasm_files",
     "parallel":false,
     "transfer_SLM_AOD": "60 microseconds",

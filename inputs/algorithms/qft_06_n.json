@@ -11,5 +11,7 @@
     "average_two_gate_time": "0.5 microseconds",
     "t_switch": "1.5 microseconds",
     "jerk": "constant",
-    "movement_shape" :"trapezoidal"
+    "movement_shape" :"trapezoidal",
+    "max_dimension" : [3,3],
+    "fill_strategy": "random"
 }

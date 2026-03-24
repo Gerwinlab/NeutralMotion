@@ -8,16 +8,15 @@ from typing import Any, Mapping
 from .dag_helper import load_qasm_to_gate_dag
 from .grid import generate_grid
 from .grid import naive_fill
-from .dynamics import best_path_for_gate, collect_single_qubit_gate_block, find_next_two_qubit_gate
-from .scheduling import write_timed_schedule
+from .dynamics import best_path_for_gate, find_next_two_qubit_gate
+from .scheduling import collect_single_qubit_gate_block, write_timed_schedule
 
 #TODO: Add backend for qiskit such that users can write a another json file that specifies duration of gates.
-#TODO: Add comments to all the functions and make it well documented.
-#TODO: Double check if everything is alright
 PathLike = str | pathlib.Path
 ureg = pint.UnitRegistry()
 
 def parse_quantity(value, key):
+    """Parse a unit-bearing quantity string and reject dimensionless values."""
     try:
         q = ureg(value)
     except Exception:
@@ -30,6 +29,7 @@ def parse_quantity(value, key):
     return q
 
 def load_config(path: PathLike) -> dict[str, Any]:
+    """Load and validate the top-level JSON config object from disk."""
     config_path = pathlib.Path(path)
     with config_path.open("r", encoding="utf-8") as f:
         config = json.load(f)
@@ -39,6 +39,7 @@ def load_config(path: PathLike) -> dict[str, Any]:
 
 
 def _resolve_path(value: Any, base_dir: pathlib.Path) -> Any:
+    """Resolve relative path-like strings against ``base_dir``."""
     if isinstance(value, str):
         candidate = pathlib.Path(value)
         if not candidate.is_absolute():
@@ -47,6 +48,7 @@ def _resolve_path(value: Any, base_dir: pathlib.Path) -> Any:
 
 
 def resolve_config_paths(config: Mapping[str, Any], base_dir: pathlib.Path) -> dict[str, Any]:
+    """Return a copy of ``config`` with qasm directory fields resolved to absolute paths."""
     resolved: dict[str, Any] = dict(config)
     for key in ("qasm_dir", "qasm_base_dir"):
         if key in resolved:
@@ -55,6 +57,7 @@ def resolve_config_paths(config: Mapping[str, Any], base_dir: pathlib.Path) -> d
 
 
 def _resolve_qasm_file(config: Mapping[str, Any], qasm_file: PathLike) -> pathlib.Path:
+    """Resolve the selected QASM file using explicit path or configured base directory."""
     qasm_path = pathlib.Path(qasm_file)
 
     # If user passed an existing path, use it directly
@@ -78,7 +81,9 @@ def main(
     schedule_output_dir: PathLike | None = None,
     config_path: pathlib.Path | None = None,
     quiet: bool = False,
+    seed: int | None = None,
 ) -> int:
+    """Run the naive scheduler pipeline and write a human-readable schedule file."""
     if config_path is not None:
         config = resolve_config_paths(config, config_path.parent)
 
@@ -97,17 +102,28 @@ def main(
                 f'Unsupported jerk profile "{config["jerk"]}". Only "constant" is allowed. You can implement none constant though.'
             )
 
-    for key in ["transfer_SLM_AOD", "max_acceleration", "max_velocity", "rydberg_radius","Average_Gate_Time"]:
+    for key in [
+        "transfer_SLM_AOD",
+        "max_acceleration",
+        "max_velocity",
+        "rydberg_radius",
+        "average_single_gate_time",
+        "average_two_gate_time",
+        "t_switch",
+    ]:
         config[key] = parse_quantity(config[key], key)
     
     config["transfer_SLM_AOD"] = config["transfer_SLM_AOD"].to("seconds")
     config["max_acceleration"] = config["max_acceleration"].to("meter/second^2")
     config["max_velocity"] = config["max_velocity"].to("meter/second")
     config["rydberg_radius"] = config["rydberg_radius"].to("meter")
-    config["Average_Gate_Time"] = config["Average_Gate_Time"].to("seconds")
+    config["average_single_gate_time"] = config["average_single_gate_time"].to("seconds")
+    config["average_two_gate_time"] = config["average_two_gate_time"].to("seconds")
+    config["t_switch"] = config["t_switch"].to("seconds")
     qc = load_qasm_to_gate_dag(qasm_path)
     grid = generate_grid(dims,config["rydberg_radius"])
-    qubits = naive_fill(grid,num_na,0,True)
+    fill_seed = seed if seed is not None else 0
+    qubits = naive_fill(grid,num_na,fill_seed,True)
     #------------
     #starting the scheduling pipeline
     #------------
@@ -115,11 +131,12 @@ def main(
     T = 0
     event_log: list[tuple] = []
     i = 0
-    leading_one_qubit_line, first_two_qubit_index = collect_single_qubit_gate_block(qc, 0)
-    if leading_one_qubit_line is not None:
-        event_log.append(("gate", leading_one_qubit_line))
+    leading_one_qubit_layers, first_two_qubit_index, leading_layer_counts = collect_single_qubit_gate_block(qc, 0)
+    for layer_line in leading_one_qubit_layers:
+        event_log.append(("gate", layer_line))
         T += 1
-        time += config["Average_Gate_Time"]
+    for layer_count in leading_layer_counts:
+        time += layer_count * (config["average_single_gate_time"] + config["t_switch"])
     i = first_two_qubit_index
     while i < len(qc):
         if len(qc[i].qargs) != 2:
@@ -151,10 +168,10 @@ def main(
         final_time=str(time),
         lattice_spacing=str(config["rydberg_radius"].to("micrometers")),
         T=0,
+        fill_seed= fill_seed,
         events=event_log,
+        initial_qubits=qubits,
     )
-
-    print(T)
     print(time)
     print(f"schedule_file={schedule_output}")
 
