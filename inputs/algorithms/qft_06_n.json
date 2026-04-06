@@ -13,5 +13,6 @@
     "jerk": "constant",
     "movement_shape" :"trapezoidal",
     "max_dimension" : [3,3],
-    "fill_strategy": "random"
+    "fill_strategy": "random",
+    "alignment_conc": 0
 }

@@ -26,7 +26,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "schedule_output_dir",
         nargs="?",
         default=None,
-        help="Optional directory to write <qasm_stem>.schedule.txt. Relative paths are resolved from the current working directory.",
+        help="Optional directory to write <config_stem>.schedule.txt. Relative paths are resolved from the current working directory.",
     )
     parser.add_argument(
         "--dump-config",
@@ -43,6 +43,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Random seed override for random fill. Defaults to 0.",
+    )
+    parser.add_argument(
+        "--output-name",
+        default=None,
+        help="Optional output schedule filename. Defaults to <config_stem>.schedule.txt.",
     )
     return parser
 
@@ -69,6 +74,7 @@ def main() -> None:
         config_path=config_path,
         quiet=args.quiet,
         seed=args.seed,
+        output_name=args.output_name,
     )
     raise SystemExit(exit_code)
 

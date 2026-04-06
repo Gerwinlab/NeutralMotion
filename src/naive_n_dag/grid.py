@@ -138,3 +138,5 @@ def naive_fill(grid: List[List[GridNode]], n:int, seed: int=0, random_fill: bool
         node.qubit = qubit
         qubits.append(qubit)
     return qubits
+
+#TODO: Add a heuristic fill strategy that uses Fast-SA to place qubits in a way that minimizes the number of moves needed for the first few layers of the circuit.
