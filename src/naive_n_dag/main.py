@@ -194,6 +194,9 @@ def main(
     time = 0 * (config["max_velocity"] / config["max_acceleration"]).units
     T = 0
     event_log: list[ScheduleEvent] = []
+    current_positions: dict[int, tuple[int, int]] = {q.id: q.grid_position() for q in qubits}
+    Previous_Positions: list[tuple[int, int]] = []
+    Previous_Ids: list[int] = []
 
     for layer_idx, twoq_layer in enumerate(two_qubit_layers):
         single_step_lines, single_time = single_qubit_layer_time(
@@ -208,7 +211,15 @@ def main(
 
         twoq_nodes = twoq_layer["graph"].op_nodes()
         if twoq_nodes:
-            layer_steps, layer_time = best_path_for_layer(twoq_nodes, qubits, config, event_log)
+            layer_steps, layer_time, Previous_Positions, Previous_Ids = best_path_for_layer(
+                twoq_nodes,
+                qubits,
+                config,
+                event_log,
+                Previous_Ids=Previous_Ids,
+                Previous_Positions=Previous_Positions,
+                current_positions=current_positions,
+            )
             T += layer_steps
             time += layer_time
 

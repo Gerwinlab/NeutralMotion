@@ -125,280 +125,328 @@ def _reduce_vectors_for_start(vectors: list[tuple[int, int]], move: tuple[int, i
 
 def _start_(
     moving_vectors: list[tuple[int, int]],
-    move: list[int],
+    moves: list[tuple[int, int]],
     moving_ids: list[int],
     origin_positions: list[tuple[int, int]],
-    event_log: list[ScheduleEvent],
+    event_log: list,
 ) -> list[tuple[int, int]]:
-    """Apply initial vector reduction and optional parity-prep move for all movers."""
-    reduced_vectors = _reduce_vectors_for_start(moving_vectors, (move[0], move[1]))
-    #Assume that they start in original position, even-even
-    dx, dy = reduced_vectors[0]
-    next_dx, next_dy = 0, 0
-    for idx, (vec_x,vec_y) in enumerate(reduced_vectors):
-        if (vec_x,vec_y) != (0,0):
-            next_dx, next_dy = reduced_vectors[idx]
-            break
-    if (origin_positions[0][0] % 2 == 0) and (origin_positions[0][1] % 2 == 0):
-        # If the first move is in a grid position
-        if dx == 0:
-            if dy == 2 and abs(next_dx) > 2 and next_dy == 0:
-                move[1] +=1
-            elif dy == -2 and abs(next_dx) > 2 and next_dy == 0:
-                move[1] -=1
-            elif next_dx >= 2:
-                move[0] +=1
-            else:
-                move[0] -=1
-        elif dy == 0:
-            if dx == 2 and abs(next_dy) > 2 and next_dx == 0:
-                move[0] +=1
-            elif dx == -2 and abs(next_dy) > 2 and next_dx == 0:
-                move[0] -=1
-            elif next_dy >= 2:
-                move[1] +=1
-            else:
-                move[1] -=1
+    """Apply initial vector reduction and choose a good first move."""
+
+    reduced_vectors = _reduce_vectors_for_start(moving_vectors, (moves[0][0], moves[0][1]))
+    if origin_positions[0][0] % 2 == 1 or origin_positions[0][1] % 2 == 1:
+        return reduced_vectors
+    
+    def apply_move(step):
+        dx, dy = step
+        for i, (vx, vy) in enumerate(reduced_vectors):
+            r, c = origin_positions[i]
+            start = (r, c)
+            end = (r + dx, c + dy)
+
+            origin_positions[i] = end
+            if i == 0:
+                reduced_vectors[i] = (vx - dx, vy - dy)
+            event_log.append(("move", moving_ids[i], start, end))
+
+        moves.append((dx, dy))
+        return reduced_vectors
+
+    # -------------------------------------------------
+    # 1. Single mover: direct greedy step toward target
+    # -------------------------------------------------
+    if len(reduced_vectors) == 1:
+        dx, dy = reduced_vectors[0]
+
+        if abs(dx) > abs(dy):
+            step = (1 if dx > 0 else -1, 0)
         else:
-            if next_dx == 2:
-                move[0] +=1
-            elif next_dx == -2:
-                move[0] -=1
-            elif next_dy == 2:
-                move[1] +=1
-            elif next_dy == -2:
-                move[1] -=1
-            elif abs(dx) > abs(dy):
-                if dx > 0:
-                    move[0] +=1
-                else:
-                    move[0] -=1
-            else:
-                if dy > 0:
-                    move[1] +=1
-                else:
-                    move[1] -=1
+            step = (0, 1 if dy > 0 else -1)
+
+        return apply_move(step)
+
+    # -------------------------------------------------
+    # 2. Multi-mover: choose best shared step
+    # -------------------------------------------------
+
+    # candidate unit moves
+    candidates = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+
+    def score(step):
+        """Score = number of vectors (excluding first) that become |v|=1,
+        considering only up to and including the first non-(0,0) vector."""
         
-    for idx, (vec_x, vec_y) in enumerate(reduced_vectors):
-        base_r, base_c = origin_positions[idx]
-        start = (base_r, base_c)
-        end = (base_r + move[0], base_c + move[1])
-        origin_positions[idx] = end
-        reduced_vectors[idx] = (vec_x - move[0], vec_y - move[1]) #shift the vector back to the origin
-        event_log.append(("move", moving_ids[idx], start, end))
+        sx, sy = step
+        new_vectors = [(vx - sx, vy - sy) for vx, vy in moving_vectors]
 
-    return reduced_vectors
+        count = 0
+        seen_nonzero = False
 
+        for i, (vx, vy) in enumerate(new_vectors):
+            if (vx, vy) != (0, 0):
+                if seen_nonzero:
+                    break  # already processed first non-zero → stop
+                seen_nonzero = True
+
+            if i != 0 and (abs(vx) + abs(vy) == 1):
+                count += 1
+
+        return count
+
+    # pick best step
+    best_step = max(candidates, key=score)
+
+    # -------------------------------------------------
+    # 3. Even-even bias (your parity heuristic)
+    # -------------------------------------------------
+    r0, c0 = origin_positions[0]
+    if (r0 % 2 == 0) and (c0 % 2 == 0):
+        # slight bias toward axis-aligned reduction of largest vector
+        vx, vy = reduced_vectors[0]
+        if abs(vx) > abs(vy):
+            preferred = (1 if vx > 0 else -1, 0)
+        else:
+            preferred = (0, 1 if vy > 0 else -1)
+
+        # override if equally good
+        if score(preferred) >= score(best_step):
+            best_step = preferred
+
+    return apply_move(best_step)
+
+
+def parity_route_moves(
+    start: tuple[int, int],
+    end: tuple[int, int],
+) -> list[tuple[int, int]]:
+    """
+    Return a sequence of (dx, dy) moves that route from start → end
+    respecting (even,odd)/(odd,even) parity constraints.
+    """
+
+    r1, c1 = start
+    r2, c2 = end
+
+    dx = r2 - r1
+    dy = c2 - c1
+
+    def is_even_odd(r, c):
+        return (r % 2 == 0 and c % 2 == 1) or (r % 2 == 1 and c % 2 == 0)
+
+    start_parity = is_even_odd(r1, c1)
+    end_parity = is_even_odd(r2, c2)
+
+    moves = []
+    
+    # -------------------------------------------------
+    # Case 4: returning to even-even trap site
+    # -------------------------------------------------
+    if r2 % 2 == 0 and c2 % 2 == 0:
+        if (r1 % 2 == 1 and c1 % 2 == 0):
+            # handle x first
+            step_y = dy - (1 if dy >= 0 else -1)
+            moves.append((0, step_y))
+            moves.append((dx, 0))
+            moves.append((0, dy - step_y))  # final ±1
+        else:
+            # handle y first
+            step_x = dx - (1 if dx >= 0 else -1)
+            moves.append((dx - step_x, 0))
+            moves.append((0, dy))
+            moves.append((step_x, 0))  # final ±1
+
+        return moves
+
+    # -------------------------------------------------
+    # Case 1: parity flips → always 2 moves
+    # -------------------------------------------------
+    if start_parity != end_parity:
+        if (r1 % 2 == 0 and c1 % 2 == 1):  # (even, odd)
+            moves.append((dx, 0))
+            moves.append((0, dy))
+        else:  # (odd, even)
+            moves.append((0, dy))
+            moves.append((dx, 0))
+        return moves
+
+    # -------------------------------------------------
+    # Case 2: same parity
+    # -------------------------------------------------
+
+    # If purely axis-aligned → 1 move
+    if (dx == 0 and c1 % 2 == 1) or (dy == 0 and r1 % 2 == 1):
+        moves.append((dx, dy))
+        return moves
+
+    # -------------------------------------------------
+    # Case 3: same parity/return to even-even, need 3 moves
+    # -------------------------------------------------
+
+    # Decide which axis to split first
+    if (r1 % 2 == 1 and c1 % 2 == 0):
+        # handle x first
+        step_y = dy - (1 if dy >= 0 else -1)
+        moves.append((0, step_y))
+        moves.append((dx, 0))
+        moves.append((0, dy - step_y))  # final ±1
+    else:
+        # handle y first
+        step_x = dx - (1 if dx >= 0 else -1)
+        moves.append((dx - step_x, 0))
+        moves.append((0, dy))
+        moves.append((step_x, 0))  # final ±1
+
+    return moves
 
 def _shuttle_(
     moving_vectors: list[tuple[int, int]],
-    move: list[int],
+    moves: list[tuple[int, int]],
     moving_ids: list[int],
     moving_group_positions: list[tuple[int, int]],
-    gate_nodes: list[DAGOpNode],
-    event_log: list[ScheduleEvent],
+    gate_nodes: list,
+    event_log: list,
 ) -> None:
-    """Route on highway-constrained unit steps and emit gates when target vector reaches magnitude 1."""
+    """Route all movers toward targets while prioritizing parallel-ready states."""
 
-    def _nonzero_indices(vectors: list[tuple[int, int]]) -> list[int]:
-        return [idx for idx, (x, y) in enumerate(vectors) if (x, y) != (0, 0)]
-
-    def _is_unit_axis(step: tuple[int, int]) -> bool:
+    # -------------------------------------------------
+    # Score: stop after FIRST non-(0,0), inclusive
+    # -------------------------------------------------
+    def score(step, idx):
+        """Score = number of vectors (excluding idx) that become |v|=1,
+        starting from idx and stopping after first non-(0,0) (inclusive)."""
+        
         sx, sy = step
-        return abs(sx) + abs(sy) == 1
+        new_vectors = [(vx - sx, vy - sy) for vx, vy in moving_vectors]
 
-    def _is_highway_legal(cur_move: tuple[int, int], step: tuple[int, int]) -> bool:
-        sx, sy = step
-        if not _is_unit_axis(step):
-            return False
-        cur_x, cur_y = cur_move
-        if sx != 0:
-            return cur_y % 2 != 0
-        return cur_x % 2 != 0
+        count = 0
+        seen_nonzero = False
 
-    def _emit_group_move(step: tuple[int, int]) -> None:
-        sx, sy = step
-        if not _is_unit_axis(step):
-            raise ValueError(f"Non-axis unit move requested in shuttle: {step}")
-        for idx, moving_id in enumerate(moving_ids):
-            start = moving_group_positions[idx]
-            end = (start[0] + sx, start[1] + sy)
-            event_log.append(("move", moving_id, start, end))
-            moving_group_positions[idx] = end
-        move[0] += sx
-        move[1] += sy
-        for idx, (vec_x, vec_y) in enumerate(moving_vectors):
-            moving_vectors[idx] = (vec_x - sx, vec_y - sy)
+        for i in range(idx, len(new_vectors)):
+            vx, vy = new_vectors[i]
 
-    def _prefer_axis_step(
-        vec: tuple[int, int],
-        cur_move: tuple[int, int],
-        preferred_axis: str | None = None,
-    ) -> tuple[int, int] | None:
-        vx, vy = vec
-        options: list[tuple[int, int]] = []
-        if vx != 0:
-            options.append((1 if vx > 0 else -1, 0))
-        if vy != 0:
-            options.append((0, 1 if vy > 0 else -1))
-        if preferred_axis == "x":
-            options.sort(key=lambda s: 0 if s[0] != 0 else 1)
-        elif preferred_axis == "y":
-            options.sort(key=lambda s: 0 if s[1] != 0 else 1)
-        else:
-            options.sort(key=lambda s: 0 if (abs(vx) >= abs(vy) and s[0] != 0) or (abs(vy) > abs(vx) and s[1] != 0) else 1)
-        for step in options:
-            if _is_highway_legal(cur_move, step):
-                return step
-        return None
+            if (vx, vy) != (0, 0):
+                if seen_nonzero:
+                    break  # already processed first non-zero → stop
+                seen_nonzero = True
 
-    def _legal_steps(cur_move: tuple[int, int]) -> list[tuple[int, int]]:
-        cur_x, cur_y = cur_move
-        steps: list[tuple[int, int]] = []
-        if cur_y % 2 != 0:
-            steps.extend([(1, 0), (-1, 0)])
-        if cur_x % 2 != 0:
-            steps.extend([(0, 1), (0, -1)])
-        return steps
+            if i != idx and (abs(vx) + abs(vy) == 1):
+                count += 1
 
-    def _plan_step_toward_unit(
-        cur_move: tuple[int, int],
-        target: tuple[int, int],
-    ) -> tuple[int, int] | None:
-        """Return first step of a shortest legal path from cur_move to any state with |target-state|<=1."""
-        cx, cy = cur_move
-        tx, ty = target
-        if math.hypot(tx - cx, ty - cy) <= 1:
-            return None
+        return count
 
-        margin = max(6, abs(tx - cx) + abs(ty - cy) + 4)
-        min_x, max_x = min(cx, tx) - margin, max(cx, tx) + margin
-        min_y, max_y = min(cy, ty) - margin, max(cy, ty) + margin
+    # -------------------------------------------------
+    # Greedy step (your simplified routing logic)
+    # -------------------------------------------------
+    def greedy_step(idx):
+        """
+        Choose the best unit step for mover `idx` by minimizing
+        remaining parity-route length.
+        """
 
-        start = (cx, cy)
-        queue = deque([start])
-        parent: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
-        goal: tuple[int, int] | None = None
+        q1_pos = moving_group_positions[idx]
+        vx, vy = moving_vectors[idx]
+        q2_pos = (q1_pos[0] + vx, q1_pos[1] + vy)
 
-        while queue:
-            x, y = queue.popleft()
-            if math.hypot(tx - x, ty - y) <= 1:
-                goal = (x, y)
-                break
-            for sx, sy in _legal_steps((x, y)):
-                nx, ny = x + sx, y + sy
-                if nx < min_x or nx > max_x or ny < min_y or ny > max_y:
-                    continue
-                nxt = (nx, ny)
-                if nxt in parent:
-                    continue
-                parent[nxt] = (x, y)
-                queue.append(nxt)
+        candidates = [(1, 0), (-1, 0), (0, 1), (0, -1)]
 
-        if goal is None:
-            return None
+        best_step = None
+        best_cost = float("inf")
 
-        cur = goal
-        while parent[cur] != start and parent[cur] is not None:
-            cur = parent[cur]
-        if parent[cur] is None:
-            return None
-        return cur[0] - cx, cur[1] - cy
+        for step in candidates:
+            sx, sy = step
 
-    emitted_gate_indices: set[int] = set()
+            # simulate move
+            new_pos = (q2_pos[0] + sx, q2_pos[1] + sy)
 
-    for idx in range(len(moving_vectors)):
-        local_iter = 0
-        while math.hypot(moving_vectors[idx][0], moving_vectors[idx][1]) > 1:
-            local_iter += 1
-            if local_iter > 10000:
-                raise RuntimeError(
-                    f"Shuttle failed to converge for gate index {idx}. "
-                    f"move={tuple(move)} vec={moving_vectors[idx]}"
-                )
+            # compute remaining path length
+            route = parity_route_moves(q1_pos, new_pos)
+            cost = len(route)
 
-            cur_vec = moving_vectors[idx]
-            next_idx = next(
-                (j for j in range(idx + 1, len(moving_vectors)) if moving_vectors[j] != (0, 0)),
-                None,
-            )
-            step: tuple[int, int] | None = None
+            if cost < best_cost:
+                best_cost = cost
+                best_step = step
 
-            if next_idx is not None:
-                next_vec = moving_vectors[next_idx]
-                delta_x = next_vec[0] - cur_vec[0]
-                delta_y = next_vec[1] - cur_vec[1]
-                if (delta_x, delta_y) in {(2, 0), (-2, 0), (0, 2), (0, -2)}:
-                    if abs(cur_vec[0]) == 2 and cur_vec[1] == 0:
-                        candidate = (1 if cur_vec[0] > 0 else -1, 0)
-                        if _is_highway_legal((move[0], move[1]), candidate):
-                            step = candidate
-                    elif abs(cur_vec[1]) == 2 and cur_vec[0] == 0:
-                        candidate = (0, 1 if cur_vec[1] > 0 else -1)
-                        if _is_highway_legal((move[0], move[1]), candidate):
-                            step = candidate
+        return best_step
 
-            if step is None:
-                step = _prefer_axis_step(cur_vec, (move[0], move[1]))
+    # -------------------------------------------------
+    # Main loop
+    # -------------------------------------------------
+    for idx, (vx, vy) in enumerate(moving_vectors):
+        if (vx, vy) == (0,0):
+            if idx < len(gate_nodes):
+                gate_name, gate_params, qubit_ids = op_node_signature(gate_nodes[idx])
+                gate_line = format_gate_line(gate_name, gate_params, qubit_ids)
+                if event_log and event_log[-1][0] == "gate":
+                    event_log[-1] = ("gate", f"{event_log[-1][1]} {gate_line}")
+                else:
+                    event_log.append(("gate", gate_line))
+            continue
+        if (vx, vy) in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+            if idx < len(gate_nodes):
+                gate_name, gate_params, qubit_ids = op_node_signature(gate_nodes[idx])
+                gate_line = format_gate_line(gate_name, gate_params, qubit_ids)
+                if event_log and event_log[-1][0] == "gate":
+                    event_log[-1] = ("gate", f"{event_log[-1][1]} {gate_line}")
+                else:
+                    event_log.append(("gate", gate_line))
+            if idx + 1 < len(moving_vectors):
+                next_vx, next_vy = moving_vectors[idx + 1]
+                moving_vectors[idx + 1] = (next_vx + vx, next_vy + vy)
+            continue
 
-            if step is None:
-                target = (move[0] + cur_vec[0], move[1] + cur_vec[1])
-                step = _plan_step_toward_unit((move[0], move[1]), target)
-                if step is None:
-                    raise RuntimeError(
-                        f"Shuttle could not find legal progress step for gate index {idx} "
-                        f"at move={tuple(move)} target={target}."
-                    )
+        candidates = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+        q1_pos = moving_group_positions[idx]
+        q2_pos = (q1_pos[0] + vx, q1_pos[1] + vy)
 
-            _emit_group_move(step)
+        best_step = max(candidates, key=lambda step: score(step, idx))
+        best_score = score(best_step, idx)
+        # fallback if no parallel benefit
+        if best_score == 0:
+            best_step = greedy_step(idx)
+        
+        new_pos = (q2_pos[0] + best_step[0], q2_pos[1] + best_step[1])
+        if idx + 1 < len(moving_vectors):
+                next_vx, next_vy = moving_vectors[idx + 1]
+                moving_vectors[idx + 1] = (next_vx - best_step[0], next_vy - best_step[1])
+        next_move = parity_route_moves(q1_pos, new_pos)
+        for step in next_move:
+            sx, sy = step
+            for atom_i, atom_id in enumerate(moving_ids):
+                start = moving_group_positions[atom_i]
+                end = (start[0] + sx, start[1] + sy)
+                event_log.append(("move", atom_id, start, end))
+                moving_group_positions[atom_i] = end
+            moves.append(step)
 
-            if idx == len(moving_vectors) - 1 and local_iter % 3 == 0:
-                # Last target: enforce batches of at most 3 movement updates before re-evaluating.
-                pass
-
-        if idx not in emitted_gate_indices:
+        if idx < len(gate_nodes):
             gate_name, gate_params, qubit_ids = op_node_signature(gate_nodes[idx])
-            event_log.append(("gate", format_gate_line(gate_name, gate_params, qubit_ids)))
-            emitted_gate_indices.add(idx)
-            moving_vectors[idx] = (0, 0)
+            gate_line = format_gate_line(gate_name, gate_params, qubit_ids)
+            event_log.append(("gate", gate_line))
 
 
 def _return_(
     moving_ids: list[int],
+    moves: list[tuple[int, int]],
     current_positions: list[tuple[int, int]],
     home_positions: list[tuple[int, int]],
     event_log: list[ScheduleEvent],
 ) -> None:
-    """Log synchronized unit-step return moves for all moving qubits."""
+    """Log return moves for all moving qubits, synchronized when possible."""
     if not moving_ids:
         return
     if len(moving_ids) != len(current_positions) or len(moving_ids) != len(home_positions):
         raise ValueError("Return path inputs must have matching lengths.")
 
-    current = current_positions[:]
-    ref_cur_r, ref_cur_c = current[0]
-    ref_home_r, ref_home_c = home_positions[0]
-
-    while (ref_cur_r, ref_cur_c) != (ref_home_r, ref_home_c):
-        step_r = 0
-        step_c = 0
-        if ref_cur_r != ref_home_r:
-            step_r = -1 if ref_cur_r > ref_home_r else 1
-        elif ref_cur_c != ref_home_c:
-            step_c = -1 if ref_cur_c > ref_home_c else 1
-
-        for idx, moving_id in enumerate(moving_ids):
-            start = current[idx]
-            end = (start[0] + step_r, start[1] + step_c)
-            event_log.append(("move", moving_id, start, end))
-            current[idx] = end
-
-        ref_cur_r += step_r
-        ref_cur_c += step_c
-
-    for idx, home in enumerate(home_positions):
-        if current[idx] != home:
-            raise RuntimeError("Synchronized return path did not land all qubits at home positions.")
+    current_position = current_positions[0]
+    home_position = home_positions[0]
+    next_move = parity_route_moves(current_position, home_position)
+    for step in next_move:
+        sx, sy = step
+        for atom_i, atom_id in enumerate(moving_ids):
+            start = current_positions[atom_i]
+            end = (start[0] + sx, start[1] + sy)
+            event_log.append(("move", atom_id, start, end))
+            current_positions[atom_i] = end
+        moves.append(step)
 
 
 
@@ -418,7 +466,10 @@ def best_path_for_layer(
     qubits: list[Qubit],
     config: dict[str, Any],
     event_log: list[ScheduleEvent],
-) -> tuple[int, Any]:
+    Previous_Ids: list[int] | None = None,
+    Previous_Positions: list[tuple[int, int]] | None = None,
+    current_positions: dict[int, tuple[int, int]] | None = None,
+) -> tuple[int, Any, list[tuple[int, int]], list[int]]:
     """Group 2Q gates by AOD fit and append grouped gate steps into ``event_log`` in place.
 
     One atom per gate is selected as the moving candidate based on AOD fit and movement
@@ -427,18 +478,22 @@ def best_path_for_layer(
     """
     if not layer_nodes:
         zero_time = 0 * (config["average_two_gate_time"] + config["t_switch"])
-        return 0, zero_time
+        return 0, zero_time, [], []
 
     qubit_map = {q.id: q for q in qubits}
+    if current_positions is None:
+        current_positions = {q.id: q.grid_position() for q in qubits}
     max_row_span, max_col_span = _max_grid_spans(config["max_dimension"])
     alignment_conc = float(config.get("alignment_conc", 0.0))
+    allow_parallel = bool(config.get("parallel", False))
     moving_groups: list[list[DAGOpNode]] = []
     moving_group_positions: list[list[tuple[int, int]]] = []
     moving_group_vectors: list[list[tuple[int, int]]] = []
     moving_group_qubit_ids: list[list[int]] = []
     used_mover_ids: set[int] = set()
     movement_time = 0 * (config["average_two_gate_time"] + config["t_switch"])
-
+    last_group_ordered_positions: list[tuple[int, int]] = []
+    last_group_ordered_ids: list[int] = []
     # For each 2Q gate, attempt to fit it into an existing moving group based on AOD fit and movement vector compatibility.
     # If it doesn't fit in any existing group, start a new group with one of the atoms as the mover.
     # If multiple fit candidates exist for a group, prefer those that are parallel and similar in magnitude to existing group vectors.
@@ -453,8 +508,28 @@ def best_path_for_layer(
         if q1_id not in qubit_map:
             raise ValueError(f"Qubit id {q1_id} from DAG not found in placed qubits.")
 
-        q0_pos = qubit_map[q0_id].grid_position()
-        q1_pos = qubit_map[q1_id].grid_position()
+        q0_pos = current_positions.get(q0_id, qubit_map[q0_id].grid_position())
+        q1_pos = current_positions.get(q1_id, qubit_map[q1_id].grid_position())
+        if not allow_parallel:
+            # Sequential mode: one mover per gate group.
+            if (q0_pos[0] % 2 != 0) or (q0_pos[1] % 2 != 0):
+                default_id = q0_id
+                default_pos = q0_pos
+                default_vec = _movement_vector(q0_pos, q1_pos)
+            elif (q1_pos[0] % 2 != 0) or (q1_pos[1] % 2 != 0):
+                default_id = q1_id
+                default_pos = q1_pos
+                default_vec = _movement_vector(q1_pos, q0_pos)
+            else:
+                default_id = q0_id
+                default_pos = q0_pos
+                default_vec = _movement_vector(q0_pos, q1_pos)
+            moving_groups.append([node])
+            moving_group_positions.append([default_pos])
+            moving_group_vectors.append([default_vec])
+            moving_group_qubit_ids.append([default_id])
+            continue
+
         candidates = [
             (q0_id, q0_pos, _movement_vector(q0_pos, q1_pos)),
             (q1_id, q1_pos, _movement_vector(q1_pos, q0_pos)),
@@ -518,6 +593,21 @@ def best_path_for_layer(
             moving_group_vectors.append([default_vec])
             moving_group_qubit_ids.append([default_id])
             used_mover_ids.add(default_id)
+    # If previous mover ids appear as a full group again, process that group first.
+    if Previous_Ids:
+        prev_set = set(Previous_Ids)
+        front_idx = None
+        for gi, group_ids in enumerate(moving_group_qubit_ids):
+            if set(group_ids) == prev_set:
+                front_idx = gi
+                break
+        if front_idx is not None and front_idx != 0:
+            moving_groups.insert(0, moving_groups.pop(front_idx))
+            moving_group_positions.insert(0, moving_group_positions.pop(front_idx))
+            moving_group_vectors.insert(0, moving_group_vectors.pop(front_idx))
+            moving_group_qubit_ids.insert(0, moving_group_qubit_ids.pop(front_idx))
+    prev_set = set(Previous_Ids) if Previous_Ids else set()
+
     # Reorder each group by movement-vector coherence.
     layer_event_start = len(event_log)
     for group_idx, group in enumerate(moving_groups):
@@ -532,55 +622,61 @@ def best_path_for_layer(
             ordered_vectors = moving_group_vectors[group_idx]
             ordered_ids = moving_group_qubit_ids[group_idx]
             ordered_positions = moving_group_positions[group_idx]
-        original_positions = ordered_positions[:]
-        group_event_start = len(event_log)
+        #--------------------------
         #now the vectors are order by alignment, we can then move in the highway and emit gates as we go.
+        #--------------------------
         #starting from (0,0) we can reduce the vectors to successive differences, then we can emit moves for each vector in order.
         #must ensure each move is on the odd-odd highway.
-        move = [0, 0]
+
+        moves = [[0, 0]] #thus is mostly for timing.
         #now to load the AOD with the first move.
-        reduced_vectors = _start_(ordered_vectors, move, ordered_ids, ordered_positions, event_log)
-        #shuttle will add moves to the event_log and update the move vector as it goes.  
+        same_as_previous = bool(prev_set) and set(ordered_ids) == prev_set
+        if not same_as_previous:
+            if Previous_Ids and Previous_Positions and len(Previous_Ids) == len(Previous_Positions):
+                prev_ids = [qid for qid in Previous_Ids if qid in qubit_map]
+                prev_current_positions = [Previous_Positions[i] for i, qid in enumerate(Previous_Ids) if qid in qubit_map]
+                prev_home_positions = [qubit_map[qid].grid_position() for qid in prev_ids]
+                if prev_ids:
+                    _return_(prev_ids, moves, prev_current_positions, prev_home_positions, event_log)
+        else:
+            prev_pos_by_id = {Previous_Ids[i]: Previous_Positions[i] for i in range(len(Previous_Ids))}
+            prev_home_by_id = {qid: qubit_map[qid].grid_position() for qid in Previous_Ids if qid in qubit_map}
+            if ordered_ids and ordered_vectors:
+                first_id = ordered_ids[0]
+                if first_id in prev_pos_by_id and first_id in prev_home_by_id:
+                    prev_r, prev_c = prev_pos_by_id[first_id]
+                    home_r, home_c = prev_home_by_id[first_id]
+                    offset = (prev_r - home_r, prev_c - home_c)
+                    ordered_vectors = [
+                        (vx - offset[0], vy - offset[1]) for vx, vy in ordered_vectors
+                    ]
+            ordered_positions = [prev_pos_by_id.get(qid, ordered_positions[i]) for i, qid in enumerate(ordered_ids)]
+
+        #------------
+        #Returned previous group to original positions.
+        #Now to move the current group
+        #------------
+
+        reduced_vectors = _start_(ordered_vectors, moves, ordered_ids, ordered_positions, event_log)
+        #shuttle will add moves to the event_log and update the moves.  
         _shuttle_(
             reduced_vectors,
-            move,
+            moves,
             ordered_ids,
             ordered_positions,
             ordered_group,
             event_log,
         )
-        final_position_map = {qid: ordered_positions[idx] for idx, qid in enumerate(ordered_ids)}
-        unresolved = set(ordered_ids)
-        for event in reversed(event_log):
-            if event[0] == "move" and event[1] in unresolved:
-                final_position_map[event[1]] = event[3]
-                unresolved.remove(event[1])
-                if not unresolved:
-                    break
+        movement_time += _time_trapezoid_(moves, config, add_transfer_time= (not same_as_previous))
 
-        final_positions = [final_position_map[qid] for qid in ordered_ids]
-        home_positions = [qubit_map[qid].grid_position() for qid in ordered_ids]
-        _return_(ordered_ids, final_positions, home_positions, event_log)
+        Previous_Positions = ordered_positions[:]
+        Previous_Ids = ordered_ids[:]
 
-        reference_id = ordered_ids[0]
-        reference_path: list[tuple[int, int]] = [original_positions[0]]
-        reference_cursor = original_positions[0]
-        for event in event_log[group_event_start:]:
-            if event[0] != "move" or event[1] != reference_id:
-                continue
-            _, _, start_pos, end_pos = event
-            # Track one continuous trajectory only; groups may contain duplicate ids.
-            if start_pos != reference_cursor:
-                continue
-            if start_pos == end_pos:
-                continue
-            reference_path.append(end_pos)
-            reference_cursor = end_pos
-        movement_time += _time_trapezoid_(reference_path, config)
+
 
     layer_time = len(moving_groups) * (config["average_two_gate_time"] + config["t_switch"]) + movement_time
     layer_steps = len(event_log) - layer_event_start
-    return layer_steps, layer_time
+    return layer_steps, layer_time, Previous_Positions, Previous_Ids
 
 #--------------------------------
 #Now for timing
@@ -588,6 +684,7 @@ def best_path_for_layer(
 def _time_trapezoid_(
     moves: list[tuple[int, int]],
     config:dict,
+    add_transfer_time: bool = True,
 ):
     """Compute movement time for axis-aligned segments using a trapezoidal/triangular profile."""
     v = config["max_velocity"]        # Pint Quantity
@@ -603,17 +700,12 @@ def _time_trapezoid_(
         
         # Rounding Up
         # If the Neutral atom is moving from an AOD-steered tweezer to an SLM trap or vice versa
-        # We approximate that has time to transfer_SLM_AOD + move from x1,y1 to x2,y2 using trapezoid.   
-        q1_even = (x1 % 2 == 0) or (y1 % 2 == 0)
-        q2_even = (x2 % 2 == 0) or (y2 % 2 == 0)
-        if q1_even or q2_even:
+        # We approximate that has time to transfer_SLM_AOD + move from x1,y1 to x2,y2 using trapezoid. 
+        if add_transfer_time:
             total_time += transfer_time
         dx = (x2 - x1)
         dy = (y2 - y1)
-        if dx != 0 and dy != 0:
-            raise ValueError(
-                f"Invalid move segment {moves[i]} -> {moves[i + 1]}: each move must be along one axis only."
-            )
+    
         if dx == 0 and dy == 0:
             continue
 

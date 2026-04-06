@@ -2,7 +2,7 @@
     "dimensions": [8,8],
     "num_NA":63,
     "qasm_base_dir": "../qasm_files",
-    "parallel":false,
+    "parallel":true,
     "transfer_SLM_AOD": "60 microseconds",
     "max_acceleration": "2500 m/s^2",
     "max_velocity": "0.13 m/s",
