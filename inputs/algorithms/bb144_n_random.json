@@ -1,10 +1,10 @@
 {
     "dimensions": [
-        8,
-        8
+        17,
+        17
     ],
-    "num_NA": 63,
-    "qasm_base_dir": "../qasm_files",
+    "num_NA": 288,
+    "qasm_base_dir": "../../../qasm_outputs",
     "parallel": true,
     "transfer_SLM_AOD": "60 microseconds",
     "max_acceleration": "2500 m/s^2",
@@ -16,9 +16,9 @@
     "jerk": "constant",
     "movement_shape": "trapezoidal",
     "max_dimension": [
-        8,
-        8
+        17,
+        17
     ],
     "fill_strategy": "random",
-    "alignment_conc": -1
+    "alignment_conc": 0
 }

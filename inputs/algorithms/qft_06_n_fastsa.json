@@ -1,8 +1,8 @@
 {
     "dimensions": [3,3],
-    "num_NA":6,
+    "num_NA": 6,
     "qasm_base_dir": "../qasm_files",
-    "parallel":true,
+    "parallel": true,
     "transfer_SLM_AOD": "60 microseconds",
     "max_acceleration": "2500 m/s^2",
     "max_velocity": "0.13 m/s",
@@ -11,17 +11,17 @@
     "average_two_gate_time": "0.5 microseconds",
     "t_switch": "1.5 microseconds",
     "jerk": "constant",
-    "movement_shape" :"trapezoidal",
-    "max_dimension" : [3,3],
+    "movement_shape": "trapezoidal",
+    "max_dimension": [3,3],
     "fill_strategy": "fastsa",
-    "alignment_conc": 1,
+    "alignment_conc": 0,
     "Fastsa_fill": {
-        "stage1_iterations": 2,
+        "stage1_iterations": 10,
         "stage2_iterations": 7,
+        "k": 7,
         "c": 100,
-        "initial_accept_prob": 0.99,
-        "stage3_temperature_threshold": 0.001,
-        "stage3_max_iterations": 100,
-        "stage3_section_size": 2
+        "stage3_temperature_threshold": 0.0001,
+        "stage3_max_iterations": 1000,
+        "stage3_section_size": 3
     }
 }

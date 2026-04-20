@@ -5,7 +5,7 @@ import pathlib
 import warnings
 from typing import Any, Mapping
 
-from naive_n_dag.grid import generate_grid, naive_fill
+from naive_n_dag.grid import Fastsa_Fill, generate_grid, naive_fill
 from naive_n_dag.dag_helper import (
     load_qasm_to_two_qubit_dag_with_single_qubit_context,
 )
@@ -79,7 +79,6 @@ def _validate_required_config(config: Mapping[str, Any]) -> None:
     required_keys = [
         "dimensions",
         "num_NA",
-        "parallel",
         "transfer_SLM_AOD",
         "max_acceleration",
         "max_velocity",
@@ -105,8 +104,8 @@ def _validate_required_config(config: Mapping[str, Any]) -> None:
         raise ValueError("max_dimension must be a 2-item positive integer list: [x, y].")
 
     fill_strategy = config["fill_strategy"]
-    if fill_strategy not in {"random", "heuristic_fill"}:
-        raise ValueError("fill_strategy must be either 'random' or 'heuristic_fill'.")
+    if fill_strategy not in {"random", "heuristic_fill", "fastsa"}:
+        raise ValueError("fill_strategy must be either 'random', 'heuristic_fill', or 'fastsa'.")
 
     if config["jerk"] != "constant":
         raise ValueError(
@@ -177,20 +176,40 @@ def main(
     dims = config["dimensions"]
     num_na = config["num_NA"]
     grid = generate_grid(dims, config["rydberg_radius"])
+    two_qubit_dag, single_layers = load_qasm_to_two_qubit_dag_with_single_qubit_context(qasm_path)
+    two_qubit_layers = list(two_qubit_dag.layers())
     qubits = None
     fill_seed = seed if seed is not None else 0
     if config["fill_strategy"] == "heuristic_fill" and num_na > 1:
         raise ValueError("heuristic_fill strategy is only supported for num_NA=1 at this stage.")
     elif config["fill_strategy"] == "random":
         qubits = naive_fill(grid, num_na, fill_seed, True)
+    elif config["fill_strategy"] == "fastsa":
+        fastsa_cfg = config.get("Fastsa_fill", {})
+        if fastsa_cfg is None:
+            fastsa_cfg = {}
+        if not isinstance(fastsa_cfg, Mapping):
+            raise ValueError("Fastsa_fill must be a JSON object when provided.")
+        qubits = Fastsa_Fill(
+            grid,
+            num_na,
+            two_qubit_dag,
+            config,
+            seed=fill_seed,
+            stage1_iterations=int(fastsa_cfg.get("stage1_iterations", 200)),
+            stage2_iterations=int(fastsa_cfg.get("stage2_iterations", 100)),
+            initial_accept_prob=float(fastsa_cfg.get("initial_accept_prob", 0.99)),
+            c=float(fastsa_cfg.get("c", 100.0)),
+            stage3_temperature_threshold=float(fastsa_cfg.get("stage3_temperature_threshold", 1e-3)),
+            stage3_max_iterations=int(fastsa_cfg.get("stage3_max_iterations", 1000)),
+            stage3_section_size=int(fastsa_cfg.get("stage3_section_size", 4)),
+        )
     if qubits is None:
         raise RuntimeError("Qubit placement is required before scheduling two-qubit layers.")
 
     #------------
     #starting the scheduling pipeline
     #------------
-    two_qubit_dag, single_layers = load_qasm_to_two_qubit_dag_with_single_qubit_context(qasm_path)
-    two_qubit_layers = list(two_qubit_dag.layers())
     time = 0 * (config["max_velocity"] / config["max_acceleration"]).units
     T = 0
     event_log: list[ScheduleEvent] = []
@@ -234,10 +253,12 @@ def main(
     time += trailing_time
     T = count_emitted_timesteps(event_log)
 
+    final_time_us = time.to("microseconds")
+
     if not quiet:
         print(f"two_qubit_layers={len(two_qubit_layers)}")
         print(f"scheduled_timesteps={T}")
-        print(f"estimated_time={time}")
+        print(f"estimated_time={final_time_us}")
 
     output_stem = config_path.stem if config_path is not None else qasm_path.stem
     if output_name is None:
@@ -269,7 +290,7 @@ def main(
         schedule_output,
         solver="naive_n_dag",
         qasm_filename=qasm_path.name,
-        final_time=str(time),
+        final_time=str(final_time_us),
         lattice_spacing=str(config["rydberg_radius"].to("micrometers")),
         fill_seed=fill_seed,
         events=event_log,

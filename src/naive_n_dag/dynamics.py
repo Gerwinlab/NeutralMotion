@@ -9,8 +9,6 @@ from qiskit.dagcircuit.dagnode import DAGOpNode
 from .dag_helper import format_gate_line, op_node_signature
 from .grid import Qubit
 
-# TODO: helper file that has dynamics equations for solving for time using the parameters in the JSON file between.
-# If there is an atom there you must first offload it, then load the site. If there is nothing there then we can load it.
 
 MoveEvent = tuple[str, int, tuple[int, int], tuple[int, int]]
 GateEvent = tuple[str, str]

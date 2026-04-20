@@ -162,17 +162,18 @@ def main(
             out_dir = pathlib.Path.cwd() / out_dir
         out_dir.mkdir(parents=True, exist_ok=True)
         schedule_output = out_dir / f"{qasm_path.stem}.schedule.txt"
+    final_time_us = time.to("microseconds")
     write_timed_schedule(
         schedule_output,
         qasm_filename=qasm_path.name,
-        final_time=str(time),
+        final_time=str(final_time_us),
         lattice_spacing=str(config["rydberg_radius"].to("micrometers")),
         T=0,
         fill_seed= fill_seed,
         events=event_log,
         initial_qubits=qubits,
     )
-    print(time)
+    print(final_time_us)
     print(f"schedule_file={schedule_output}")
 
     return 0

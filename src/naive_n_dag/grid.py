@@ -1,7 +1,7 @@
 #TODO: Check if the number of traps is enough for the number of qubits and warn if your is an excess number of traps
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Any, List, Mapping, Optional, Tuple
 import random
 """
 grid.py
@@ -139,4 +139,50 @@ def naive_fill(grid: List[List[GridNode]], n:int, seed: int=0, random_fill: bool
         qubits.append(qubit)
     return qubits
 
-#TODO: Add a heuristic fill strategy that uses Fast-SA to place qubits in a way that minimizes the number of moves needed for the first few layers of the circuit.
+
+def Fastsa_Fill(
+    grid: List[List[GridNode]],
+    n: int,
+    two_qubit_dag,
+    config: Mapping[str, Any],
+    *,
+    seed: int = 0,
+    stage1_iterations: int = 10,
+    stage2_iterations: int = 100,
+    initial_accept_prob: float = 0.99,
+    c: float = 100.0,
+    stage3_temperature_threshold: float = 1e-6,
+    stage3_max_iterations: int = 1000,
+    stage3_section_size: int = 4
+) -> List[Qubit]:
+    """Place qubits using Fast-SA best positions and return placed qubit objects."""
+    from .FastSA_Solver import run_fastsa
+    result = run_fastsa(
+        grid,
+        n,
+        two_qubit_dag,
+        config,
+        stage1_iterations=stage1_iterations,
+        stage2_iterations=stage2_iterations,
+        initial_accept_prob=initial_accept_prob,
+        c=c,
+        stage3_temperature_threshold=stage3_temperature_threshold,
+        stage3_max_iterations=stage3_max_iterations,
+        stage3_section_size=stage3_section_size,
+        seed=seed,
+    )
+
+    # Clear any existing occupancy before placing the optimized configuration.
+    for row_nodes in grid:
+        for node in row_nodes:
+            node.qubit = None
+
+    qubits: List[Qubit] = []
+    for qubit_id in range(n):
+        if qubit_id not in result.best_positions:
+            raise ValueError(f"Fast-SA result missing position for qubit id {qubit_id}.")
+        col, row = result.best_positions[qubit_id]
+        if row < 0 or row >= len(grid) or col < 0 or col >= len(grid[0]):
+            raise ValueError(f"Fast-SA proposed out-of-bounds position for q[{qubit_id}]: ({row},{col})")
+        qubits.append(place_qubit(grid, row, col, qubit_id))
+    return qubits
