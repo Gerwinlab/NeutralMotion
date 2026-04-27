@@ -1,5 +1,5 @@
 qasm_file: vqe_n30.qasm
-final_time: 30093.384615384617 microsecond
+final_time: 19578.199009112683 microsecond
 lattice_spacing (rydberg_radius): 14.999999999999998 micrometer
 random number seed: 0
 T=0

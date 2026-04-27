@@ -1,5 +1,5 @@
 qasm_file: qft_n29_transpiled.qasm
-final_time: 592983.9384615372 microsecond
+final_time: 371220.52958314307 microsecond
 lattice_spacing (rydberg_radius): 14.999999999999998 micrometer
 random number seed: 0
 T=0

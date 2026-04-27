@@ -1,5 +1,5 @@
 qasm_file: bv_n70.qasm
-final_time: 27885.96923076923 microsecond
+final_time: 16670.11635766899 microsecond
 lattice_spacing (rydberg_radius): 14.999999999999998 micrometer
 random number seed: 0
 T=0

@@ -1,7 +1,7 @@
 {
     "dimensions": [
-        17,
-        17
+        12,
+        24
     ],
     "num_NA": 288,
     "qasm_base_dir": "../../../qasm_outputs",
@@ -24,11 +24,10 @@
     "Fastsa_fill": {
         "stage1_iterations": 2,
         "stage2_iterations": 20,
-        "k": 20,
         "c": 100,
         "initial_accept_prob": 0.99,
-        "stage3_temperature_threshold": 0.00001,
-        "stage3_max_iterations": 1000,
-        "stage3_section_size": 3
+        "stage3_temperature_threshold": 0.001,
+        "stage3_max_iterations": 100,
+        "stage3_section_size": 17
     }
 }

@@ -140,6 +140,55 @@ def naive_fill(grid: List[List[GridNode]], n:int, seed: int=0, random_fill: bool
     return qubits
 
 
+def initial_layout_fill(
+    grid: List[List[GridNode]],
+    n: int,
+    coords_array: List[List[int]],
+) -> List[Qubit]:
+    """
+    Assign qubits 0..n-1 to explicit [row, col] coordinates from a layout list.
+
+    The i-th coordinate corresponds to qubit i.
+    """
+    if len(coords_array) < n:
+        raise ValueError(
+            f"initial_layout contains {len(coords_array)} coordinates, but {n} are required."
+        )
+
+    grid_rows = len(grid)
+    grid_cols = len(grid[0]) if grid_rows > 0 else 0
+    qubits: List[Qubit] = []
+
+    for qubit_id in range(n):
+        coord = coords_array[qubit_id]
+        if not isinstance(coord, list) or len(coord) != 2:
+            raise ValueError(
+                f"initial_layout[{qubit_id}] must be [row, col], got {coord!r}."
+            )
+        row, col = coord
+        row *= 2 #puts it on a even-even spot
+        col *= 2
+        if not isinstance(row, int) or not isinstance(col, int):
+            raise ValueError(
+                f"initial_layout[{qubit_id}] must contain integer row/col, got {coord!r}."
+            )
+        if row < 0 or row >= grid_rows or col < 0 or col >= grid_cols:
+            raise ValueError(
+                f"initial_layout[{qubit_id}]={coord!r} is out of bounds for grid {grid_rows}x{grid_cols}."
+            )
+        if row % 2 != 0 or col % 2 != 0:
+            raise ValueError(
+                f"initial_layout[{qubit_id}]={coord!r} is not on an even-even trap site."
+            )
+        if grid[row][col].is_occupied():
+            raise ValueError(
+                f"initial_layout has duplicate or occupied coordinate at [{row}, {col}]."
+            )
+        qubits.append(place_qubit(grid, row, col, qubit_id))
+
+    return qubits
+
+
 def Fastsa_Fill(
     grid: List[List[GridNode]],
     n: int,
@@ -153,8 +202,9 @@ def Fastsa_Fill(
     c: float = 100.0,
     stage3_temperature_threshold: float = 1e-6,
     stage3_max_iterations: int = 1000,
-    stage3_section_size: int = 4
-) -> List[Qubit]:
+    stage3_section_size: int = 4,
+    return_result: bool = False,
+) -> List[Qubit] | tuple[List[Qubit], Any]:
     """Place qubits using Fast-SA best positions and return placed qubit objects."""
     from .FastSA_Solver import run_fastsa
     result = run_fastsa(
@@ -185,4 +235,6 @@ def Fastsa_Fill(
         if row < 0 or row >= len(grid) or col < 0 or col >= len(grid[0]):
             raise ValueError(f"Fast-SA proposed out-of-bounds position for q[{qubit_id}]: ({row},{col})")
         qubits.append(place_qubit(grid, row, col, qubit_id))
+    if return_result:
+        return qubits, result
     return qubits

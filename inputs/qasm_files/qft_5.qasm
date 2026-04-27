@@ -16,5 +16,3 @@ cp(pi/4) q[2],q[0];
 h q[1];
 cp(pi/2) q[1],q[0];
 h q[0];
-swap q[0],q[4];
-swap q[1],q[3];

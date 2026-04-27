@@ -1,0 +1,25 @@
+{
+    "dimensions": [
+        24,
+        12
+    ],
+    "initial_layout": "../qasm_files/bb144_coords.json",
+    "num_NA": 288,
+    "qasm_base_dir": "../../../qasm_outputs",
+    "parallel": true,
+    "transfer_SLM_AOD": "60 microseconds",
+    "max_acceleration": "2500 m/s^2",
+    "max_velocity": "0.55 m/s",
+    "rydberg_radius": "5 micrometers",
+    "average_single_gate_time": "0.1 microseconds",
+    "average_two_gate_time": "0.27 microseconds",
+    "t_switch": "1.5 microseconds",
+    "jerk": "constant",
+    "movement_shape": "trapezoidal",
+    "max_dimension": [
+        24,
+        12
+    ],
+    "fill_strategy": "Given",
+    "alignment_conc": -1
+}

@@ -5,7 +5,7 @@ import pathlib
 import warnings
 from typing import Any, Mapping
 
-from naive_n_dag.grid import Fastsa_Fill, generate_grid, naive_fill
+from naive_n_dag.grid import Fastsa_Fill, generate_grid, initial_layout_fill, naive_fill
 from naive_n_dag.dag_helper import (
     load_qasm_to_two_qubit_dag_with_single_qubit_context,
 )
@@ -56,7 +56,7 @@ def _resolve_path(value: Any, base_dir: pathlib.Path) -> Any:
 def resolve_config_paths(config: Mapping[str, Any], base_dir: pathlib.Path) -> dict[str, Any]:
     """Return a copy of ``config`` with qasm directory fields resolved to absolute paths."""
     resolved: dict[str, Any] = dict(config)
-    for key in ("qasm_dir", "qasm_base_dir"):
+    for key in ("qasm_dir", "qasm_base_dir", "initial_layout"):
         if key in resolved:
             resolved[key] = _resolve_path(resolved[key], base_dir)
     return resolved
@@ -104,7 +104,7 @@ def _validate_required_config(config: Mapping[str, Any]) -> None:
         raise ValueError("max_dimension must be a 2-item positive integer list: [x, y].")
 
     fill_strategy = config["fill_strategy"]
-    if fill_strategy not in {"random", "heuristic_fill", "fastsa"}:
+    if fill_strategy not in {"random", "heuristic_fill", "fastsa", "Given"}:
         raise ValueError("fill_strategy must be either 'random', 'heuristic_fill', or 'fastsa'.")
 
     if config["jerk"] != "constant":
@@ -129,6 +129,7 @@ def main(
     quiet: bool = False,
     seed: int | None = None,
     output_name: str | None = None,
+    log: bool = False,
 ) -> int:
     """Validate naive-n inputs and print resolved run context.
 
@@ -179,8 +180,19 @@ def main(
     two_qubit_dag, single_layers = load_qasm_to_two_qubit_dag_with_single_qubit_context(qasm_path)
     two_qubit_layers = list(two_qubit_dag.layers())
     qubits = None
+    fastsa_result: Any | None = None
     fill_seed = seed if seed is not None else 0
-    if config["fill_strategy"] == "heuristic_fill" and num_na > 1:
+    initial_layout = config.get("initial_layout")
+    if config["fill_strategy"] == "Given":
+        layout_path = pathlib.Path(str(initial_layout)).expanduser()
+        if not layout_path.exists():
+            raise FileNotFoundError(f"initial_layout file not found: {layout_path}")
+        with layout_path.open("r", encoding="utf-8") as f:
+            coords_array = json.load(f)
+        if not isinstance(coords_array, list):
+            raise ValueError("initial_layout JSON must be a list of [row, col] coordinates.")
+        qubits = initial_layout_fill(grid, num_na, coords_array)
+    elif config["fill_strategy"] == "heuristic_fill" and num_na > 1:
         raise ValueError("heuristic_fill strategy is only supported for num_NA=1 at this stage.")
     elif config["fill_strategy"] == "random":
         qubits = naive_fill(grid, num_na, fill_seed, True)
@@ -190,7 +202,7 @@ def main(
             fastsa_cfg = {}
         if not isinstance(fastsa_cfg, Mapping):
             raise ValueError("Fastsa_fill must be a JSON object when provided.")
-        qubits = Fastsa_Fill(
+        fill_output = Fastsa_Fill(
             grid,
             num_na,
             two_qubit_dag,
@@ -203,7 +215,12 @@ def main(
             stage3_temperature_threshold=float(fastsa_cfg.get("stage3_temperature_threshold", 1e-3)),
             stage3_max_iterations=int(fastsa_cfg.get("stage3_max_iterations", 1000)),
             stage3_section_size=int(fastsa_cfg.get("stage3_section_size", 4)),
+            return_result=log,
         )
+        if log:
+            qubits, fastsa_result = fill_output
+        else:
+            qubits = fill_output
     if qubits is None:
         raise RuntimeError("Qubit placement is required before scheduling two-qubit layers.")
 
@@ -299,5 +316,23 @@ def main(
 
     if not quiet:
         print(f"schedule_file={schedule_output}")
+
+    if log and config["fill_strategy"] == "fastsa" and fastsa_result is not None:
+        log_filename_base = output_filename
+        if log_filename_base.endswith(".schedule.txt"):
+            log_filename = f"{log_filename_base[:-13]}.fastsa_log.csv"
+        elif log_filename_base.endswith(".txt"):
+            log_filename = f"{log_filename_base[:-4]}.fastsa_log.csv"
+        else:
+            log_filename = f"{pathlib.Path(log_filename_base).stem}.fastsa_log.csv"
+        log_output = schedule_output.with_name(log_filename)
+        with log_output.open("w", encoding="utf-8") as f:
+            f.write("step,best_cost,temperature\n")
+            for step, (best_cost, temperature) in enumerate(
+                zip(fastsa_result.best_cost_history, fastsa_result.temperature_history)
+            ):
+                f.write(f"{step},{best_cost},{temperature}\n")
+        if not quiet:
+            print(f"fastsa_log_file={log_output}")
 
     return 0

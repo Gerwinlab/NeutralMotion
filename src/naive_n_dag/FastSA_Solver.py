@@ -35,6 +35,8 @@ class FastSAResult:
     stage1_iterations: int
     stage2_iterations: int
     stage3_iterations: int
+    best_cost_history: list[float]
+    temperature_history: list[float]
 
 
 
@@ -89,7 +91,7 @@ def vector_alignment_score(vectors: Iterable[tuple[int, int]]) -> float:
 #--------------------------
 def compute_fastsa_cost(
     two_qubit_layers: Iterable[Iterable["DAGOpNode"]],
-    positions_or_qubits: Mapping[int, tuple[int, int]] | Iterable["Qubit"],normalize_by_length : int = 1
+    positions_or_qubits: Mapping[int, tuple[int, int]] | Iterable["Qubit"], normalize_by_length: float = 1.0
 ) -> tuple[float, list[dict]]:
     """Compute Fast-SA cost"""
     if isinstance(positions_or_qubits, Mapping):
@@ -188,62 +190,6 @@ def _acceptance_probability(delta_c: float, temperature: float) -> float:
     if exponent < -700:
         return 0.0
     return min(1.0, exp(exponent))
-
-
-def greedy_swap_neighbor(
-    current_positions: dict[int, tuple[int, int]],
-    two_qubit_dag: DAGCircuit,
-) -> tuple[dict[int, tuple[int, int]], float]:
-    """Greedy neighbor: swap two active qubits from the worst-cost layer."""
-
-    current_cost, layer_stats = compute_fastsa_cost(two_qubit_dag, current_positions)
-    layers = [layer["graph"].op_nodes() for layer in two_qubit_dag.layers()]
-
-    if not layer_stats or not layers:
-        return dict(current_positions), current_cost
-
-    # Find worst layer
-    worst_layer_idx = max(
-        range(len(layer_stats)),
-        key=lambda idx: layer_stats[idx]["layer_cost"],
-    )
-    worst_layer_nodes = layers[worst_layer_idx]
-
-    # Collect active qubits
-    active_qids: list[int] = []
-    for node in worst_layer_nodes:
-        if len(node.qargs) != 2:
-            continue
-        q0 = extract_index_from_bit(node.qargs[0])
-        q1 = extract_index_from_bit(node.qargs[1])
-
-        if q0 not in active_qids:
-            active_qids.append(q0)
-        if q1 not in active_qids:
-            active_qids.append(q1)
-
-    if len(active_qids) < 2:
-        return dict(current_positions), current_cost
-
-    best_positions = dict(current_positions)
-    best_cost = float('inf')
-
-    # Try all swaps (inline swap logic)
-    for i in range(len(active_qids)):
-        for j in range(i + 1, len(active_qids)):
-            qa = active_qids[i]
-            qb = active_qids[j]
-
-            candidate = dict(current_positions)
-            candidate[qa], candidate[qb] = candidate[qb], candidate[qa]
-
-            candidate_cost, _ = compute_fastsa_cost(two_qubit_dag, candidate)
-
-            if candidate_cost < best_cost:
-                best_cost = candidate_cost
-                best_positions = candidate
-
-    return best_positions, best_cost
 
 
 def greedy_max_parallel(
@@ -383,6 +329,12 @@ def run_fastsa(
 
     rng = random.Random(seed)
     #The Grid comes in empty, so do not want to copy to the original until the end.
+    grid_rows = len(grid)
+    grid_cols = len(grid[0]) if grid_rows > 0 else 0
+    
+    # Experimented with normalizing the best_cost, resulted in negative cost fuction and worst acceptances.
+    #TODO: Maybe there is a better cost function.
+    normalize_by_length = 1#max(hypot(max(grid_cols - 1, 0), max(grid_rows - 1, 0)), 1.0)
 
     current_positions = _sample_random_positions_with_naive_fill(
         grid,
@@ -390,7 +342,11 @@ def run_fastsa(
         seed=rng.randint(0, 2**31 - 1), #pick a random seed every time we call this.
     )
 
-    current_cost, _ = compute_fastsa_cost(two_qubit_dag, current_positions)
+    current_cost, _ = compute_fastsa_cost(
+        two_qubit_dag,
+        current_positions,
+        normalize_by_length=normalize_by_length,
+    )
     best_positions = dict(current_positions)
     best_cost = current_cost
 
@@ -408,9 +364,11 @@ def run_fastsa(
                 k=stage2_iterations+stage1_iterations,
                 c=c,
             )
+    best_cost_history: list[float] = [best_cost]
+    temperature_history: list[float] = [temperature]
     
     def _record_delta(delta_c: float, *, accepted: bool) -> float:
-        nonlocal avg_uphill, avg_delta, current_cost, current_positions, best_cost, best_positions
+        nonlocal avg_uphill, avg_delta, current_cost, current_positions, best_cost, best_positions, best_cost_history, temperature_history
         temperature =0.0
         if delta_c > 0:
             uphill_deltas.append(delta_c)
@@ -426,6 +384,8 @@ def run_fastsa(
             k=stage2_iterations+stage1_iterations,
             c=c,
         )
+        best_cost_history.append(best_cost)
+        temperature_history.append(temperature)
         return temperature
 
     # Stage 1: n=1 initialization regime with random neighboring placements.
@@ -437,7 +397,11 @@ def run_fastsa(
             seed=rng.randint(0, 2**31 - 1),
         )
 
-        neighbor_cost, _ = compute_fastsa_cost(two_qubit_dag, neighbor_positions)
+        neighbor_cost, _ = compute_fastsa_cost(
+            two_qubit_dag,
+            neighbor_positions,
+            normalize_by_length=normalize_by_length,
+        )
 
         delta_c = neighbor_cost - current_cost
         accept_prob = _acceptance_probability(delta_c, temperature)
@@ -460,6 +424,7 @@ def run_fastsa(
     for _ in range(stage2_iterations):
         # for one iteration of the second stage
         #first swap within the worst layer. 
+        """
         neighbor_positions, neighbor_cost = greedy_swap_neighbor(current_positions, two_qubit_dag)
         delta_c = neighbor_cost - current_cost
         accept_prob = _acceptance_probability(delta_c, temperature)
@@ -470,7 +435,7 @@ def run_fastsa(
             if current_cost < best_cost:
                 best_cost = current_cost
                 best_positions = dict(current_positions)
-        
+        """
         if stage2_layers:
             random_layer = rng.choice(stage2_layers)
             neighbor_positions = greedy_max_parallel(
@@ -479,7 +444,11 @@ def run_fastsa(
                 grid_shape=grid_shape
             )
 
-            neighbor_cost, _ = compute_fastsa_cost(two_qubit_dag, neighbor_positions)
+            neighbor_cost, _ = compute_fastsa_cost(
+                two_qubit_dag,
+                neighbor_positions,
+                normalize_by_length=normalize_by_length,
+            )
             delta_c = neighbor_cost - current_cost
             accept_prob = _acceptance_probability(delta_c, temperature)
 
@@ -503,7 +472,11 @@ def run_fastsa(
             rng=rng,
             section_size=stage3_section_size,
         )
-        neighbor_cost, _ = compute_fastsa_cost(two_qubit_dag, neighbor_positions)
+        neighbor_cost, _ = compute_fastsa_cost(
+            two_qubit_dag,
+            neighbor_positions,
+            normalize_by_length=normalize_by_length,
+        )
         delta_c = neighbor_cost - current_cost
         accept_prob = _acceptance_probability(delta_c, temperature)
         accepted = rng.random() < accept_prob
@@ -524,5 +497,7 @@ def run_fastsa(
         best_positions=best_positions,
         stage1_iterations=stage1_iterations,
         stage2_iterations=stage2_iterations,
-        stage3_iterations=stage3_iterations
+        stage3_iterations=stage3_iterations,
+        best_cost_history=best_cost_history,
+        temperature_history=temperature_history,
     )

@@ -49,6 +49,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional output schedule filename. Defaults to <config_stem>.schedule.txt.",
     )
+    parser.add_argument(
+        "--log",
+        action="store_true",
+        help="Write Fast-SA best-cost/temperature iteration log when fill_strategy=fastsa.",
+    )
     return parser
 
 
@@ -75,6 +80,7 @@ def main() -> None:
         quiet=args.quiet,
         seed=args.seed,
         output_name=args.output_name,
+        log=args.log,
     )
     raise SystemExit(exit_code)
 
