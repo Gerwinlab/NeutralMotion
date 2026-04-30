@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "Phys765"
+name = "NeutralMotion"
 version = "0.1.0"
 description = "A solver for the shuttling problem in Neutral Atom quantum computers."
 readme = "README.md"

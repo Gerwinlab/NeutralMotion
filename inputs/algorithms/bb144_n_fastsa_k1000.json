@@ -5,7 +5,6 @@
     ],
     "num_NA": 288,
     "qasm_base_dir": "../../../qasm_outputs",
-    "parallel": true,
     "transfer_SLM_AOD": "15 microseconds",
     "max_acceleration": "2750 m/s^2",
     "max_velocity": "0.55 m/s",
