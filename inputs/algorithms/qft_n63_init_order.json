@@ -1,0 +1,33 @@
+{
+    "dimensions": [
+        8,
+        8
+    ],
+    "num_NA": 63,
+    "qasm_base_dir": "../qasm_files",
+    "step_order": "../qasm_files/init_order.txt",
+    "transfer_SLM_AOD": "60 microseconds",
+    "max_acceleration": "2500 m/s^2",
+    "max_velocity": "0.13 m/s",
+    "rydberg_radius": "15 micrometers",
+    "average_single_gate_time": "0.1 microseconds",
+    "average_two_gate_time": "0.5 microseconds",
+    "t_switch": "1.5 microseconds",
+    "jerk": "constant",
+    "movement_shape": "trapezoidal",
+    "max_dimension": [
+        8,
+        8
+    ],
+    "fill_strategy": "fastsa",
+    "alignment_conc": 0,
+    "Fastsa_fill": {
+        "stage1_iterations": 10,
+        "stage2_iterations": 8,
+        "k": 7,
+        "c": 100,
+        "stage3_temperature_threshold": 0.0001,
+        "stage3_max_iterations": 1000,
+        "stage3_section_size": 3
+    }
+}

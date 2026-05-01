@@ -7,6 +7,7 @@ from typing import Any, Mapping
 
 from naive_n_dag.grid import Fastsa_Fill, generate_grid, initial_layout_fill, naive_fill
 from naive_n_dag.dag_helper import (
+    dag_from_txt_auto,
     load_qasm_to_two_qubit_dag_with_single_qubit_context,
 )
 from naive_n_dag.dynamics import best_path_for_layer
@@ -56,7 +57,7 @@ def _resolve_path(value: Any, base_dir: pathlib.Path) -> Any:
 def resolve_config_paths(config: Mapping[str, Any], base_dir: pathlib.Path) -> dict[str, Any]:
     """Return a copy of ``config`` with qasm directory fields resolved to absolute paths."""
     resolved: dict[str, Any] = dict(config)
-    for key in ("qasm_dir", "qasm_base_dir", "initial_layout"):
+    for key in ("qasm_dir", "qasm_base_dir", "initial_layout", "step_order"):
         if key in resolved:
             resolved[key] = _resolve_path(resolved[key], base_dir)
     return resolved
@@ -142,9 +143,26 @@ def main(
     _validate_required_config(config)
     config = dict(config)
     config.setdefault("alignment_conc", 0.0)
-    qasm_path = _resolve_qasm_file(config, qasm_file)
-    if not qasm_path.exists():
-        raise FileNotFoundError(f"QASM file not found: {qasm_path}")
+    step_order_file = config.get("step_order")
+    qasm_path: pathlib.Path | None = None
+    source_path: pathlib.Path
+    if step_order_file is None:
+        qasm_path = _resolve_qasm_file(config, qasm_file)
+        if not qasm_path.exists():
+            raise FileNotFoundError(f"QASM file not found: {qasm_path}")
+        source_path = qasm_path
+    else:
+        source_path = pathlib.Path(str(step_order_file)).expanduser()
+        if not source_path.exists():
+            raise FileNotFoundError(f"step_order file not found: {source_path}")
+        warnings.warn(
+            "step_order is set; the provided qasm_file argument will be ignored.",
+            stacklevel=2,
+        )
+        warnings.warn(
+            "step_order input only contains two-qubit gates; single-qubit context is not loaded.",
+            stacklevel=2,
+        )
 
     for key in [
         "transfer_SLM_AOD",
@@ -168,7 +186,11 @@ def main(
         qasm_dir = config.get("qasm_dir") or config.get("qasm_base_dir")
         print("naive_n_dag config loaded")
         print(f"dimensions={config.get('dimensions')} num_NA={config.get('num_NA')} qasm_dir={qasm_dir}")
-        print(f"qasm_file={qasm_path}")
+        if qasm_path is not None:
+            print(f"qasm_file={qasm_path}")
+        else:
+            print(f"step_order={source_path}")
+            print("qasm_file=<ignored>")
         print(f"max_dimension={config.get('max_dimension')}")
         print(f"fill_strategy={config.get('fill_strategy')}")
         if schedule_output_dir is not None:
@@ -177,7 +199,12 @@ def main(
     dims = config["dimensions"]
     num_na = config["num_NA"]
     grid = generate_grid(dims, config["rydberg_radius"])
-    two_qubit_dag, single_layers = load_qasm_to_two_qubit_dag_with_single_qubit_context(qasm_path)
+    if step_order_file is None:
+        if qasm_path is None:
+            raise RuntimeError("Internal error: qasm_path was not resolved.")
+        two_qubit_dag, single_layers = load_qasm_to_two_qubit_dag_with_single_qubit_context(qasm_path)
+    else:
+        two_qubit_dag, single_layers = dag_from_txt_auto(source_path)
     two_qubit_layers = list(two_qubit_dag.layers())
     qubits = None
     fastsa_result: Any | None = None
@@ -277,7 +304,7 @@ def main(
         print(f"scheduled_timesteps={T}")
         print(f"estimated_time={final_time_us}")
 
-    output_stem = config_path.stem if config_path is not None else qasm_path.stem
+    output_stem = config_path.stem if config_path is not None else source_path.stem
     if output_name is None:
         output_filename = f"{output_stem}.schedule.txt"
     else:
@@ -295,7 +322,7 @@ def main(
         if config_path is not None:
             schedule_output = config_path.with_name(output_filename)
         else:
-            schedule_output = qasm_path.with_name(output_filename)
+            schedule_output = source_path.with_name(output_filename)
     else:
         out_dir = pathlib.Path(schedule_output_dir).expanduser()
         if not out_dir.is_absolute():
@@ -306,7 +333,7 @@ def main(
     write_timed_schedule(
         schedule_output,
         solver="naive_n_dag",
-        qasm_filename=qasm_path.name,
+        qasm_filename=source_path.name,
         final_time=str(final_time_us),
         lattice_spacing=str(config["rydberg_radius"].to("micrometers")),
         fill_seed=fill_seed,

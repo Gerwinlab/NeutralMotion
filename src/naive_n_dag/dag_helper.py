@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import math
+import re
 from fractions import Fraction
 
 from qiskit import QuantumCircuit
@@ -11,6 +12,7 @@ from qiskit.dagcircuit.dagnode import DAGOpNode
 
 
 from qiskit.circuit.library.standard_gates import SwapGate
+from qiskit.circuit.library.standard_gates import CXGate
 
 
 def load_qasm_to_circuit(qasm_path: str | Path) -> QuantumCircuit:
@@ -154,3 +156,111 @@ def load_qasm_to_two_qubit_dag_with_single_qubit_context(
 ) -> tuple[DAGCircuit, list[list[DAGOpNode]]]:
     """Load QASM and build a 2Q-only DAG plus per-layer single-qubit context."""
     return build_two_qubit_only_dag_with_single_qubit_context(load_qasm_to_dag(qasm_path))
+
+
+_TXT_GATE_LINE_RE = re.compile(r"^\s*(\d+)\s*,\s*(\d+)\s*:\s*(\d+)\s+(\d+)\s*$")
+_TXT_SUMMARY_LINE_RE = re.compile(r"^\s*T\s*=\s*(\d+)\s*,\s*cx\s*=\s*(\d+)\s*$")
+
+
+def dag_from_txt_auto(txt_path: str | Path) -> tuple[DAGCircuit, list[list[DAGOpNode]]]:
+    """Build a two-qubit DAG from a timestep text file.
+
+    Expected format per timestep:
+    - one or more gate lines: ``<T>, <gate_index>: <q0> <q1>``
+    - followed by summary line: ``T = <T>, cx = <count>``
+
+    Example:
+    ``4, 4: 1 2``
+    ``4, 6: 0 3``
+    ``T = 4, cx = 2``
+    """
+    path = Path(txt_path)
+    if not path.exists():
+        raise FileNotFoundError(f"txt gate-order file not found: {path}")
+
+    steps: list[list[tuple[int, int]]] = []
+    current_timestep: int | None = None
+    current_pairs: list[tuple[int, int]] = []
+    expected_next_timestep: int | None = None
+    max_qubit_id = -1
+    saw_content = False
+
+    with path.open("r", encoding="utf-8") as f:
+        for line_no, raw_line in enumerate(f, start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            saw_content = True
+
+            gate_match = _TXT_GATE_LINE_RE.match(line)
+            if gate_match is not None:
+                timestep, _gate_index, q0, q1 = (int(v) for v in gate_match.groups())
+                if q0 == q1:
+                    raise ValueError(
+                        f"{path}:{line_no}: invalid two-qubit gate uses the same qubit id twice: {q0}."
+                    )
+
+                if current_timestep is None:
+                    if expected_next_timestep is not None and timestep != expected_next_timestep:
+                        raise ValueError(
+                            f"{path}:{line_no}: expected timestep {expected_next_timestep}, got {timestep}."
+                        )
+                    current_timestep = timestep
+                    current_pairs = []
+                elif timestep != current_timestep:
+                    raise ValueError(
+                        f"{path}:{line_no}: encountered timestep {timestep} before summary line for "
+                        f"timestep {current_timestep}."
+                    )
+
+                current_pairs.append((q0, q1))
+                max_qubit_id = max(max_qubit_id, q0, q1)
+                continue
+
+            summary_match = _TXT_SUMMARY_LINE_RE.match(line)
+            if summary_match is not None:
+                summary_timestep, cx_count = (int(v) for v in summary_match.groups())
+                if current_timestep is None:
+                    raise ValueError(
+                        f"{path}:{line_no}: found summary line before any gate lines for timestep {summary_timestep}."
+                    )
+                if summary_timestep != current_timestep:
+                    raise ValueError(
+                        f"{path}:{line_no}: summary timestep {summary_timestep} does not match "
+                        f"gate timestep {current_timestep}."
+                    )
+                if cx_count != len(current_pairs):
+                    raise ValueError(
+                        f"{path}:{line_no}: summary cx={cx_count} does not match {len(current_pairs)} gate "
+                        f"line(s) for timestep {current_timestep}."
+                    )
+
+                steps.append(current_pairs)
+                expected_next_timestep = current_timestep + 1
+                current_timestep = None
+                current_pairs = []
+                continue
+
+            raise ValueError(
+                f"{path}:{line_no}: invalid format. Expected '<T>, <gate_index>: <q0> <q1>' or "
+                "'T = <T>, cx = <count>'."
+            )
+
+    if not saw_content:
+        raise ValueError(f"{path}: file is empty; expected timestep gate lines.")
+    if current_timestep is not None:
+        raise ValueError(
+            f"{path}: missing summary line for final timestep {current_timestep}."
+        )
+    if not steps:
+        raise ValueError(f"{path}: no timestep blocks parsed from file.")
+
+    circuit = QuantumCircuit(max_qubit_id + 1)
+    two_qubit_dag = circuit_to_dag(circuit)
+    qubits = two_qubit_dag.qubits
+    for timestep_pairs in steps:
+        for q0, q1 in timestep_pairs:
+            two_qubit_dag.apply_operation_back(CXGate(), qargs=[qubits[q0], qubits[q1]], cargs=[])
+
+    single_layers: list[list[DAGOpNode]] = [[] for _ in range(len(list(two_qubit_dag.layers())) + 1)]
+    return two_qubit_dag, single_layers

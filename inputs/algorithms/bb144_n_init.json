@@ -6,7 +6,6 @@
     "initial_layout": "../qasm_files/bb144_coords.json",
     "num_NA": 288,
     "qasm_base_dir": "../../../qasm_outputs",
-    "parallel": true,
     "transfer_SLM_AOD": "60 microseconds",
     "max_acceleration": "2500 m/s^2",
     "max_velocity": "0.55 m/s",
