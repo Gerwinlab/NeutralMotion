@@ -1,18 +1,18 @@
-solver,config_json,qasm_arg,Tcomp (s),output_file,Texec (µs),Benchmark
-naive_n_dag,Scheduler_Test/INPUT/bv_n14.json,bv_n14.qasm,81.583885,Scheduler_Test/OUTPUT/bv_n14.naive_n_dag.schedule.txt,12648.3,BV-14
-naive_dag,Scheduler_Test/INPUT/bv_n14.json,bv_n14.qasm,0.369181,Scheduler_Test/OUTPUT/bv_n14.schedule.txt,3785.14,BV-14
-naive_n_dag,Scheduler_Test/INPUT/bv_n50.json,bv_n50.qasm,105.110749,Scheduler_Test/OUTPUT/bv_n50.naive_n_dag.schedule.txt,23122.35,BV-50
-naive_dag,Scheduler_Test/INPUT/bv_n50.json,bv_n50.qasm,0.379166,Scheduler_Test/OUTPUT/bv_n50.schedule.txt,9504.689,BV-50
-naive_n_dag,Scheduler_Test/INPUT/bv_n70.json,bv_n70.qasm,199.592804,Scheduler_Test/OUTPUT/bv_n70.naive_n_dag.schedule.txt,43578.965,BV-70
-naive_dag,Scheduler_Test/INPUT/bv_n70.json,bv_n70.qasm,0.40852,Scheduler_Test/OUTPUT/bv_n70.schedule.txt,16670.11,BV-70
-naive_n_dag,Scheduler_Test/INPUT/qft_n18.json,qft_n18_transpiled.qasm,343.78,Scheduler_Test/OUTPUT/qft_n18.naive_n_dag.schedule.txt,293852.09,QFT-18
-naive_dag,Scheduler_Test/INPUT/qft_n18.json,qft_n18_transpiled.qasm,0.474751,Scheduler_Test/OUTPUT/qft_n18_transpiled.schedule.txt,125422.96,QFT-18
-naive_n_dag,Scheduler_Test/INPUT/qft_n29.json,qft_n29_transpiled.qasm,1002.54,Scheduler_Test/OUTPUT/qft_n29.naive_n_dag.schedule.txt,997681.41,QFT-29
-naive_dag,Scheduler_Test/INPUT/qft_n29.json,qft_n29_transpiled.qasm,0.637311,Scheduler_Test/OUTPUT/qft_n29_transpiled.schedule.txt,371220.52,QFT-29
-naive_n_dag,Scheduler_Test/INPUT/vqe_n30.json,vqe_n30.qasm,104.524093,Scheduler_Test/OUTPUT/vqe_n30.naive_n_dag.schedule.txt,19897.12,VQE-30
-naive_dag,Scheduler_Test/INPUT/vqe_n30.json,vqe_n30.qasm,0.434495,Scheduler_Test/OUTPUT/vqe_n30.schedule.txt,19578.19,VQE-30
-naive_n_dag,Scheduler_Test/INPUT/vqe_n50.json,vqe_n50.qasm,232.098793,Scheduler_Test/OUTPUT/vqe_n50.naive_n_dag.schedule.txt,44832.211,VQE-50
-naive_dag,Scheduler_Test/INPUT/vqe_n50.json,vqe_n50.qasm,0.421571,Scheduler_Test/OUTPUT/vqe_n50.schedule.txt,36699.63,VQE-50
+solver,config_json,qasm_arg,Tcomp (s),output_file,Texec (Âµs),Benchmark
+naive_n_dag,Scheduler_Test/INPUT/bv_n14.json,bv_n14.qasm,81.583885,Scheduler_Test/OUTPUT/bv_n14.naive_n_dag.schedule.txt,12648.302830749924,BV-14
+naive_dag,Scheduler_Test/INPUT/bv_n14.json,bv_n14.qasm,0.369181,Scheduler_Test/OUTPUT/bv_n14.naive_dag.schedule.txt,3785.1474240696093,BV-14
+naive_n_dag,Scheduler_Test/INPUT/bv_n50.json,bv_n50.qasm,105.110749,Scheduler_Test/OUTPUT/bv_n50.naive_n_dag.schedule.txt,23122.356032525557,BV-50
+naive_dag,Scheduler_Test/INPUT/bv_n50.json,bv_n50.qasm,0.379166,Scheduler_Test/OUTPUT/bv_n50.naive_dag.schedule.txt,9504.689921499996,BV-50
+naive_n_dag,Scheduler_Test/INPUT/bv_n70.json,bv_n70.qasm,199.592804,Scheduler_Test/OUTPUT/bv_n70.naive_n_dag.schedule.txt,43578.96574679077,BV-70
+naive_dag,Scheduler_Test/INPUT/bv_n70.json,bv_n70.qasm,0.40852,Scheduler_Test/OUTPUT/bv_n70.naive_dag.schedule.txt,16670.11635766899,BV-70
+naive_n_dag,Scheduler_Test/INPUT/qft_n18.json,qft_n18_transpiled.qasm,343.78,Scheduler_Test/OUTPUT/qft_n18.naive_n_dag.schedule.txt,108267.11804468208,QFT-18
+naive_dag,Scheduler_Test/INPUT/qft_n18.json,qft_n18_transpiled.qasm,0.474751,Scheduler_Test/OUTPUT/qft_n18.naive_dag.schedule.txt,125422.96563909475,QFT-18
+naive_n_dag,Scheduler_Test/INPUT/qft_n29.json,qft_n29_transpiled.qasm,1002.54,Scheduler_Test/OUTPUT/qft_n29.naive_n_dag.schedule.txt,323181.40250021603,QFT-29
+naive_dag,Scheduler_Test/INPUT/qft_n29.json,qft_n29_transpiled.qasm,0.637311,Scheduler_Test/OUTPUT/qft_n29.naive_dag.schedule.txt,371220.52958314307,QFT-29
+naive_n_dag,Scheduler_Test/INPUT/vqe_n30.json,vqe_n30.qasm,104.524093,Scheduler_Test/OUTPUT/vqe_n30.naive_n_dag.schedule.txt,19897.124358603516,VQE-30
+naive_dag,Scheduler_Test/INPUT/vqe_n30.json,vqe_n30.qasm,0.434495,Scheduler_Test/OUTPUT/vqe_n30.naive_dag.schedule.txt,19578.199009112683,VQE-30
+naive_n_dag,Scheduler_Test/INPUT/vqe_n50.json,vqe_n50.qasm,232.098793,Scheduler_Test/OUTPUT/vqe_n50.naive_n_dag.schedule.txt,44832.21154821983,VQE-50
+naive_dag,Scheduler_Test/INPUT/vqe_n50.json,vqe_n50.qasm,0.421571,Scheduler_Test/OUTPUT/vqe_n50.naive_dag.schedule.txt,36699.635959360516,VQE-50
 Enola,,bv_n14.qasm,669.48,,5583.98,BV-14
 Enola,,bv_n50.qasm,1710.91,,10118.96,BV-50
 Enola,,bv_n70.qasm,4334.5,,17620.11,BV-70
@@ -27,7 +27,7 @@ PowerMove,,qft_n18_transpiled.qasm,347.47,,36810.15,QFT-18
 PowerMove,,qft_n29_transpiled.qasm,511.97,,89670.26,QFT-29
 PowerMove,,vqe_n30.qasm,29.68,,1688.03,VQE-30
 PowerMove,,vqe_n50.qasm,76.01,,2946.26,VQE-50
-naive_n_dag,,bb144_bivariate_bicycle_cz.qasm,1898.63,,297318.44,"[[144,12,12]]"
-naive_dag,,bb144_bivariate_bicycle_cz.qasm,2.14,,778034.11,"[[144,12,12]]"
+naive_n_dag,,bb144_bivariate_bicycle_cz.qasm,1898.63,Scheduler_Test/OUTPUT/bb144_n_fastsa_k1000.naive_n_dag.schedule.txt,206748.6584342176,"[[144,12,12]]"
+naive_dag,,bb144_bivariate_bicycle_cz.qasm,2.14,Scheduler_Test/OUTPUT/bb144_n_fastsa_k1000.naive_dag.schedule.txt,562868.6664511404,"[[144,12,12]]"
 Enola,script.py,bb144_bivariate_bicycle_cz.qasm,258.15,,742617.95,"[[144,12,12]]"
 PowerMove,script.py,bb144_bivariate_bicycle_cz.qasm,30.36,,113226.17,"[[144,12,12]]"

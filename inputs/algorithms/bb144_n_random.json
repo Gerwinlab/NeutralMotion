@@ -1,0 +1,24 @@
+{
+    "dimensions": [
+        24,
+        12
+    ],
+    "num_NA": 288,
+    "qasm_base_dir": "../qasm_files",
+    "parallel": true,
+    "transfer_SLM_AOD": "15 microseconds",
+    "max_acceleration": "2750 m/s^2",
+    "max_velocity": "0.55 m/s",
+    "rydberg_radius": "5 micrometers",
+    "average_single_gate_time": "0.1 microseconds",
+    "average_two_gate_time": "0.27 microseconds",
+    "t_switch": "1.5 microseconds",
+    "jerk": "constant",
+    "movement_shape": "trapezoidal",
+    "max_dimension": [
+        24,
+        12
+    ],
+    "fill_strategy": "random",
+    "alignment_conc": -1
+}

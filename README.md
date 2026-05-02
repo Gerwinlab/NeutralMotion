@@ -66,6 +66,11 @@ For usage walkthroughs:
 - `schedule_tutorial.ipynb`: end-to-end scheduler usage (`naive_dag` and `naive_n_dag`).
 - `qasm_to_circuit_and_dag_examples.ipynb`: QASM -> Qiskit circuit -> DAG examples.
 
+## Benchmark Scripts
+
+- `powermove_script.py` is used to generate runtime data for running `[[144,12,12]]` with Enola and PowerMove.
+- This script requires cloning the PowerMove repository before use.
+
 ## AI Usage Note
 
 AI assistance was used to:
