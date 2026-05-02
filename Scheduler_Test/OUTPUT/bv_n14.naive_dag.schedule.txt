@@ -1,0 +1,154 @@
+qasm_file: bv_n14.qasm
+final_time: 3785.1474240696093 microsecond
+lattice_spacing (rydberg_radius): 14.999999999999998 micrometer
+random number seed: 0
+T=0
+initialize q[0] -> (6,0); q[1] -> (6,6); q[2] -> (2,4); q[3] -> (0,0); q[4] -> (2,0); q[5] -> (4,0); q[6] -> (2,6); q[7] -> (6,2); q[8] -> (4,6); q[9] -> (0,6); q[10] -> (0,4); q[11] -> (4,2); q[12] -> (0,2); q[13] -> (2,2);
+T=1
+rz(pi/2) q[0]; rz(pi/2) q[1]; rz(pi/2) q[2]; rz(pi/2) q[3]; rz(pi/2) q[4]; rz(pi/2) q[5]; rz(pi/2) q[6]; rz(pi/2) q[7]; rz(pi/2) q[8]; rz(pi/2) q[9]; rz(pi/2) q[10]; rz(pi/2) q[11]; rz(pi/2) q[12]; rz(pi/2) q[13];
+T=2
+sx q[0]; sx q[1]; sx q[2]; sx q[3]; sx q[4]; sx q[5]; sx q[6]; sx q[7]; sx q[8]; sx q[9]; sx q[10]; sx q[11]; sx q[12]; sx q[13];
+T=3
+rz(pi/2) q[0]; rz(pi/2) q[1]; rz(pi/2) q[2]; rz(pi/2) q[3]; rz(pi/2) q[4]; rz(pi/2) q[5]; rz(pi/2) q[6]; rz(pi/2) q[7]; rz(pi/2) q[8]; rz(pi/2) q[9]; rz(pi/2) q[10]; rz(pi/2) q[11]; rz(pi/2) q[12]; rz(-pi/2) q[13];
+T=4
+load q[13] -> (2,2) : (2,1)
+T=5
+move q[13] (2,1) : (6,1)
+T=6
+cx q[0],q[13];
+T=7
+rz(pi/2) q[0];
+T=8
+sx q[0];
+T=9
+rz(pi/2) q[0];
+T=10
+move q[13] (6,1) : (6,5)
+T=11
+cx q[1],q[13];
+T=12
+rz(pi/2) q[1];
+T=13
+sx q[1];
+T=14
+rz(pi/2) q[1];
+T=15
+move q[13] (6,5) : (2,5)
+T=16
+cx q[2],q[13];
+T=17
+rz(pi/2) q[2];
+T=18
+sx q[2];
+T=19
+rz(pi/2) q[2];
+T=20
+move q[13] (2,5) : (2,1)
+T=21
+move q[13] (2,1) : (0,1)
+T=22
+cx q[3],q[13];
+T=23
+rz(pi/2) q[3];
+T=24
+sx q[3];
+T=25
+rz(pi/2) q[3];
+T=26
+move q[13] (0,1) : (2,1)
+T=27
+cx q[4],q[13];
+T=28
+rz(pi/2) q[4];
+T=29
+sx q[4];
+T=30
+rz(pi/2) q[4];
+T=31
+move q[13] (2,1) : (4,1)
+T=32
+cx q[5],q[13];
+T=33
+rz(pi/2) q[5];
+T=34
+sx q[5];
+T=35
+rz(pi/2) q[5];
+T=36
+move q[13] (4,1) : (4,5)
+T=37
+move q[13] (4,5) : (2,5)
+T=38
+cx q[6],q[13];
+T=39
+rz(pi/2) q[6];
+T=40
+sx q[6];
+T=41
+rz(pi/2) q[6];
+T=42
+move q[13] (2,5) : (5,5)
+T=43
+move q[13] (5,5) : (5,2)
+T=44
+cx q[7],q[13];
+T=45
+rz(pi/2) q[7];
+T=46
+sx q[7];
+T=47
+rz(pi/2) q[7];
+T=48
+move q[13] (5,2) : (5,6)
+T=49
+cx q[8],q[13];
+T=50
+rz(pi/2) q[8];
+T=51
+sx q[8];
+T=52
+rz(pi/2) q[8];
+T=53
+move q[13] (5,6) : (1,6)
+T=54
+cx q[9],q[13];
+T=55
+rz(pi/2) q[9];
+T=56
+sx q[9];
+T=57
+rz(pi/2) q[9];
+T=58
+move q[13] (1,6) : (1,4)
+T=59
+cx q[10],q[13];
+T=60
+rz(pi/2) q[10];
+T=61
+sx q[10];
+T=62
+rz(pi/2) q[10];
+T=63
+move q[13] (1,4) : (3,4)
+T=64
+move q[13] (3,4) : (3,2)
+T=65
+cx q[11],q[13];
+T=66
+rz(pi/2) q[11];
+T=67
+sx q[11];
+T=68
+rz(pi/2) q[11];
+T=69
+move q[13] (3,2) : (1,2)
+T=70
+cx q[12],q[13];
+T=71
+rz(pi/2) q[12];
+T=72
+sx q[12];
+T=73
+rz(pi/2) q[12];
+T=74
+unload q[13] -> (1,2) : (2,2)

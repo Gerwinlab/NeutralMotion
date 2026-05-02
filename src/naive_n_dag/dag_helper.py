@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-from pathlib import Path
 import math
-import re
 from fractions import Fraction
+from pathlib import Path
+import re
 
 from qiskit import QuantumCircuit
 from qiskit.converters import circuit_to_dag
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.dagcircuit.dagnode import DAGOpNode
 
-
-from qiskit.circuit.library.standard_gates import SwapGate
 from qiskit.circuit.library.standard_gates import CXGate
+from qiskit.circuit.library.standard_gates import SwapGate
 
 
 def load_qasm_to_circuit(qasm_path: str | Path) -> QuantumCircuit:
@@ -25,7 +24,7 @@ def load_qasm_to_dag(qasm_path: str | Path) -> DAGCircuit:
     circuit = load_qasm_to_circuit(qasm_path)
     return circuit_to_dag(circuit)
 
-#Replaced by _extract_index_from_bit, may be useful for future reference:
+
 def op_node_signature(node: DAGOpNode) -> tuple[str, list[float], list[int]]:
     """
     Return (gate_name, params, qubit_indices) for a DAGOpNode.
@@ -173,6 +172,11 @@ def dag_from_txt_auto(txt_path: str | Path) -> tuple[DAGCircuit, list[list[DAGOp
     ``4, 4: 1 2``
     ``4, 6: 0 3``
     ``T = 4, cx = 2``
+
+    Returns:
+    - `two_qubit_dag`: a DAG containing only CX operations from the text file.
+    - `single_layers`: empty single-qubit context buckets with length
+      `len(list(two_qubit_dag.layers())) + 1`.
     """
     path = Path(txt_path)
     if not path.exists():
@@ -255,6 +259,7 @@ def dag_from_txt_auto(txt_path: str | Path) -> tuple[DAGCircuit, list[list[DAGOp
     if not steps:
         raise ValueError(f"{path}: no timestep blocks parsed from file.")
 
+    # Build an empty circuit only to allocate the required qubit register.
     circuit = QuantumCircuit(max_qubit_id + 1)
     two_qubit_dag = circuit_to_dag(circuit)
     qubits = two_qubit_dag.qubits

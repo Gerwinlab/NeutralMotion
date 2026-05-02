@@ -1,53 +1,46 @@
 # Phys765
 
-Phys765 is a circuit-level scheduling and optimization package for neutral-atom quantum computing workflows. The project takes gate-level circuits (for example, circuits generated from pyLIQTR-style workflows), maps them onto a neutral-atom lattice model, and produces an execution schedule that reflects both gate application and atom transport constraints.
+Phys765 is a neutral-atom circuit scheduling package. It loads QASM circuits, maps logical qubits to lattice sites, schedules gate/movement actions, and emits a timestep schedule text file.
 
-The core package is designed to answer a practical hardware question:
-"Given a logical quantum circuit, where should atoms be placed, when should they move, and when should pulses be applied to complete the program efficiently?"
+## Install
 
-## Package Overview
-
-At a high level, the naive_dag scheduler does the following:
-
-- Loads a QASM circuit and converts it into a DAG-oriented gate sequence.
-- Builds a 2D neutral-atom lattice from config dimensions and Rydberg spacing.
-- Places logical qubits on valid even-even trap sites.
-- Plans movement paths for two-qubit interactions (including load/move/unload style actions).
-- Groups single-qubit gates into timestep layers so disjoint qubits can run together while same-qubit pulses remain sequential.
-- Computes total runtime from motion dynamics and gate timing parameters.
-- Writes a readable schedule with explicit timesteps (`T=...`) and actions.
-
-The resulting schedule is intended to be easy to inspect and debug, with entries such as:
-
-- `initialize q[...] -> (...)` at `T=0`
-- `load` / `move` / `unload` motion actions
-- gate lines (single- and two-qubit operations)
-
-## What The Output Represents
-
-The emitted schedule is a hardware-aware execution trace:
-
-- Spatially aware: tracks lattice coordinates for atom transport.
-- Temporally aware: each printed action is assigned a timestep.
-- Timing aware: final runtime includes movement time, transfer costs, gate durations, and pulse-switch overhead.
-
-This makes the package useful both for algorithm-level experimentation and for early-stage architecture studies where movement and pulse scheduling materially affect performance.
-
-## Run
-
-From the project root:
+From the repository root:
 
 ```bash
-python -m src.naive_dag inputs/algorithms/qft_06.json qft_6.qasm outputs
+python3 -m pip install -e .
+```
+
+This installs the package in editable mode and exposes these CLI commands:
+
+- `naive_dag`
+- `naive_n_dag`
+
+## Quick Run (`naive_n_dag`)
+
+Example:
+
+```bash
+naive_n_dag inputs/algorithms/qft_06_n_fastsa.json inputs/qasm_files/qft_6.qasm outputs --seed 0 --output-name qft_06_n_fastsa_example --log
 ```
 
 This writes:
 
-- `outputs/qft_6.schedule.txt`
+- `outputs/qft_06_n_fastsa_example.schedule.txt`
+- `outputs/qft_06_n_fastsa_example.fastsa_log.csv` (because `--log` is enabled with FastSA)
+
+## What The Schedulers Do
+
+At a high level, `naive_dag` / `naive_n_dag`:
+
+- Load QASM and convert to DAG-style gate ordering.
+- Build a neutral-atom lattice from config dimensions and Rydberg spacing.
+- Place qubits on valid trap sites.
+- Schedule movement + gate application over timesteps.
+- Emit a readable schedule (`T=...`, `initialize`, `load/move/unload`, gate lines).
 
 ## Config Notes
 
-Current timing keys expected in JSON configs:
+Common required timing keys in JSON configs:
 
 - `average_single_gate_time`
 - `average_two_gate_time`
@@ -57,4 +50,27 @@ Current timing keys expected in JSON configs:
 - `max_velocity`
 - `rydberg_radius`
 
-Example config: `inputs/algorithms/qft_06.json`
+Scheduling behavior flags:
+
+- `parallel`: set to `true` to allow grouped/parallel movement scheduling in `naive_n_dag` (recommended for most benchmark-style runs).
+
+Example configs:
+
+- `inputs/algorithms/qft_06_n_fastsa.json`
+- `inputs/algorithms/bb144_n_fastsa_k1000.json`
+
+## Tutorials
+
+For usage walkthroughs:
+
+- `schedule_tutorial.ipynb`: end-to-end scheduler usage (`naive_dag` and `naive_n_dag`).
+- `qasm_to_circuit_and_dag_examples.ipynb`: QASM -> Qiskit circuit -> DAG examples.
+
+## AI Usage Note
+
+AI assistance was used to:
+
+- create and refine tutorial notebooks
+- improve code readability
+- improve inline documentation and docstrings
+- limited usage in the writing of the actual scheduler

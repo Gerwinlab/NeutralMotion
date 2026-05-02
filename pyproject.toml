@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 naive_dag = "naive_dag.__main__:main"
+naive_n_dag = "naive_n_dag.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -6,6 +6,8 @@ import pathlib
 
 from .main import load_config, main as naive_dag_main, resolve_config_paths
 
+#TODO: add output name 
+
 def _build_parser() -> argparse.ArgumentParser:
     """Create the CLI argument parser for the naive scheduler entry point."""
     parser = argparse.ArgumentParser(

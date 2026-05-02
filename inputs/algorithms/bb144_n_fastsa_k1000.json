@@ -4,7 +4,8 @@
         12
     ],
     "num_NA": 288,
-    "qasm_base_dir": "../../../qasm_outputs",
+    "qasm_base_dir": "../qasm_outputs",
+    "parallel": true,
     "transfer_SLM_AOD": "15 microseconds",
     "max_acceleration": "2750 m/s^2",
     "max_velocity": "0.55 m/s",
@@ -22,10 +23,10 @@
     "alignment_conc": -1,
     "Fastsa_fill": {
         "stage1_iterations": 5,
-        "stage2_iterations": 10000,
+        "stage2_iterations": 2000,
         "c": 1000,
-        "initial_accept_prob": 0.99999,
-        "stage3_temperature_threshold": 0.0000001,
+        "initial_accept_prob": 0.99,
+        "stage3_temperature_threshold": 1e-07,
         "stage3_max_iterations": 100000,
         "stage3_section_size": 12
     }

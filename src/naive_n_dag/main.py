@@ -35,6 +35,28 @@ def parse_quantity(value: Any, key: str):
     return q
 
 
+def _coerce_unit_config(config: dict[str, Any]) -> None:
+    """Parse and normalize all unit-bearing config fields in place."""
+    for key in [
+        "transfer_SLM_AOD",
+        "max_acceleration",
+        "max_velocity",
+        "rydberg_radius",
+        "average_single_gate_time",
+        "average_two_gate_time",
+        "t_switch",
+    ]:
+        config[key] = parse_quantity(config[key], key)
+
+    config["transfer_SLM_AOD"] = config["transfer_SLM_AOD"].to("seconds")
+    config["max_acceleration"] = config["max_acceleration"].to("meter/second^2")
+    config["max_velocity"] = config["max_velocity"].to("meter/second")
+    config["rydberg_radius"] = config["rydberg_radius"].to("meter")
+    config["average_single_gate_time"] = config["average_single_gate_time"].to("seconds")
+    config["average_two_gate_time"] = config["average_two_gate_time"].to("seconds")
+    config["t_switch"] = config["t_switch"].to("seconds")
+
+
 def load_config(path: PathLike) -> dict[str, Any]:
     """Load and validate the top-level JSON config object from disk."""
     config_path = pathlib.Path(path)
@@ -132,10 +154,11 @@ def main(
     output_name: str | None = None,
     log: bool = False,
 ) -> int:
-    """Validate naive-n inputs and print resolved run context.
+    """Run the naive-n scheduling pipeline and write a textual schedule.
 
-    This is a scaffold entry point for the new method. It currently validates
-    arguments/config and resolves paths, but does not yet run a scheduling pipeline.
+    Input can come from either:
+    - a QASM file (standard path), or
+    - a `step_order` text file that contains only two-qubit timestep data.
     """
     if config_path is not None:
         config = resolve_config_paths(config, config_path.parent)
@@ -164,23 +187,7 @@ def main(
             stacklevel=2,
         )
 
-    for key in [
-        "transfer_SLM_AOD",
-        "max_acceleration",
-        "max_velocity",
-        "rydberg_radius",
-        "average_single_gate_time",
-        "average_two_gate_time",
-        "t_switch",
-    ]:
-        config[key] = parse_quantity(config[key], key)
-    config["transfer_SLM_AOD"] = config["transfer_SLM_AOD"].to("seconds")
-    config["max_acceleration"] = config["max_acceleration"].to("meter/second^2")
-    config["max_velocity"] = config["max_velocity"].to("meter/second")
-    config["rydberg_radius"] = config["rydberg_radius"].to("meter")
-    config["average_single_gate_time"] = config["average_single_gate_time"].to("seconds")
-    config["average_two_gate_time"] = config["average_two_gate_time"].to("seconds")
-    config["t_switch"] = config["t_switch"].to("seconds")
+    _coerce_unit_config(config)
 
     if not quiet:
         qasm_dir = config.get("qasm_dir") or config.get("qasm_base_dir")
@@ -195,7 +202,7 @@ def main(
         print(f"fill_strategy={config.get('fill_strategy')}")
         if schedule_output_dir is not None:
             print(f"schedule_output_dir={pathlib.Path(schedule_output_dir).expanduser()}")
-    
+
     dims = config["dimensions"]
     num_na = config["num_NA"]
     grid = generate_grid(dims, config["rydberg_radius"])
@@ -251,15 +258,13 @@ def main(
     if qubits is None:
         raise RuntimeError("Qubit placement is required before scheduling two-qubit layers.")
 
-    #------------
-    #starting the scheduling pipeline
-    #------------
+    # Start schedule construction.
     time = 0 * (config["max_velocity"] / config["max_acceleration"]).units
-    T = 0
+    emitted_timesteps = 0
     event_log: list[ScheduleEvent] = []
     current_positions: dict[int, tuple[int, int]] = {q.id: q.grid_position() for q in qubits}
-    Previous_Positions: list[tuple[int, int]] = []
-    Previous_Ids: list[int] = []
+    previous_positions: list[tuple[int, int]] = []
+    previous_ids: list[int] = []
 
     for layer_idx, twoq_layer in enumerate(two_qubit_layers):
         single_step_lines, single_time = single_qubit_layer_time(
@@ -269,21 +274,21 @@ def main(
         )
         for line in single_step_lines:
             event_log.append(("gate", line))
-            T += 1
+            emitted_timesteps += 1
         time += single_time
 
         twoq_nodes = twoq_layer["graph"].op_nodes()
         if twoq_nodes:
-            layer_steps, layer_time, Previous_Positions, Previous_Ids = best_path_for_layer(
+            layer_steps, layer_time, previous_positions, previous_ids = best_path_for_layer(
                 twoq_nodes,
                 qubits,
                 config,
                 event_log,
-                Previous_Ids=Previous_Ids,
-                Previous_Positions=Previous_Positions,
+                Previous_Ids=previous_ids,
+                Previous_Positions=previous_positions,
                 current_positions=current_positions,
             )
-            T += layer_steps
+            emitted_timesteps += layer_steps
             time += layer_time
 
     trailing_step_lines, trailing_time = single_qubit_layer_time(
@@ -293,15 +298,15 @@ def main(
     )
     for line in trailing_step_lines:
         event_log.append(("gate", line))
-        T += 1
+        emitted_timesteps += 1
     time += trailing_time
-    T = count_emitted_timesteps(event_log)
+    emitted_timesteps = count_emitted_timesteps(event_log)
 
     final_time_us = time.to("microseconds")
 
     if not quiet:
         print(f"two_qubit_layers={len(two_qubit_layers)}")
-        print(f"scheduled_timesteps={T}")
+        print(f"scheduled_timesteps={emitted_timesteps}")
         print(f"estimated_time={final_time_us}")
 
     output_stem = config_path.stem if config_path is not None else source_path.stem

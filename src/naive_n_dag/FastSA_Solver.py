@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from collections import Counter
+from copy import deepcopy
 from dataclasses import dataclass
 from math import exp, hypot, log
 import random
@@ -28,6 +28,7 @@ class LayerVectorStats:
 @dataclass(frozen=True)
 class FastSAResult:
     """Result bundle for full 3-stage Fast-SA."""
+
     current_cost: float
     best_cost: float
     current_positions: dict[int, tuple[int, int]]
@@ -37,7 +38,6 @@ class FastSAResult:
     stage3_iterations: int
     best_cost_history: list[float]
     temperature_history: list[float]
-
 
 
 def qubit_position_map(qubits: Iterable[Qubit]) -> dict[int, tuple[int, int]]:
@@ -65,9 +65,8 @@ def position_map_from_grid(grid) -> dict[int, tuple[int, int]]:
     return positions
 
 
-
 def vector_alignment_score(vectors: Iterable[tuple[int, int]]) -> float:
-    """Alignment score = sum of unit-direction dot-products across all pairs."""
+    """Return mean pairwise alignment score in [0, 1] for movement vectors."""
     v = list(vectors)
     if len(v) < 2:
         return 0.0
@@ -81,36 +80,33 @@ def vector_alignment_score(vectors: Iterable[tuple[int, int]]) -> float:
             vmag = hypot(vx, vy)
             cosine = abs((ux * vx + uy * vy) / (umag * vmag))
             mag_ratio = min(umag, vmag) / max(umag, vmag)
-            normalizer +=1
+            normalizer += 1
             score += cosine * mag_ratio
-            #In the ideal case that all vectors are identical, then we have cosine=1 and mag_ratio=1 for all pairs, so the score grows quadratically with the number of vectors. In a less ideal case where we have some parallel but differently sized vectors, the mag_ratio will reduce the contribution of misaligned pairs, while still rewarding parallelism among similarly sized vectors.
-    return score/normalizer #must always be between 0 and 1.
+    return score / normalizer
 
-#--------------------------
-#Computing costs
-#--------------------------
+
 def compute_fastsa_cost(
     two_qubit_layers: Iterable[Iterable["DAGOpNode"]],
-    positions_or_qubits: Mapping[int, tuple[int, int]] | Iterable["Qubit"], normalize_by_length: float = 1.0
+    positions_or_qubits: Mapping[int, tuple[int, int]] | Iterable["Qubit"],
+    normalize_by_length: float = 1.0,
 ) -> tuple[float, list[dict]]:
-    """Compute Fast-SA cost"""
+    """Compute Fast-SA objective for a given placement."""
     if isinstance(positions_or_qubits, Mapping):
         positions = dict(positions_or_qubits)
     else:
         positions = qubit_position_map(positions_or_qubits)
 
-    def canonical(v):
+    def canonical(v: tuple[int, int]) -> tuple[int, int]:
         x, y = v
         if x < 0 or (x == 0 and y < 0):
             return (-x, -y)
         return (x, y)
 
-
     total_cost = 0.0
     normalize_by_layers = len(list(two_qubit_layers.layers()))
     layer_stats_list: list[dict] = []
     for layer_nodes in two_qubit_layers.layers():
-        vectors: list[tuple[int,int]] = []
+        vectors: list[tuple[int, int]] = []
         layer_cost = 0.0
         for node in layer_nodes["graph"].op_nodes():
             if len(node.qargs) != 2:
@@ -119,29 +115,25 @@ def compute_fastsa_cost(
             q1 = extract_index_from_bit(node.qargs[1])
             if q0 not in positions or q1 not in positions:
                 raise KeyError(f"Missing qubit positions for q[{q0}] or q[{q1}].")
-            
+
             x0, y0 = positions[q0]
             x1, y1 = positions[q1]
             vectors.append((x1 - x0, y1 - y0))
-        # --- Finished making the vectors ---
+
         alignment = vector_alignment_score(vectors)
-        #length of vector normalized by the multiplicity
-        
+
         counts = Counter(canonical(v) for v in vectors)
         norm_counts = len(counts)
         for vec, count in counts.items():
             mag = hypot(vec[0], vec[1])
-            layer_cost += mag * (1.0 / count) / normalize_by_length /norm_counts #ensure below 1
-        total_cost += (layer_cost - alignment)/normalize_by_layers
+            layer_cost += mag * (1.0 / count) / normalize_by_length / norm_counts
+        total_cost += (layer_cost - alignment) / normalize_by_layers
         layer_stats_list.append({
             "vectors": vectors,
             "vector_alignment_score": alignment,
             "layer_cost": layer_cost,
         })
     return total_cost, layer_stats_list
-#--------------------------
-
-#--------------------------
 
 
 def _sample_random_positions_with_naive_fill(
@@ -164,13 +156,12 @@ def _temperature_for_step(
     k: int,
     c: float,
 ) -> float:
+    """Return current SA temperature for iteration ``n``."""
     denom = log(initial_accept_prob)
 
-    # ensure denom is not zero
     if abs(denom) < 1e-12:
         denom = -1e-12
 
-    # make temperature positive
     t1 = -average_uphill_cost / denom
 
     if n <= 1:
@@ -199,17 +190,13 @@ def greedy_max_parallel(
     grid_shape: tuple[int, int],
 ) -> dict[int, tuple[int, int]]:
     """
-    For one layer, compute each gate vector from current q0/q1 positions, pick
-    the most common vector, and adjust mismatched gates by moving either q0 or
-    q1 to realize that vector.
+    For one layer, align gate vectors to the most common vector direction.
 
-    Coordinates are (col, row). A move is accepted only if the new position is:
-    1) inside the grid, 2) not already occupied by another qubit, and
-
+    Coordinates are (col, row). Moves are bounded to the configured grid.
+    If a target site is occupied, this implementation swaps the two qubits.
     """
     positions = dict(current_positions)
     grid_rows, grid_cols = grid_shape
-
 
     gate_pairs: list[tuple[int, int, tuple[int, int]]] = []
     for node in random_layer:
@@ -239,7 +226,6 @@ def greedy_max_parallel(
     def _in_bounds(x: int, y: int) -> bool:
         return 0 <= x < grid_cols and 0 <= y < grid_rows
 
-
     def _move_or_swap(qid: int, target: tuple[int, int]) -> None:
         """Move qid to target; if occupied, swap the two qubits' positions."""
         old = positions[qid]
@@ -262,7 +248,7 @@ def greedy_max_parallel(
         x0, y0 = positions[q0]
         x1, y1 = positions[q1]
 
-        # Option 1: keep q0 fixed and move q1 (swap if destination occupied).
+        # Option 1: keep q0 fixed and move q1.
         cand_q1 = (x0 + target_dx, y0 + target_dy)
         can_move_q1 = _in_bounds(cand_q1[0], cand_q1[1])
 
@@ -270,13 +256,13 @@ def greedy_max_parallel(
             _move_or_swap(q1, cand_q1)
             continue
 
-        # Option 2: keep q1 fixed and move q0 (swap if destination occupied).
+        # Option 2: keep q1 fixed and move q0.
         cand_q0 = (x1 - target_dx, y1 - target_dy)
         can_move_q0 = _in_bounds(cand_q0[0], cand_q0[1])
 
         if can_move_q0:
             _move_or_swap(q0, cand_q0)
-    
+
     return positions
 
 
@@ -315,7 +301,7 @@ def run_fastsa(
     stage3_section_size: int = 4,
     seed: int = 0,
 ) -> FastSAResult:
-    """Run 3-stage Fast-SA: random stage, greedy swap stage, local-random stage."""
+    """Run 3-stage Fast-SA: random, greedy-parallel, then local-random search."""
     if stage1_iterations < 1:
         raise ValueError("stage1_iterations must be >= 1")
     if stage2_iterations < 0:
@@ -325,21 +311,18 @@ def run_fastsa(
     if not (0.0 < initial_accept_prob < 1.0):
         raise ValueError("initial_accept_prob must be in (0, 1)")
     if c <= 0:
-        raise ValueError("c must be > 0, you want c to be large to reduce uphill acceptance in the second stage")
+        raise ValueError(
+            "c must be > 0, and is typically set large to reduce uphill acceptance in stage 2."
+        )
 
     rng = random.Random(seed)
-    #The Grid comes in empty, so do not want to copy to the original until the end.
-    grid_rows = len(grid)
-    grid_cols = len(grid[0]) if grid_rows > 0 else 0
-    
-    # Experimented with normalizing the best_cost, resulted in negative cost fuction and worst acceptances.
-    #TODO: Maybe there is a better cost function.
-    normalize_by_length = 1#max(hypot(max(grid_cols - 1, 0), max(grid_rows - 1, 0)), 1.0)
+    normalize_by_length = 1
 
     current_positions = _sample_random_positions_with_naive_fill(
         grid,
         num_qubits,
-        seed=rng.randint(0, 2**31 - 1), #pick a random seed every time we call this.
+        # Resample a placement seed for each run to diversify starting points.
+        seed=rng.randint(0, 2**31 - 1),
     )
 
     current_cost, _ = compute_fastsa_cost(
@@ -357,19 +340,19 @@ def run_fastsa(
     avg_uphill = 1.0
     avg_delta = 1.0
     temperature = _temperature_for_step(
-                n,
-                average_uphill_cost=avg_uphill,
-                initial_accept_prob=initial_accept_prob,
-                average_cost_change=avg_delta,
-                k=stage2_iterations+stage1_iterations,
-                c=c,
-            )
+        n,
+        average_uphill_cost=avg_uphill,
+        initial_accept_prob=initial_accept_prob,
+        average_cost_change=avg_delta,
+        k=stage2_iterations + stage1_iterations,
+        c=c,
+    )
     best_cost_history: list[float] = [best_cost]
     temperature_history: list[float] = [temperature]
-    
+
     def _record_delta(delta_c: float, *, accepted: bool) -> float:
-        nonlocal avg_uphill, avg_delta, current_cost, current_positions, best_cost, best_positions, best_cost_history, temperature_history
-        temperature =0.0
+        nonlocal avg_uphill, avg_delta, best_cost_history, temperature_history
+        temperature = 0.0
         if delta_c > 0:
             uphill_deltas.append(delta_c)
             avg_uphill = sum(uphill_deltas) / len(uphill_deltas)
@@ -381,7 +364,7 @@ def run_fastsa(
             average_uphill_cost=avg_uphill,
             initial_accept_prob=initial_accept_prob,
             average_cost_change=avg_delta,
-            k=stage2_iterations+stage1_iterations,
+            k=stage2_iterations + stage1_iterations,
             c=c,
         )
         best_cost_history.append(best_cost)
@@ -389,8 +372,7 @@ def run_fastsa(
         return temperature
 
     # Stage 1: n=1 initialization regime with random neighboring placements.
-    for step in range(stage1_iterations):
-        # sample a completely new layout
+    for _ in range(stage1_iterations):
         neighbor_positions = _sample_random_positions_with_naive_fill(
             grid,
             num_qubits,
@@ -414,28 +396,16 @@ def run_fastsa(
             if current_cost < best_cost:
                 best_cost = current_cost
                 best_positions = dict(current_positions)
-        n+=1
+        n += 1
         temperature = _record_delta(delta_c, accepted=accepted)
 
-    # Stage 2: greedy swap search for k iterations.
+    # Stage 2: apply greedy-parallel mutation on random layers.
     stage2_layers = [layer["graph"].op_nodes() for layer in two_qubit_dag.layers()]
     dims = config["dimensions"]
     grid_shape = (2 * int(dims[0]) - 1, 2 * int(dims[1]) - 1)
     for _ in range(stage2_iterations):
-        # for one iteration of the second stage
-        #first swap within the worst layer. 
-        """
-        neighbor_positions, neighbor_cost = greedy_swap_neighbor(current_positions, two_qubit_dag)
-        delta_c = neighbor_cost - current_cost
-        accept_prob = _acceptance_probability(delta_c, temperature)
-        accepted = rng.random() < accept_prob
-        if accepted:
-            current_positions = neighbor_positions
-            current_cost = neighbor_cost
-            if current_cost < best_cost:
-                best_cost = current_cost
-                best_positions = dict(current_positions)
-        """
+        delta_c = 0.0
+        accepted = False
         if stage2_layers:
             random_layer = rng.choice(stage2_layers)
             neighbor_positions = greedy_max_parallel(
@@ -459,7 +429,7 @@ def run_fastsa(
                 if current_cost < best_cost:
                     best_cost = current_cost
                     best_positions = dict(current_positions)
-        n+=1
+        n += 1
         temperature = _record_delta(delta_c, accepted=accepted)
 
     # Stage 3: local randomization until temperature drops below threshold.
@@ -487,7 +457,7 @@ def run_fastsa(
                 best_cost = current_cost
                 best_positions = dict(current_positions)
         temperature = _record_delta(delta_c, accepted=accepted)
-        n+=1
+        n += 1
         stage3_iterations += 1
 
     return FastSAResult(

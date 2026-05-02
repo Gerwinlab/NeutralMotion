@@ -28,5 +28,6 @@
         "stage3_temperature_threshold": 0.0001,
         "stage3_max_iterations": 1000,
         "stage3_section_size": 2
-    }
+    },
+    "parallel": true
 }

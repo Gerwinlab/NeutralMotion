@@ -1,5 +1,8 @@
 {
-    "dimensions": [8,8],
+    "dimensions": [
+        8,
+        8
+    ],
     "num_NA": 63,
     "qasm_base_dir": "../qasm_files",
     "parallel": true,
@@ -12,7 +15,10 @@
     "t_switch": "1.5 microseconds",
     "jerk": "constant",
     "movement_shape": "trapezoidal",
-    "max_dimension": [8,8],
+    "max_dimension": [
+        8,
+        8
+    ],
     "fill_strategy": "fastsa",
     "alignment_conc": 0,
     "Fastsa_fill": {
