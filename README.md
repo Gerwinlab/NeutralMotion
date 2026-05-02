@@ -20,7 +20,7 @@ This installs the package in editable mode and exposes these CLI commands:
 Example:
 
 ```bash
-naive_n_dag inputs/algorithms/qft_06_n_fastsa.json inputs/qasm_files/qft_6.qasm outputs --seed 0 --output-name qft_06_n_fastsa_example --log
+python -m naive_n_dag inputs/algorithms/qft_06_n_fastsa.json inputs/qasm_files/qft_6.qasm outputs --seed 0 --output-name qft_06_n_fastsa_example --log
 ```
 
 This writes:
