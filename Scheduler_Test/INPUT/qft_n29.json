@@ -29,5 +29,6 @@
         "stage3_max_iterations": 100000,
         "stage3_section_size": 6
     },
-    "parallel": true
+    "parallel": true,
+    "T_reuse": 100
 }

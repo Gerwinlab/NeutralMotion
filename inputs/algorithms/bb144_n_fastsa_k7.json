@@ -1,7 +1,7 @@
 {
     "dimensions": [
-        17,
-        17
+        24,
+        12
     ],
     "num_NA": 288,
     "qasm_base_dir": "../../../qasm_outputs",
@@ -15,11 +15,12 @@
     "jerk": "constant",
     "movement_shape": "trapezoidal",
     "max_dimension": [
-        17,
-        17
+        24,
+        12
     ],
     "fill_strategy": "fastsa",
     "alignment_conc": 0,
+    "T_reuse": 1,
     "Fastsa_fill": {
         "stage1_iterations": 2,
         "stage2_iterations": 7,

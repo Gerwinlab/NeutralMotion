@@ -21,6 +21,11 @@ def _max_grid_spans(max_dimension: list[int]) -> tuple[int, int]:
     return 2 * (max_rows - 1), 2 * (max_cols - 1)
 
 
+def _is_valid_aod_position(position: tuple[int, int]) -> bool:
+    """Return True when a position is not an even-even SLM trap site."""
+    return not (position[0] % 2 == 0 and position[1] % 2 == 0)
+
+
 def _fits_same_aod(
     positions: list[tuple[int, int]],
     candidate: tuple[int, int],
@@ -128,98 +133,69 @@ def _start_(
     origin_positions: list[tuple[int, int]],
     event_log: list,
 ) -> list[tuple[int, int]]:
-    """Apply initial vector reduction and choose a good first move."""
+    """Load atoms onto adjacent AOD sites or choose a shared first move."""
 
-    reduced_vectors = _reduce_vectors_for_start(moving_vectors, (moves[0][0], moves[0][1]))
+    reduced_vectors = _reduce_vectors_for_start(moving_vectors, (0, 0))
     if origin_positions[0][0] % 2 == 1 or origin_positions[0][1] % 2 == 1:
         return reduced_vectors
-    
-    def apply_move(step):
-        dx, dy = step
-        for i, (vx, vy) in enumerate(reduced_vectors):
-            r, c = origin_positions[i]
-            start = (r, c)
-            end = (r + dx, c + dy)
 
-            origin_positions[i] = end
-            if i == 0:
-                reduced_vectors[i] = (vx - dx, vy - dy)
-            event_log.append(("move", moving_ids[i], start, end))
-
-        moves.append((dx, dy))
-        return reduced_vectors
-
-    # -------------------------------------------------
-    # 1. Single mover: direct greedy step toward target
-    # -------------------------------------------------
-    if len(reduced_vectors) == 1:
-        dx, dy = reduced_vectors[0]
-
-        if abs(dx) > abs(dy):
-            step = (1 if dx > 0 else -1, 0)
-        else:
-            step = (0, 1 if dy > 0 else -1)
-
-        return apply_move(step)
-
-    # -------------------------------------------------
-    # 2. Multi-mover: choose best shared step
-    # -------------------------------------------------
-
-    # candidate unit moves
-    candidates = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+    candidates = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
 
     def score(step):
-        """Score = number of vectors (excluding first) that become |v|=1,
-        considering only up to and including the first non-(0,0) vector."""
-        
         sx, sy = step
         new_vectors = [(vx - sx, vy - sy) for vx, vy in moving_vectors]
-
         count = 0
         seen_nonzero = False
-
         for i, (vx, vy) in enumerate(new_vectors):
             if (vx, vy) != (0, 0):
                 if seen_nonzero:
-                    break  # already processed first non-zero → stop
+                    break
                 seen_nonzero = True
-
-            if i != 0 and (abs(vx) + abs(vy) == 1):
+            if i != 0 and abs(vx) + abs(vy) == 1:
                 count += 1
-
         return count
 
-    # pick best step
-    best_step = max(candidates, key=score)
-
-    # -------------------------------------------------
-    # 3. Even-even bias (your parity heuristic)
-    # -------------------------------------------------
-    r0, c0 = origin_positions[0]
-    if (r0 % 2 == 0) and (c0 % 2 == 0):
-        # slight bias toward axis-aligned reduction of largest vector
-        vx, vy = reduced_vectors[0]
-        if abs(vx) > abs(vy):
-            preferred = (1 if vx > 0 else -1, 0)
+    if len(reduced_vectors) == 1:
+        dx, dy = reduced_vectors[0]
+        if abs(dx) > abs(dy):
+            transfer_step = (1 if dx > 0 else -1, 0)
+        elif dy != 0:
+            transfer_step = (0, 1 if dy > 0 else -1)
         else:
-            preferred = (0, 1 if vy > 0 else -1)
+            transfer_step = (1, 0)
+    else:
+        transfer_step = max(candidates, key=score)
+        r0, c0 = origin_positions[0]
+        if (r0 % 2 == 0) and (c0 % 2 == 0):
+            vx, vy = reduced_vectors[0]
+            if abs(vx) > abs(vy):
+                preferred = (1 if vx > 0 else -1, 0)
+            elif vy != 0:
+                preferred = (0, 1 if vy > 0 else -1)
+            else:
+                preferred = (1, 0)
+            if score(preferred) >= score(transfer_step):
+                transfer_step = preferred
 
-        # override if equally good
-        if score(preferred) >= score(best_step):
-            best_step = preferred
+    dx, dy = transfer_step
+    for i, (r, c) in enumerate(origin_positions):
+        start = (r, c)
+        end = (r + dx, c + dy)
+        origin_positions[i] = end
+        if i == 0:
+            vx, vy = reduced_vectors[i]
+            reduced_vectors[i] = (vx - dx, vy - dy)
+        event_log.append(("move", moving_ids[i], start, end))
 
-    return apply_move(best_step)
+    moves.append(transfer_step)
+    return reduced_vectors
 
 
 def parity_route_moves(
     start: tuple[int, int],
     end: tuple[int, int],
 ) -> list[tuple[int, int]]:
-    """
-    Return a sequence of (dx, dy) moves that route from start → end
-    respecting (even,odd)/(odd,even) parity constraints.
-    """
+    """Return axis-aligned AOD moves that avoid even-even positions."""
 
     r1, c1 = start
     r2, c2 = end
@@ -227,73 +203,37 @@ def parity_route_moves(
     dx = r2 - r1
     dy = c2 - c1
 
-    def is_even_odd(r, c):
-        return (r % 2 == 0 and c % 2 == 1) or (r % 2 == 1 and c % 2 == 0)
+    if start == end:
+        return []
+    if r1 == r2:
+        return [(0, dy)]
+    if c1 == c2:
+        return [(dx, 0)]
 
-    start_parity = is_even_odd(r1, c1)
-    end_parity = is_even_odd(r2, c2)
+    def is_odd_odd(position):
+        return position[0] % 2 == 1 and position[1] % 2 == 1
 
-    moves = []
-    
-    # -------------------------------------------------
-    # Case 4: returning to even-even trap site
-    # -------------------------------------------------
-    if r2 % 2 == 0 and c2 % 2 == 0:
-        if (r1 % 2 == 1 and c1 % 2 == 0):
-            # handle x first
-            step_y = dy - (1 if dy >= 0 else -1)
-            moves.append((0, step_y))
-            moves.append((dx, 0))
-            moves.append((0, dy - step_y))  # final ±1
-        else:
-            # handle y first
-            step_x = dx - (1 if dx >= 0 else -1)
-            moves.append((dx - step_x, 0))
-            moves.append((0, dy))
-            moves.append((step_x, 0))  # final ±1
+    corners = [((r1, c2), [(0, dy), (dx, 0)]), ((r2, c1), [(dx, 0), (0, dy)])]
+    for corner, route in corners:
+        if is_odd_odd(corner):
+            return [step for step in route if step != (0, 0)]
 
-        return moves
+    if r1 % 2 == 0 and c1 % 2 == 1:
+        first_row_step = 1 if dx > 0 else -1
+        return [
+            (first_row_step, 0),
+            (0, dy),
+            (dx - first_row_step, 0),
+        ]
+    if r1 % 2 == 1 and c1 % 2 == 0:
+        first_col_step = 1 if dy > 0 else -1
+        return [
+            (0, first_col_step),
+            (dx, 0),
+            (0, dy - first_col_step),
+        ]
 
-    # -------------------------------------------------
-    # Case 1: parity flips → always 2 moves
-    # -------------------------------------------------
-    if start_parity != end_parity:
-        if (r1 % 2 == 0 and c1 % 2 == 1):  # (even, odd)
-            moves.append((dx, 0))
-            moves.append((0, dy))
-        else:  # (odd, even)
-            moves.append((0, dy))
-            moves.append((dx, 0))
-        return moves
-
-    # -------------------------------------------------
-    # Case 2: same parity
-    # -------------------------------------------------
-
-    # If purely axis-aligned → 1 move
-    if (dx == 0 and c1 % 2 == 1) or (dy == 0 and r1 % 2 == 1):
-        moves.append((dx, dy))
-        return moves
-
-    # -------------------------------------------------
-    # Case 3: same parity/return to even-even, need 3 moves
-    # -------------------------------------------------
-
-    # Decide which axis to split first
-    if (r1 % 2 == 1 and c1 % 2 == 0):
-        # handle x first
-        step_y = dy - (1 if dy >= 0 else -1)
-        moves.append((0, step_y))
-        moves.append((dx, 0))
-        moves.append((0, dy - step_y))  # final ±1
-    else:
-        # handle y first
-        step_x = dx - (1 if dx >= 0 else -1)
-        moves.append((dx - step_x, 0))
-        moves.append((0, dy))
-        moves.append((step_x, 0))  # final ±1
-
-    return moves
+    return [step for step in [(dx, 0), (0, dy)] if step != (0, 0)]
 
 def _shuttle_(
     moving_vectors: list[tuple[int, int]],
@@ -354,6 +294,8 @@ def _shuttle_(
 
             # simulate move
             new_pos = (q2_pos[0] + sx, q2_pos[1] + sy)
+            if not _is_valid_aod_position(new_pos):
+                continue
 
             # compute remaining path length
             route = parity_route_moves(q1_pos, new_pos)
@@ -391,9 +333,15 @@ def _shuttle_(
                 moving_vectors[idx + 1] = (next_vx + vx, next_vy + vy)
             continue
 
-        candidates = [(1, 0), (-1, 0), (0, 1), (0, -1)]
         q1_pos = moving_group_positions[idx]
         q2_pos = (q1_pos[0] + vx, q1_pos[1] + vy)
+        candidates = [
+            step
+            for step in [(1, 0), (-1, 0), (0, 1), (0, -1)]
+            if _is_valid_aod_position((q2_pos[0] + step[0], q2_pos[1] + step[1]))
+        ]
+        if not candidates:
+            raise ValueError("No valid AOD interaction position is available for the greedy step.")
 
         best_step = max(candidates, key=lambda step: score(step, idx))
         best_score = score(best_step, idx)
@@ -428,15 +376,53 @@ def _return_(
     home_positions: list[tuple[int, int]],
     event_log: list[ScheduleEvent],
 ) -> None:
-    """Log return moves for all moving qubits, synchronized when possible."""
+    """Return the complete AOD load through a shared route and simultaneous transfers."""
     if not moving_ids:
         return
     if len(moving_ids) != len(current_positions) or len(moving_ids) != len(home_positions):
         raise ValueError("Return path inputs must have matching lengths.")
 
-    current_position = current_positions[0]
-    home_position = home_positions[0]
-    next_move = parity_route_moves(current_position, home_position)
+    neighbors = [
+        (row_delta, col_delta)
+        for row_delta in (-1, 0, 1)
+        for col_delta in (-1, 0, 1)
+        if (row_delta, col_delta) != (0, 0)
+    ]
+    first_current = current_positions[0]
+    first_home = home_positions[0]
+    candidate_displacements = [
+        (first_home[0] + row_delta - first_current[0], first_home[1] + col_delta - first_current[1])
+        for row_delta, col_delta in neighbors
+    ]
+    candidate_displacements.sort(key=lambda displacement: abs(displacement[0]) + abs(displacement[1]))
+
+    common_displacement = None
+    for displacement in candidate_displacements:
+        valid = True
+        for current_position, home_position in zip(current_positions, home_positions):
+            staged_position = (
+                current_position[0] + displacement[0],
+                current_position[1] + displacement[1],
+            )
+            staged_offset = (
+                staged_position[0] - home_position[0],
+                staged_position[1] - home_position[1],
+            )
+            if staged_offset not in neighbors:
+                valid = False
+                break
+        if valid:
+            common_displacement = displacement
+            break
+
+    if common_displacement is None:
+        raise ValueError("AOD group cannot reach simultaneous unload positions.")
+
+    staged_first = (
+        first_current[0] + common_displacement[0],
+        first_current[1] + common_displacement[1],
+    )
+    next_move = parity_route_moves(first_current, staged_first)
     for step in next_move:
         sx, sy = step
         for atom_i, atom_id in enumerate(moving_ids):
@@ -445,6 +431,17 @@ def _return_(
             event_log.append(("move", atom_id, start, end))
             current_positions[atom_i] = end
         moves.append(step)
+
+    for atom_i, atom_id in enumerate(moving_ids):
+        start = current_positions[atom_i]
+        end = home_positions[atom_i]
+        event_log.append(("move", atom_id, start, end))
+        current_positions[atom_i] = end
+    first_transfer = (
+        home_positions[0][0] - staged_first[0],
+        home_positions[0][1] - staged_first[1],
+    )
+    moves.append(first_transfer)
 
 
 
@@ -459,6 +456,30 @@ def _is_opposite_direction(
     return _vector_alignment_score(group_vectors, candidate_vector) < alignment_conc
 
 
+def _reuse_group_allowed(
+    previous_ids: list[int],
+    current_ids: list[int],
+    reuse_horizon: int | float,
+    stage_index: int,
+    next_use_by_id: dict[int, int],
+) -> bool:
+    """Return whether the complete current AOD load can continue into this stage."""
+    previous_set = set(previous_ids)
+    current_set = set(current_ids)
+    if not previous_set or not current_set or not current_set <= previous_set:
+        return False
+    if reuse_horizon == 0:
+        return current_set == previous_set
+    if reuse_horizon == float("inf"):
+        return True
+
+    for qubit_id in previous_set - current_set:
+        next_use = next_use_by_id.get(qubit_id)
+        if next_use is None or next_use - stage_index > reuse_horizon:
+            return False
+    return True
+
+
 def best_path_for_layer(
     layer_nodes: list[DAGOpNode],
     qubits: list[Qubit],
@@ -467,6 +488,8 @@ def best_path_for_layer(
     Previous_Ids: list[int] | None = None,
     Previous_Positions: list[tuple[int, int]] | None = None,
     current_positions: dict[int, tuple[int, int]] | None = None,
+    stage_index: int = 0,
+    next_use_by_id: dict[int, int] | None = None,
 ) -> tuple[int, Any, list[tuple[int, int]], list[int]]:
     """Group 2Q gates by AOD fit and append grouped gate steps into ``event_log`` in place.
 
@@ -483,6 +506,8 @@ def best_path_for_layer(
         current_positions = {q.id: q.grid_position() for q in qubits}
     max_row_span, max_col_span = _max_grid_spans(config["max_dimension"])
     alignment_conc = float(config.get("alignment_conc", 0.0))
+    reuse_horizon = config.get("T_reuse", 0)
+    next_use_by_id = next_use_by_id or {}
     allow_parallel = bool(config.get("parallel", False))
     moving_groups: list[list[DAGOpNode]] = []
     moving_group_positions: list[list[tuple[int, int]]] = []
@@ -591,12 +616,18 @@ def best_path_for_layer(
             moving_group_vectors.append([default_vec])
             moving_group_qubit_ids.append([default_id])
             used_mover_ids.add(default_id)
-    # If previous mover ids appear as a full group again, process that group first.
+    # Prefer a group that can continue using the existing complete AOD load.
     if Previous_Ids:
         prev_set = set(Previous_Ids)
         front_idx = None
         for gi, group_ids in enumerate(moving_group_qubit_ids):
-            if set(group_ids) == prev_set:
+            if _reuse_group_allowed(
+                Previous_Ids,
+                group_ids,
+                reuse_horizon,
+                stage_index,
+                next_use_by_id,
+            ):
                 front_idx = gi
                 break
         if front_idx is not None and front_idx != 0:
@@ -628,7 +659,13 @@ def best_path_for_layer(
 
         moves = [[0, 0]] #thus is mostly for timing.
         #now to load the AOD with the first move.
-        same_as_previous = bool(prev_set) and set(ordered_ids) == prev_set
+        same_as_previous = bool(prev_set) and _reuse_group_allowed(
+            Previous_Ids,
+            ordered_ids,
+            reuse_horizon,
+            stage_index,
+            next_use_by_id,
+        )
         if not same_as_previous:
             if Previous_Ids and Previous_Positions and len(Previous_Ids) == len(Previous_Positions):
                 prev_ids = [qid for qid in Previous_Ids if qid in qubit_map]
@@ -636,6 +673,19 @@ def best_path_for_layer(
                 prev_home_positions = [qubit_map[qid].grid_position() for qid in prev_ids]
                 if prev_ids:
                     _return_(prev_ids, moves, prev_current_positions, prev_home_positions, event_log)
+                    for atom_id, home_position in zip(prev_ids, prev_home_positions):
+                        current_positions[atom_id] = home_position
+            ordered_positions = [
+                current_positions.get(qid, ordered_positions[i])
+                for i, qid in enumerate(ordered_ids)
+            ]
+            ordered_vectors = []
+            for node, moving_id in zip(ordered_group, ordered_ids):
+                _, _, gate_qubit_ids = op_node_signature(node)
+                partner_id = gate_qubit_ids[0] if gate_qubit_ids[1] == moving_id else gate_qubit_ids[1]
+                moving_position = current_positions.get(moving_id, qubit_map[moving_id].grid_position())
+                partner_position = current_positions.get(partner_id, qubit_map[partner_id].grid_position())
+                ordered_vectors.append(_movement_vector(moving_position, partner_position))
         else:
             prev_pos_by_id = {Previous_Ids[i]: Previous_Positions[i] for i in range(len(Previous_Ids))}
             prev_home_by_id = {qid: qubit_map[qid].grid_position() for qid in Previous_Ids if qid in qubit_map}
@@ -649,6 +699,9 @@ def best_path_for_layer(
                         (vx - offset[0], vy - offset[1]) for vx, vy in ordered_vectors
                     ]
             ordered_positions = [prev_pos_by_id.get(qid, ordered_positions[i]) for i, qid in enumerate(ordered_ids)]
+            retained_ids = [qid for qid in Previous_Ids if qid not in ordered_ids]
+            ordered_ids.extend(retained_ids)
+            ordered_positions.extend(prev_pos_by_id[qid] for qid in retained_ids)
 
         #------------
         #Returned previous group to original positions.
@@ -669,6 +722,8 @@ def best_path_for_layer(
 
         Previous_Positions = ordered_positions[:]
         Previous_Ids = ordered_ids[:]
+        for atom_id, atom_position in zip(ordered_ids, ordered_positions):
+            current_positions[atom_id] = atom_position
 
 
 

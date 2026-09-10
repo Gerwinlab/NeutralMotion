@@ -168,9 +168,11 @@ def _compress_linear_moves(events: list[ScheduleEvent]) -> list[ScheduleEvent]:
     return compressed
 
 
-def _move_batch_key(event: MoveEvent) -> tuple[str, tuple[int, int]]:
+def _move_batch_key(event: MoveEvent) -> tuple[str, tuple[int, int] | None]:
     dx, dy = _delta(event)
     kind = _move_kind(event)
+    if kind in {"load", "unload"}:
+        return kind, None
     return kind, (dx, dy)
 
 

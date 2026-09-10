@@ -9,6 +9,7 @@ from naive_n_dag.grid import Fastsa_Fill, generate_grid, initial_layout_fill, na
 from naive_n_dag.dag_helper import (
     dag_from_txt_auto,
     load_qasm_to_two_qubit_dag_with_single_qubit_context,
+    op_node_signature,
 )
 from naive_n_dag.dynamics import best_path_for_layer
 from naive_n_dag.scheduling import (
@@ -142,6 +143,14 @@ def _validate_required_config(config: Mapping[str, Any]) -> None:
         if alignment_conc < -1 or alignment_conc > 1:
             raise ValueError("alignment_conc must be in [-1, 1].")
 
+    if "T_reuse" in config:
+        reuse_horizon = config["T_reuse"]
+        if isinstance(reuse_horizon, str):
+            if reuse_horizon != "Inf":
+                raise ValueError('T_reuse must be a nonnegative integer or "Inf".')
+        elif not isinstance(reuse_horizon, int) or isinstance(reuse_horizon, bool) or reuse_horizon < 0:
+            raise ValueError('T_reuse must be a nonnegative integer or "Inf".')
+
 
 def main(
     config: Mapping[str, Any],
@@ -166,6 +175,9 @@ def main(
     _validate_required_config(config)
     config = dict(config)
     config.setdefault("alignment_conc", 0.0)
+    config.setdefault("T_reuse", 0)
+    if config["T_reuse"] == "Inf":
+        config["T_reuse"] = float("inf")
     step_order_file = config.get("step_order")
     qasm_path: pathlib.Path | None = None
     source_path: pathlib.Path
@@ -266,6 +278,15 @@ def main(
     previous_positions: list[tuple[int, int]] = []
     previous_ids: list[int] = []
 
+    next_use_by_layer: list[dict[int, int]] = [{} for _ in two_qubit_layers]
+    next_use: dict[int, int] = {}
+    for layer_idx in range(len(two_qubit_layers) - 1, -1, -1):
+        next_use_by_layer[layer_idx] = next_use.copy()
+        for node in two_qubit_layers[layer_idx]["graph"].op_nodes():
+            _, _, qubit_ids = op_node_signature(node)
+            for qubit_id in qubit_ids:
+                next_use[qubit_id] = layer_idx
+
     for layer_idx, twoq_layer in enumerate(two_qubit_layers):
         single_step_lines, single_time = single_qubit_layer_time(
             single_layers[layer_idx],
@@ -287,6 +308,8 @@ def main(
                 Previous_Ids=previous_ids,
                 Previous_Positions=previous_positions,
                 current_positions=current_positions,
+                stage_index=layer_idx,
+                next_use_by_id=next_use_by_layer[layer_idx],
             )
             emitted_timesteps += layer_steps
             time += layer_time
