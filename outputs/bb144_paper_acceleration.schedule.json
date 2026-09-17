@@ -1,0 +1,530 @@
+{
+  "qasm": "/home/gage/Quantum_Class/Phys765/inputs/qasm_files/bb144_bivariate_bicycle_cz.qasm",
+  "qasm_sha256": "9874bfd8a3d30a4c6594f73f779c84d7ba9c42b94253c5e0123608f4d20a67f3",
+  "coords": "/home/gage/Quantum_Class/bb144_coords.json",
+  "config": {
+    "dimensions": [
+      24,
+      12
+    ],
+    "initial_layout": "../qasm_files/bb144_coords.json",
+    "num_NA": 288,
+    "qasm_base_dir": "../qasm_files",
+    "parallel": true,
+    "transfer_SLM_AOD": "15 microseconds",
+    "max_acceleration": "20000 m/s^2",
+    "max_velocity": "10 m/s",
+    "rydberg_radius": "5 micrometers",
+    "average_single_gate_time": "0.1 microseconds",
+    "average_two_gate_time": "0.27 microseconds",
+    "t_switch": "1.5 microseconds",
+    "jerk": "constant",
+    "movement_shape": "trapezoidal",
+    "max_dimension": [
+      24,
+      12
+    ],
+    "fill_strategy": "Given",
+    "alignment_conc": 0,
+    "T_reuse": "Inf"
+  },
+  "operation_counts": {
+    "h": 144,
+    "cz": 864,
+    "z": 432
+  },
+  "validation": "PASS: internal and serialized replay, full per-qubit operation order, original homes",
+  "timing": {
+    "motion_us": 2314.483868517389,
+    "transfer_us": 29.999999999999996,
+    "gate_us": 60.08000000000004,
+    "total_us": 2404.563868517389,
+    "paper_eq3_same_segments_motion_us": 2834.6522478852376,
+    "counts": {
+      "1q_pulses": 11,
+      "transfer_batches": 2,
+      "move_batches": 29,
+      "2q_pulses": 24
+    }
+  },
+  "phases": [
+    {
+      "check_ids": [
+        144,
+        145,
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        152,
+        153,
+        154,
+        155,
+        156,
+        157,
+        158,
+        159,
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        172,
+        173,
+        174,
+        175,
+        176,
+        177,
+        178,
+        179,
+        180,
+        181,
+        182,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192,
+        193,
+        194,
+        195,
+        196,
+        197,
+        198,
+        199,
+        200,
+        201,
+        202,
+        203,
+        204,
+        205,
+        206,
+        207,
+        208,
+        209,
+        210,
+        211,
+        212,
+        213,
+        214,
+        215,
+        216,
+        217,
+        218,
+        219,
+        220,
+        221,
+        222,
+        223,
+        224,
+        225,
+        226,
+        227,
+        228,
+        229,
+        230,
+        231,
+        232,
+        233,
+        234,
+        235,
+        236,
+        237,
+        238,
+        239,
+        240,
+        241,
+        242,
+        243,
+        244,
+        245,
+        246,
+        247,
+        248,
+        249,
+        250,
+        251,
+        252,
+        253,
+        254,
+        255,
+        256,
+        257,
+        258,
+        259,
+        260,
+        261,
+        262,
+        263,
+        264,
+        265,
+        266,
+        267,
+        268,
+        269,
+        270,
+        271,
+        272,
+        273,
+        274,
+        275,
+        276,
+        277,
+        278,
+        279,
+        280,
+        281,
+        282,
+        283,
+        284,
+        285,
+        286,
+        287
+      ],
+      "visits": [
+        {
+          "group": 0,
+          "offset": [
+            36,
+            -2
+          ],
+          "aod_displacement": [
+            36,
+            -1
+          ]
+        },
+        {
+          "group": 1,
+          "offset": [
+            -12,
+            -2
+          ],
+          "aod_displacement": [
+            -12,
+            -1
+          ]
+        },
+        {
+          "group": 2,
+          "offset": [
+            0,
+            -6
+          ],
+          "aod_displacement": [
+            -1,
+            -6
+          ]
+        },
+        {
+          "group": 3,
+          "offset": [
+            0,
+            -10
+          ],
+          "aod_displacement": [
+            -1,
+            -10
+          ]
+        },
+        {
+          "group": 13,
+          "offset": [
+            -2,
+            -12
+          ],
+          "aod_displacement": [
+            -1,
+            -12
+          ]
+        },
+        {
+          "group": 5,
+          "offset": [
+            0,
+            18
+          ],
+          "aod_displacement": [
+            -1,
+            18
+          ]
+        },
+        {
+          "group": 6,
+          "offset": [
+            0,
+            14
+          ],
+          "aod_displacement": [
+            -1,
+            14
+          ]
+        },
+        {
+          "group": 12,
+          "offset": [
+            -2,
+            12
+          ],
+          "aod_displacement": [
+            -1,
+            12
+          ]
+        },
+        {
+          "group": 14,
+          "offset": [
+            -6,
+            0
+          ],
+          "aod_displacement": [
+            -6,
+            1
+          ]
+        },
+        {
+          "group": 15,
+          "offset": [
+            -10,
+            0
+          ],
+          "aod_displacement": [
+            -10,
+            1
+          ]
+        },
+        {
+          "group": 11,
+          "offset": [
+            -34,
+            0
+          ],
+          "aod_displacement": [
+            -34,
+            1
+          ]
+        },
+        {
+          "group": 20,
+          "offset": [
+            42,
+            0
+          ],
+          "aod_displacement": [
+            42,
+            1
+          ]
+        },
+        {
+          "group": 21,
+          "offset": [
+            38,
+            0
+          ],
+          "aod_displacement": [
+            38,
+            1
+          ]
+        },
+        {
+          "group": 4,
+          "offset": [
+            14,
+            0
+          ],
+          "aod_displacement": [
+            14,
+            1
+          ]
+        },
+        {
+          "group": 7,
+          "offset": [
+            2,
+            4
+          ],
+          "aod_displacement": [
+            1,
+            4
+          ]
+        },
+        {
+          "group": 8,
+          "offset": [
+            2,
+            8
+          ],
+          "aod_displacement": [
+            1,
+            8
+          ]
+        },
+        {
+          "group": 16,
+          "offset": [
+            0,
+            14
+          ],
+          "aod_displacement": [
+            1,
+            14
+          ]
+        },
+        {
+          "group": 9,
+          "offset": [
+            2,
+            -20
+          ],
+          "aod_displacement": [
+            1,
+            -20
+          ]
+        },
+        {
+          "group": 10,
+          "offset": [
+            2,
+            -16
+          ],
+          "aod_displacement": [
+            1,
+            -16
+          ]
+        },
+        {
+          "group": 17,
+          "offset": [
+            0,
+            -10
+          ],
+          "aod_displacement": [
+            1,
+            -10
+          ]
+        },
+        {
+          "group": 18,
+          "offset": [
+            4,
+            2
+          ],
+          "aod_displacement": [
+            4,
+            1
+          ]
+        },
+        {
+          "group": 19,
+          "offset": [
+            8,
+            2
+          ],
+          "aod_displacement": [
+            8,
+            1
+          ]
+        },
+        {
+          "group": 22,
+          "offset": [
+            -44,
+            2
+          ],
+          "aod_displacement": [
+            -44,
+            1
+          ]
+        },
+        {
+          "group": 23,
+          "offset": [
+            -40,
+            2
+          ],
+          "aod_displacement": [
+            -40,
+            1
+          ]
+        }
+      ],
+      "motion_us": 2314.483868517389,
+      "group_sizes": [
+        18,
+        54,
+        60,
+        48,
+        54,
+        12,
+        24,
+        60,
+        48,
+        12,
+        24,
+        18,
+        36,
+        36,
+        66,
+        60,
+        36,
+        36,
+        66,
+        60,
+        6,
+        12,
+        6,
+        12
+      ],
+      "predecessor_masks": [
+        0,
+        0,
+        3,
+        4,
+        72,
+        3,
+        36,
+        2064,
+        128,
+        2064,
+        640,
+        72,
+        72,
+        8,
+        12288,
+        16384,
+        2130176,
+        2131200,
+        196608,
+        262144,
+        12288,
+        1064960,
+        196608,
+        4456448
+      ]
+    }
+  ],
+  "candidate_us": {
+    "separate_check_loads": 2985.8430476799995,
+    "combined_check_load": 2404.56386851739
+  },
+  "circuit_audit": {
+    "measurement_count": 0,
+    "odd_overlap_X_Z_check_pairs": 1296,
+    "warning": "Treating the labeled X/Z neighborhoods as CSS checks gives odd overlaps; this QASM is not the paper's stabilizer measurement round. The supplied operations are preserved."
+  },
+  "paper_comparison": "Eq. (3), PDF p. 6: sqrt(6*distance_um/0.02) per axis. The paper's 2.97 ms is a different circuit/layout/routing and motion model. Retiming these same segments is a comparison, not a reproduction of that result.",
+  "optimality_scope": "Minimum motion within the enumerated separate/combined rigid check-load tours, one visit per displacement group and all input wire-order constraints; not global scheduling optimality. Gate pulse overhead does not enter the tour optimization."
+}
