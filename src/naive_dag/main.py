@@ -8,8 +8,8 @@ from typing import Any, Mapping
 from .dag_helper import load_qasm_to_gate_dag
 from .grid import generate_grid
 from .grid import naive_fill
-from .dynamics import best_path_for_gate, find_next_two_qubit_gate
-from .scheduling import collect_single_qubit_gate_block, write_timed_schedule
+from .dynamics import schedule_circuit
+from .scheduling import write_timed_schedule
 
 #TODO: Add backend for qiskit such that users can write a another json file that specifies duration of gates.
 PathLike = str | pathlib.Path
@@ -124,31 +124,13 @@ def main(
     grid = generate_grid(dims,config["rydberg_radius"])
     fill_seed = seed if seed is not None else 0
     qubits = naive_fill(grid,num_na,fill_seed,True)
-    #------------
-    #starting the scheduling pipeline
-    #------------
-    time = 0 * (config["max_velocity"] / config["max_acceleration"]).units
-    T = 0
-    event_log: list[tuple] = []
-    i = 0
-    leading_one_qubit_layers, first_two_qubit_index, leading_layer_counts = collect_single_qubit_gate_block(qc, 0)
-    for layer_line in leading_one_qubit_layers:
-        event_log.append(("gate", layer_line))
-        T += 1
-    for layer_count in leading_layer_counts:
-        time += layer_count * (config["average_single_gate_time"] + config["t_switch"])
-    i = first_two_qubit_index
-    while i < len(qc):
-        if len(qc[i].qargs) != 2:
-            i += 1
-            continue
-        t, T, gate_events = best_path_for_gate(qc, i, qubits, grid, config, T)
-        time += t
-        event_log.extend(gate_events)
-        next_two_qubit = find_next_two_qubit_gate(qc, i)
-        if next_two_qubit is None:
-            break
-        i = next_two_qubit
+    # Candidates use independent placement objects, preserving the true initialization.
+    schedule = schedule_circuit(qc, qubits, config)
+    time, event_log = schedule.duration, schedule.events
+    if not quiet:
+        print(f"selected_schedule={schedule.selected}")
+        for name, duration in schedule.candidate_times.items():
+            print(f"candidate_{name}_time={duration.to('microseconds')}")
 
     if schedule_output_dir is None:
         warnings.warn(

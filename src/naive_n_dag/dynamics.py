@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import math
-from collections import deque
+import re
+from collections import defaultdict
+from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 from qiskit.dagcircuit.dagnode import DAGOpNode
 
-from .dag_helper import format_gate_line, op_node_signature
+from .dag_helper import format_node_line, op_node_signature
 from .grid import Qubit
 
+#TODO: Make sure to separate two-qubit pulse based on rydberg radius so there is no conflicts.
 
 MoveEvent = tuple[str, int, tuple[int, int], tuple[int, int]]
 GateEvent = tuple[str, str]
@@ -113,666 +117,690 @@ def _sort_group_by_alignment(vectors: list[tuple[int, int]]) -> list[int]:
     return order
 
 
-def _reduce_vectors_for_start(vectors: list[tuple[int, int]], move: tuple[int, int]) -> list[tuple[int, int]]:
-    """When starting from (0,0), convert vectors into successive differences."""
-    if move != (0, 0) or not vectors:
-        return vectors[:]
-
-    reduced = [vectors[0]]
-    for idx in range(1, len(vectors)):
-        prev_x, prev_y = vectors[idx - 1]
-        cur_x, cur_y = vectors[idx]
-        reduced.append((cur_x - prev_x, cur_y - prev_y))
-    return reduced
+@lru_cache(maxsize=8192)
+def _profile_seconds(distance: float, velocity: float, acceleration: float) -> float:
+    if distance == 0:
+        return 0.0
+    ramp_distance = velocity * velocity / acceleration
+    if distance > ramp_distance:
+        return 2 * velocity / acceleration + (distance - ramp_distance) / velocity
+    return 2 * math.sqrt(distance / acceleration)
 
 
-def _start_(
-    moving_vectors: list[tuple[int, int]],
-    moves: list[tuple[int, int]],
-    moving_ids: list[int],
-    origin_positions: list[tuple[int, int]],
-    event_log: list,
-) -> list[tuple[int, int]]:
-    """Load atoms onto adjacent AOD sites or choose a shared first move."""
-
-    reduced_vectors = _reduce_vectors_for_start(moving_vectors, (0, 0))
-    if origin_positions[0][0] % 2 == 1 or origin_positions[0][1] % 2 == 1:
-        return reduced_vectors
-
-    candidates = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
-
-    def score(step):
-        sx, sy = step
-        new_vectors = [(vx - sx, vy - sy) for vx, vy in moving_vectors]
-        count = 0
-        seen_nonzero = False
-        for i, (vx, vy) in enumerate(new_vectors):
-            if (vx, vy) != (0, 0):
-                if seen_nonzero:
-                    break
-                seen_nonzero = True
-            if i != 0 and abs(vx) + abs(vy) == 1:
-                count += 1
-        return count
-
-    if len(reduced_vectors) == 1:
-        dx, dy = reduced_vectors[0]
-        if abs(dx) > abs(dy):
-            transfer_step = (1 if dx > 0 else -1, 0)
-        elif dy != 0:
-            transfer_step = (0, 1 if dy > 0 else -1)
-        else:
-            transfer_step = (1, 0)
-    else:
-        transfer_step = max(candidates, key=score)
-        r0, c0 = origin_positions[0]
-        if (r0 % 2 == 0) and (c0 % 2 == 0):
-            vx, vy = reduced_vectors[0]
-            if abs(vx) > abs(vy):
-                preferred = (1 if vx > 0 else -1, 0)
-            elif vy != 0:
-                preferred = (0, 1 if vy > 0 else -1)
-            else:
-                preferred = (1, 0)
-            if score(preferred) >= score(transfer_step):
-                transfer_step = preferred
-
-    dx, dy = transfer_step
-    for i, (r, c) in enumerate(origin_positions):
-        start = (r, c)
-        end = (r + dx, c + dy)
-        origin_positions[i] = end
-        if i == 0:
-            vx, vy = reduced_vectors[i]
-            reduced_vectors[i] = (vx - dx, vy - dy)
-        event_log.append(("move", moving_ids[i], start, end))
-
-    moves.append(transfer_step)
-    return reduced_vectors
+def _step_seconds(step, config):
+    spacing, velocity, acceleration = config.get("_motion_parameters") or _motion_parameters(config)
+    return _profile_seconds(math.hypot(*step) * spacing, velocity, acceleration)
 
 
-def parity_route_moves(
-    start: tuple[int, int],
-    end: tuple[int, int],
-) -> list[tuple[int, int]]:
-    """Return axis-aligned AOD moves that avoid even-even positions."""
+def _motion_parameters(config):
+    return (
+        config["rydberg_radius"].to("meter").magnitude / 2,
+        config["max_velocity"].to("meter/second").magnitude,
+        config["max_acceleration"].to("meter/second^2").magnitude,
+    )
 
-    r1, c1 = start
-    r2, c2 = end
 
-    dx = r2 - r1
-    dy = c2 - c1
+def _highway_segment(start, end):
+    """Check the whole straight segment, including interior SLM sites."""
+    if not (_is_valid_aod_position(start) and _is_valid_aod_position(end)):
+        return False
+    dr, dc = _movement_vector(start, end)
+    if dr and dc:
+        return False
+    return (not dr or start[1] % 2 == 1) and (not dc or start[0] % 2 == 1)
 
+
+def parity_route_moves(start, end, config=None):
+    """Route between AOD sites along odd rows/columns, as displacements.
+
+    Compare paths through adjacent odd-odd intersections. A same-row shortcut
+    is legal only on an odd row (similarly for an odd column).
+    """
+    if not (_is_valid_aod_position(start) and _is_valid_aod_position(end)):
+        raise ValueError("Highway route endpoints must be AOD sites.")
     if start == end:
         return []
-    if r1 == r2:
-        return [(0, dy)]
-    if c1 == c2:
-        return [(dx, 0)]
 
-    def is_odd_odd(position):
-        return position[0] % 2 == 1 and position[1] % 2 == 1
+    def intersections(point):
+        r, c = point
+        if r % 2 and c % 2:
+            return [point]
+        if r % 2:
+            return [(r, c - 1), (r, c + 1)]
+        return [(r - 1, c), (r + 1, c)]
 
-    corners = [((r1, c2), [(0, dy), (dx, 0)]), ((r2, c1), [(dx, 0), (0, dy)])]
-    for corner, route in corners:
-        if is_odd_odd(corner):
-            return [step for step in route if step != (0, 0)]
-
-    if r1 % 2 == 0 and c1 % 2 == 1:
-        first_row_step = 1 if dx > 0 else -1
-        return [
-            (first_row_step, 0),
-            (0, dy),
-            (dx - first_row_step, 0),
-        ]
-    if r1 % 2 == 1 and c1 % 2 == 0:
-        first_col_step = 1 if dy > 0 else -1
-        return [
-            (0, first_col_step),
-            (dx, 0),
-            (0, dy - first_col_step),
-        ]
-
-    return [step for step in [(dx, 0), (0, dy)] if step != (0, 0)]
-
-def _shuttle_(
-    moving_vectors: list[tuple[int, int]],
-    moves: list[tuple[int, int]],
-    moving_ids: list[int],
-    moving_group_positions: list[tuple[int, int]],
-    gate_nodes: list,
-    event_log: list,
-) -> None:
-    """Route all movers toward targets while prioritizing parallel-ready states."""
-
-    # -------------------------------------------------
-    # Score: stop after FIRST non-(0,0), inclusive
-    # -------------------------------------------------
-    def score(step, idx):
-        """Score = number of vectors (excluding idx) that become |v|=1,
-        starting from idx and stopping after first non-(0,0) (inclusive)."""
-        
-        sx, sy = step
-        new_vectors = [(vx - sx, vy - sy) for vx, vy in moving_vectors]
-
-        count = 0
-        seen_nonzero = False
-
-        for i in range(idx, len(new_vectors)):
-            vx, vy = new_vectors[i]
-
-            if (vx, vy) != (0, 0):
-                if seen_nonzero:
-                    break  # already processed first non-zero → stop
-                seen_nonzero = True
-
-            if i != idx and (abs(vx) + abs(vy) == 1):
-                count += 1
-
-        return count
-
-    # -------------------------------------------------
-    # Greedy step (your simplified routing logic)
-    # -------------------------------------------------
-    def greedy_step(idx):
-        """
-        Choose the best unit step for mover `idx` by minimizing
-        remaining parity-route length.
-        """
-
-        q1_pos = moving_group_positions[idx]
-        vx, vy = moving_vectors[idx]
-        q2_pos = (q1_pos[0] + vx, q1_pos[1] + vy)
-
-        candidates = [(1, 0), (-1, 0), (0, 1), (0, -1)]
-
-        best_step = None
-        best_cost = float("inf")
-
-        for step in candidates:
-            sx, sy = step
-
-            # simulate move
-            new_pos = (q2_pos[0] + sx, q2_pos[1] + sy)
-            if not _is_valid_aod_position(new_pos):
-                continue
-
-            # compute remaining path length
-            route = parity_route_moves(q1_pos, new_pos)
-            cost = len(route)
-
-            if cost < best_cost:
-                best_cost = cost
-                best_step = step
-
-        return best_step
-
-    # -------------------------------------------------
-    # Main loop
-    # -------------------------------------------------
-    for idx, (vx, vy) in enumerate(moving_vectors):
-        if (vx, vy) == (0,0):
-            if idx < len(gate_nodes):
-                gate_name, gate_params, qubit_ids = op_node_signature(gate_nodes[idx])
-                gate_line = format_gate_line(gate_name, gate_params, qubit_ids)
-                if event_log and event_log[-1][0] == "gate":
-                    event_log[-1] = ("gate", f"{event_log[-1][1]} {gate_line}")
-                else:
-                    event_log.append(("gate", gate_line))
-            continue
-        if (vx, vy) in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-            if idx < len(gate_nodes):
-                gate_name, gate_params, qubit_ids = op_node_signature(gate_nodes[idx])
-                gate_line = format_gate_line(gate_name, gate_params, qubit_ids)
-                if event_log and event_log[-1][0] == "gate":
-                    event_log[-1] = ("gate", f"{event_log[-1][1]} {gate_line}")
-                else:
-                    event_log.append(("gate", gate_line))
-            if idx + 1 < len(moving_vectors):
-                next_vx, next_vy = moving_vectors[idx + 1]
-                moving_vectors[idx + 1] = (next_vx + vx, next_vy + vy)
-            continue
-
-        q1_pos = moving_group_positions[idx]
-        q2_pos = (q1_pos[0] + vx, q1_pos[1] + vy)
-        candidates = [
-            step
-            for step in [(1, 0), (-1, 0), (0, 1), (0, -1)]
-            if _is_valid_aod_position((q2_pos[0] + step[0], q2_pos[1] + step[1]))
-        ]
-        if not candidates:
-            raise ValueError("No valid AOD interaction position is available for the greedy step.")
-
-        best_step = max(candidates, key=lambda step: score(step, idx))
-        best_score = score(best_step, idx)
-        # fallback if no parallel benefit
-        if best_score == 0:
-            best_step = greedy_step(idx)
-        
-        new_pos = (q2_pos[0] + best_step[0], q2_pos[1] + best_step[1])
-        if idx + 1 < len(moving_vectors):
-                next_vx, next_vy = moving_vectors[idx + 1]
-                moving_vectors[idx + 1] = (next_vx - best_step[0], next_vy - best_step[1])
-        next_move = parity_route_moves(q1_pos, new_pos)
-        for step in next_move:
-            sx, sy = step
-            for atom_i, atom_id in enumerate(moving_ids):
-                start = moving_group_positions[atom_i]
-                end = (start[0] + sx, start[1] + sy)
-                event_log.append(("move", atom_id, start, end))
-                moving_group_positions[atom_i] = end
-            moves.append(step)
-
-        if idx < len(gate_nodes):
-            gate_name, gate_params, qubit_ids = op_node_signature(gate_nodes[idx])
-            gate_line = format_gate_line(gate_name, gate_params, qubit_ids)
-            event_log.append(("gate", gate_line))
+    routes = []
+    if _highway_segment(start, end):
+        routes.append([_movement_vector(start, end)])
+    for first in intersections(start):
+        for last in intersections(end):
+            for corner in [(first[0], last[1]), (last[0], first[1])]:
+                points = [start, first, corner, last, end]
+                route = []
+                for a, b in zip(points, points[1:]):
+                    step = _movement_vector(a, b)
+                    if step == (0, 0):
+                        continue
+                    if route and (
+                        (route[-1][0] * step[0] > 0 and route[-1][1] == step[1] == 0)
+                        or (route[-1][1] * step[1] > 0 and route[-1][0] == step[0] == 0)
+                    ):
+                        route[-1] = (route[-1][0] + step[0], route[-1][1] + step[1])
+                    else:
+                        route.append(step)
+                routes.append(route)
+    def key(route):
+        cost = sum(_step_seconds(step, config) for step in route) if config else sum(
+            abs(dr) + abs(dc) for dr, dc in route
+        )
+        return cost, len(route), tuple(route)
+    return min(routes, key=key)
 
 
-def _return_(
-    moving_ids: list[int],
-    moves: list[tuple[int, int]],
-    current_positions: list[tuple[int, int]],
-    home_positions: list[tuple[int, int]],
-    event_log: list[ScheduleEvent],
-) -> None:
-    """Return the complete AOD load through a shared route and simultaneous transfers."""
-    if not moving_ids:
+_CARDINAL = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+
+def _translate(ids, positions, step, events, moves):
+    """Apply and record one shared displacement; positions are mutable copies."""
+    if step == (0, 0):
         return
-    if len(moving_ids) != len(current_positions) or len(moving_ids) != len(home_positions):
-        raise ValueError("Return path inputs must have matching lengths.")
+    dr, dc = step
+    for i, qid in enumerate(ids):
+        start = positions[i]
+        end = (start[0] + dr, start[1] + dc)
+        events.append(("move", qid, start, end))
+        positions[i] = end
+    moves.append(step)
 
-    neighbors = [
-        (row_delta, col_delta)
-        for row_delta in (-1, 0, 1)
-        for col_delta in (-1, 0, 1)
-        if (row_delta, col_delta) != (0, 0)
+
+def _start_(vectors, moves, ids, positions, events):
+    """Load a home group by a shared cardinal displacement, or retain its load."""
+    if not ids:
+        return vectors[:]
+    if _is_valid_aod_position(positions[0]):
+        if not all(_is_valid_aod_position(p) for p in positions):
+            raise ValueError("An AOD load cannot mix loaded and trapped atoms.")
+        return vectors[:]
+    if any(_is_valid_aod_position(p) for p in positions):
+        raise ValueError("A new load must start entirely in SLM traps.")
+    first = vectors[0]
+    step = min(_CARDINAL, key=lambda d: math.hypot(first[0] - d[0], first[1] - d[1]))
+    _translate(ids, positions, step, events, moves)
+    return [(dr - step[0], dc - step[1]) for dr, dc in vectors]
+
+
+def _gate_parts(line):
+    for statement in line.split(";"):
+        statement = statement.strip()
+        if statement:
+            ids = tuple(map(int, re.findall(r"q\[(\d+)\]", statement)))
+            pulse = statement.split(" q[", 1)[0]
+            yield statement + ";", pulse, ids
+
+
+def _append_gate(events, node):
+    line = format_node_line(node)
+    _, pulse, ids = next(_gate_parts(line))
+    if events and events[-1][0] == "gate":
+        previous = list(_gate_parts(events[-1][1]))
+        if all(p == pulse and not set(qs) & set(ids) for _, p, qs in previous):
+            events[-1] = ("gate", events[-1][1] + " " + line)
+            return
+    events.append(("gate", line))
+
+
+def _shuttle_(vectors, moves, ids, positions, nodes, events, config):
+    """Follow gate targets using actual positions and shared displacements.
+
+    vectors are partner-minus-mover at entry, not differences of successive
+    target vectors. Targets remain stationary throughout this legal AOD load.
+    """
+    targets = [
+        (positions[i][0] + dr, positions[i][1] + dc)
+        for i, (dr, dc) in enumerate(vectors)
     ]
-    first_current = current_positions[0]
-    first_home = home_positions[0]
-    candidate_displacements = [
-        (first_home[0] + row_delta - first_current[0], first_home[1] + col_delta - first_current[1])
-        for row_delta, col_delta in neighbors
-    ]
-    candidate_displacements.sort(key=lambda displacement: abs(displacement[0]) + abs(displacement[1]))
+    loaded = set(ids)
+    for i, node in enumerate(nodes):
+        gate_ids = op_node_signature(node)[2]
+        if len(set(gate_ids) & loaded) != 1 or ids[i] not in gate_ids:
+            raise ValueError("Each interaction must have exactly one loaded operand.")
+        target = targets[i]
+        if _is_valid_aod_position(target):
+            raise ValueError("The interaction partner must remain in an SLM trap.")
+        current = positions[i]
+        if sum(abs(v) for v in _movement_vector(current, target)) != 1:
+            options = []
+            for dr, dc in _CARDINAL:
+                end = (target[0] + dr, target[1] + dc)
+                route = parity_route_moves(current, end, config)
+                displacement = _movement_vector(current, end)
+                ready = sum(
+                    abs(targets[j][0] - positions[j][0] - displacement[0])
+                    + abs(targets[j][1] - positions[j][1] - displacement[1]) == 1
+                    for j in range(i + 1, len(nodes))
+                )
+                options.append((sum(_step_seconds(s, config) for s in route), -ready, route))
+            route = min(options, key=lambda option: (option[0], option[1], tuple(option[2])))[2]
+            for step in route:
+                _translate(ids, positions, step, events, moves)
+        if sum(abs(v) for v in _movement_vector(positions[i], target)) != 1:
+            raise ValueError("Attempted to emit a gate outside interaction separation.")
+        _append_gate(events, node)
 
-    common_displacement = None
-    for displacement in candidate_displacements:
-        valid = True
-        for current_position, home_position in zip(current_positions, home_positions):
-            staged_position = (
-                current_position[0] + displacement[0],
-                current_position[1] + displacement[1],
+
+def _return_(ids, moves, positions, homes, events, config):
+    """Return the complete rigid AOD load to its own homes and unload once."""
+    if not ids:
+        return
+    if not (len(ids) == len(positions) == len(homes)):
+        raise ValueError("Return inputs must have matching lengths.")
+    offsets = {_movement_vector(home, pos) for home, pos in zip(homes, positions)}
+    if len(offsets) != 1:
+        raise ValueError("Loaded atoms do not have a common displacement from home.")
+    if positions == homes:
+        return
+    options = []
+    for dr, dc in _CARDINAL:
+        end = (homes[0][0] + dr, homes[0][1] + dc)
+        route = parity_route_moves(positions[0], end, config)
+        route = route + [(-dr, -dc)]
+        options.append(route)
+    route = min(options, key=lambda steps: (
+        sum(_step_seconds(s, config) for s in steps), len(steps), tuple(steps)
+    ))
+    for step in route:
+        _translate(ids, positions, step, events, moves)
+    if positions != homes:
+        raise ValueError("Return failed to restore home positions.")
+
+
+def _event_batches(events):
+    """Use exactly the movement compression/batching used by the text writer."""
+    from .scheduling import _compress_linear_moves, _move_batch_key
+    event_list = _compress_linear_moves(list(events))
+    i = 0
+    while i < len(event_list):
+        first = event_list[i]
+        i += 1
+        batch = [first]
+        if first[0] == "move":
+            key = _move_batch_key(first)
+            used = {first[1]}
+            while i < len(event_list):
+                nxt = event_list[i]
+                if nxt[0] != "move" or _move_batch_key(nxt) != key or nxt[1] in used:
+                    break
+                batch.append(nxt)
+                used.add(nxt[1])
+                i += 1
+        yield batch
+
+
+def schedule_duration(events, config):
+    """One common duration model for optimized, reset, and baseline schedules."""
+    seconds = 0.0
+    transfers = 0
+    one_pulses = two_pulses = 0
+    for batch in _event_batches(events):
+        first = batch[0]
+        if first[0] == "gate":
+            pulses = {(pulse, len(ids)) for _, pulse, ids in _gate_parts(first[1])}
+            for _, arity in pulses:
+                if arity == 1:
+                    one_pulses += 1
+                elif arity == 2:
+                    two_pulses += 1
+                else:
+                    raise ValueError("Only one- and two-qubit pulses are supported.")
+        else:
+            seconds += max(_step_seconds(_movement_vector(e[2], e[3]), config) for e in batch)
+            transfers += int(
+                not _is_valid_aod_position(first[2]) or not _is_valid_aod_position(first[3])
             )
-            staged_offset = (
-                staged_position[0] - home_position[0],
-                staged_position[1] - home_position[1],
-            )
-            if staged_offset not in neighbors:
-                valid = False
-                break
-        if valid:
-            common_displacement = displacement
-            break
-
-    if common_displacement is None:
-        raise ValueError("AOD group cannot reach simultaneous unload positions.")
-
-    staged_first = (
-        first_current[0] + common_displacement[0],
-        first_current[1] + common_displacement[1],
+    return (
+        seconds * config["t_switch"].to("seconds").units
+        + transfers * config["transfer_SLM_AOD"]
+        + one_pulses * (config["average_single_gate_time"] + config["t_switch"])
+        + two_pulses * (config["average_two_gate_time"] + config["t_switch"])
     )
-    next_move = parity_route_moves(first_current, staged_first)
-    for step in next_move:
-        sx, sy = step
-        for atom_i, atom_id in enumerate(moving_ids):
-            start = current_positions[atom_i]
-            end = (start[0] + sx, start[1] + sy)
-            event_log.append(("move", atom_id, start, end))
-            current_positions[atom_i] = end
-        moves.append(step)
-
-    for atom_i, atom_id in enumerate(moving_ids):
-        start = current_positions[atom_i]
-        end = home_positions[atom_i]
-        event_log.append(("move", atom_id, start, end))
-        current_positions[atom_i] = end
-    first_transfer = (
-        home_positions[0][0] - staged_first[0],
-        home_positions[0][1] - staged_first[1],
-    )
-    moves.append(first_transfer)
 
 
+@dataclass
+class _Plan:
+    positions: dict[int, tuple[int, int]]
+    ids: list[int]
+    events: list[ScheduleEvent]
+    reused_groups: int = 0
 
-def _is_opposite_direction(
-    group_vectors: list[tuple[int, int]],
-    candidate_vector: tuple[int, int],
-    alignment_conc: float,
-) -> bool:
-    """Return True when candidate movement is below the configured alignment threshold."""
-    if not group_vectors:
+    def copy(self):
+        return _Plan(dict(self.positions), list(self.ids), list(self.events), self.reused_groups)
+
+
+def _return_plan(plan, homes, config):
+    if plan.ids:
+        positions = [plan.positions[q] for q in plan.ids]
+        _return_(plan.ids, [], positions, [homes[q] for q in plan.ids], plan.events, config)
+        plan.positions.update(zip(plan.ids, positions))
+        plan.ids = []
+
+
+def _reuse_group_allowed(previous_ids, current_ids, horizon, stage_index, next_use_by_id):
+    previous, current = set(previous_ids), set(current_ids)
+    if not previous or not current or not current <= previous:
         return False
-    return _vector_alignment_score(group_vectors, candidate_vector) < alignment_conc
-
-
-def _reuse_group_allowed(
-    previous_ids: list[int],
-    current_ids: list[int],
-    reuse_horizon: int | float,
-    stage_index: int,
-    next_use_by_id: dict[int, int],
-) -> bool:
-    """Return whether the complete current AOD load can continue into this stage."""
-    previous_set = set(previous_ids)
-    current_set = set(current_ids)
-    if not previous_set or not current_set or not current_set <= previous_set:
-        return False
-    if reuse_horizon == 0:
-        return current_set == previous_set
-    if reuse_horizon == float("inf"):
+    # Compatibility: zero still permits identical-set continuation.
+    if horizon == 0:
+        return current == previous
+    if horizon == float("inf") or horizon == "Inf":
         return True
+    return all(
+        q in next_use_by_id and next_use_by_id[q] - stage_index <= horizon
+        for q in previous - current
+    )
 
-    for qubit_id in previous_set - current_set:
-        next_use = next_use_by_id.get(qubit_id)
-        if next_use is None or next_use - stage_index > reuse_horizon:
-            return False
-    return True
+
+def _reuse_movers(nodes, previous_ids):
+    """Single legality predicate used for both reuse selection and execution."""
+    previous = set(previous_ids)
+    movers = []
+    for node in nodes:
+        operands = set(op_node_signature(node)[2])
+        loaded = operands & previous
+        if len(operands) != 2 or len(loaded) != 1:
+            return None
+        movers.append(next(iter(loaded)))
+    return movers
+
+
+def _build_groups(nodes, positions, config):
+    """Group only in the state that will actually be used after a reset."""
+    groups = []
+    spans = _max_grid_spans(config["max_dimension"])
+    for node in nodes:
+        pair = op_node_signature(node)[2]
+        if len(pair) != 2:
+            raise ValueError("A two-qubit layer must contain only two-qubit gates.")
+        choices = [(q, _movement_vector(positions[q], positions[pair[1 - i]])) for i, q in enumerate(pair)]
+        placed = False
+        if config.get("parallel", False):
+            for group, movers, vectors in groups:
+                fits = [
+                    (q, vector) for q, vector in choices
+                    if _fits_same_aod([positions[m] for m in movers], positions[q], *spans)
+                    and _vector_alignment_score(vectors, vector) >= config.get("alignment_conc", 0)
+                ]
+                if fits:
+                    q, vector = max(fits, key=lambda item: _vector_alignment_score(vectors, item[1]))
+                    group.append(node)
+                    movers.append(q)
+                    vectors.append(vector)
+                    placed = True
+                    break
+        if not placed:
+            q, vector = choices[0]
+            groups.append(([node], [q], [vector]))
+    return [(group, movers) for group, movers, _ in groups]
+
+
+def _execute_group(plan, nodes, movers, config, reuse=False):
+    if reuse:
+        if _reuse_movers(nodes, plan.ids) != movers:
+            raise ValueError("Cannot reuse an AOD load containing both interacting operands.")
+    elif plan.ids:
+        raise ValueError("A new group requires the preceding load to be returned.")
+    vectors = []
+    for node, mover in zip(nodes, movers):
+        pair = op_node_signature(node)[2]
+        partner = pair[1] if pair[0] == mover else pair[0]
+        vectors.append(_movement_vector(plan.positions[mover], plan.positions[partner]))
+    order = _sort_group_by_alignment(vectors)
+    nodes = [nodes[i] for i in order]
+    ids = [movers[i] for i in order]
+    vectors = [vectors[i] for i in order]
+    ids.extend(q for q in plan.ids if q not in ids)
+    positions = [plan.positions[q] for q in ids]
+    moves = []
+    vectors = _start_(vectors, moves, ids, positions, plan.events)
+    _shuttle_(vectors, moves, ids, positions, nodes, plan.events, config)
+    plan.positions.update(zip(ids, positions))
+    plan.ids = ids
+    plan.reused_groups += int(reuse)
+
+
+def _reset_layer(plan, nodes, homes, config):
+    if not nodes:
+        return
+    _return_plan(plan, homes, config)
+    # All grouping decisions now see the state after the proposed return.
+    for group, movers in _build_groups(nodes, plan.positions, config):
+        _return_plan(plan, homes, config)
+        _execute_group(plan, group, movers, config)
+
+
+def _closed_cost(plan, homes, config):
+    ending = _Plan(dict(plan.positions), list(plan.ids), [])
+    _return_plan(ending, homes, config)
+    return schedule_duration(plan.events + ending.events, config)
+
+
+def _plan_layer(nodes, initial, homes, config, stage, next_use, allow_reuse=True):
+    reset = initial.copy()
+    _reset_layer(reset, nodes, homes, config)
+    if not allow_reuse or not initial.ids or not nodes:
+        return reset
+    # Gates in a DAG layer are disjoint. Only gates with one loaded operand
+    # can precede a reset; AOD-AOD gates remain in the reset portion.
+    eligible = [n for n in nodes if _reuse_movers([n], initial.ids) is not None]
+    if not config.get("parallel", False):
+        eligible = eligible[:1]
+    movers = _reuse_movers(eligible, initial.ids)
+    if not movers or not _reuse_group_allowed(
+        initial.ids, movers, config.get("T_reuse", 0), stage, next_use
+    ):
+        return reset
+    reuse = initial.copy()
+    _execute_group(reuse, eligible, movers, config, reuse=True)
+    selected = {id(n) for n in eligible}
+    _reset_layer(reuse, [n for n in nodes if id(n) not in selected], homes, config)
+    # Compare equal endpoints (all atoms at home). The closure is a cost-to-go
+    # estimate, not prematurely committed: the next layer can still reuse.
+    return reuse if _closed_cost(reuse, homes, config) < _closed_cost(reset, homes, config) else reset
 
 
 def best_path_for_layer(
-    layer_nodes: list[DAGOpNode],
-    qubits: list[Qubit],
-    config: dict[str, Any],
-    event_log: list[ScheduleEvent],
-    Previous_Ids: list[int] | None = None,
-    Previous_Positions: list[tuple[int, int]] | None = None,
-    current_positions: dict[int, tuple[int, int]] | None = None,
-    stage_index: int = 0,
-    next_use_by_id: dict[int, int] | None = None,
-) -> tuple[int, Any, list[tuple[int, int]], list[int]]:
-    """Group 2Q gates by AOD fit and append grouped gate steps into ``event_log`` in place.
-
-    One atom per gate is selected as the moving candidate based on AOD fit and movement
-    vector compatibility with existing atoms already assigned to a moving group.
-    Returns the number of emitted gate timesteps and time contribution.
-    """
-    if not layer_nodes:
-        zero_time = 0 * (config["average_two_gate_time"] + config["t_switch"])
-        return 0, zero_time, [], []
-
-    qubit_map = {q.id: q for q in qubits}
-    if current_positions is None:
-        current_positions = {q.id: q.grid_position() for q in qubits}
-    max_row_span, max_col_span = _max_grid_spans(config["max_dimension"])
-    alignment_conc = float(config.get("alignment_conc", 0.0))
-    reuse_horizon = config.get("T_reuse", 0)
-    next_use_by_id = next_use_by_id or {}
-    allow_parallel = bool(config.get("parallel", False))
-    moving_groups: list[list[DAGOpNode]] = []
-    moving_group_positions: list[list[tuple[int, int]]] = []
-    moving_group_vectors: list[list[tuple[int, int]]] = []
-    moving_group_qubit_ids: list[list[int]] = []
-    used_mover_ids: set[int] = set()
-    movement_time = 0 * (config["average_two_gate_time"] + config["t_switch"])
-    last_group_ordered_positions: list[tuple[int, int]] = []
-    last_group_ordered_ids: list[int] = []
-    # For each 2Q gate, attempt to fit it into an existing moving group based on AOD fit and movement vector compatibility.
-    # If it doesn't fit in any existing group, start a new group with one of the atoms as the mover.
-    # If multiple fit candidates exist for a group, prefer those that are parallel and similar in magnitude to existing group vectors.
-    for node in layer_nodes:
-        _, _, qubit_ids = op_node_signature(node)
-        if len(qubit_ids) != 2:
-            continue
-
-        q0_id, q1_id = qubit_ids
-        if q0_id not in qubit_map:
-            raise ValueError(f"Qubit id {q0_id} from DAG not found in placed qubits.")
-        if q1_id not in qubit_map:
-            raise ValueError(f"Qubit id {q1_id} from DAG not found in placed qubits.")
-
-        q0_pos = current_positions.get(q0_id, qubit_map[q0_id].grid_position())
-        q1_pos = current_positions.get(q1_id, qubit_map[q1_id].grid_position())
-        if not allow_parallel:
-            # Sequential mode: one mover per gate group.
-            if (q0_pos[0] % 2 != 0) or (q0_pos[1] % 2 != 0):
-                default_id = q0_id
-                default_pos = q0_pos
-                default_vec = _movement_vector(q0_pos, q1_pos)
-            elif (q1_pos[0] % 2 != 0) or (q1_pos[1] % 2 != 0):
-                default_id = q1_id
-                default_pos = q1_pos
-                default_vec = _movement_vector(q1_pos, q0_pos)
-            else:
-                default_id = q0_id
-                default_pos = q0_pos
-                default_vec = _movement_vector(q0_pos, q1_pos)
-            moving_groups.append([node])
-            moving_group_positions.append([default_pos])
-            moving_group_vectors.append([default_vec])
-            moving_group_qubit_ids.append([default_id])
-            continue
-
-        candidates = [
-            (q0_id, q0_pos, _movement_vector(q0_pos, q1_pos)),
-            (q1_id, q1_pos, _movement_vector(q1_pos, q0_pos)),
-        ]
-
-        placed = False
-        for group_idx, positions in enumerate(moving_group_positions):
-            fit_candidates: list[tuple[int, tuple[int, int], tuple[int, int], float]] = []
-            for candidate_id, candidate_pos, candidate_vec in candidates:
-                if candidate_id in used_mover_ids:
-                    continue
-                if candidate_id in moving_group_qubit_ids[group_idx]:
-                    continue
-                if _is_opposite_direction(
-                    moving_group_vectors[group_idx],
-                    candidate_vec,
-                    alignment_conc,
-                ):
-                    # Candidate movement conflicts with this group's allowed alignment.
-                    # Try a different group or force a new one.
-                    continue
-                if _fits_same_aod(positions, candidate_pos, max_row_span, max_col_span):
-                    fit_candidates.append(
-                        (
-                            candidate_id,
-                            candidate_pos,
-                            candidate_vec,
-                            _vector_alignment_score(moving_group_vectors[group_idx], candidate_vec),
-                        )
-                    )
-
-            if not fit_candidates:
-                continue
-
-            # Prefer vectors that are parallel and similar in magnitude to the group vectors.
-            best_id, best_pos, best_vec, _ = max(fit_candidates, key=lambda item: item[3])
-            moving_groups[group_idx].append(node)
-            positions.append(best_pos)
-            moving_group_vectors[group_idx].append(best_vec)
-            moving_group_qubit_ids[group_idx].append(best_id)
-            used_mover_ids.add(best_id)
-            placed = True
-            break
-
-        if not placed:
-            # New group defaults to first atom as mover; no group vector exists to compare yet.
-            if q0_id not in used_mover_ids:
-                default_id = q0_id
-                default_pos = q0_pos
-                default_vec = _movement_vector(q0_pos, q1_pos)
-            elif q1_id not in used_mover_ids:
-                default_id = q1_id
-                default_pos = q1_pos
-                default_vec = _movement_vector(q1_pos, q0_pos)
-            else:
-                default_id = q0_id
-                default_pos = q0_pos
-                default_vec = _movement_vector(q0_pos, q1_pos)
-            moving_groups.append([node])
-            moving_group_positions.append([default_pos])
-            moving_group_vectors.append([default_vec])
-            moving_group_qubit_ids.append([default_id])
-            used_mover_ids.add(default_id)
-    # Prefer a group that can continue using the existing complete AOD load.
-    if Previous_Ids:
-        prev_set = set(Previous_Ids)
-        front_idx = None
-        for gi, group_ids in enumerate(moving_group_qubit_ids):
-            if _reuse_group_allowed(
-                Previous_Ids,
-                group_ids,
-                reuse_horizon,
-                stage_index,
-                next_use_by_id,
-            ):
-                front_idx = gi
-                break
-        if front_idx is not None and front_idx != 0:
-            moving_groups.insert(0, moving_groups.pop(front_idx))
-            moving_group_positions.insert(0, moving_group_positions.pop(front_idx))
-            moving_group_vectors.insert(0, moving_group_vectors.pop(front_idx))
-            moving_group_qubit_ids.insert(0, moving_group_qubit_ids.pop(front_idx))
-    prev_set = set(Previous_Ids) if Previous_Ids else set()
-
-    # Reorder each group by movement-vector coherence.
-    layer_event_start = len(event_log)
-    for group_idx, group in enumerate(moving_groups):
-        vector_order = _sort_group_by_alignment(moving_group_vectors[group_idx])
-        if vector_order:
-            ordered_group = [group[idx] for idx in vector_order]
-            ordered_vectors = [moving_group_vectors[group_idx][idx] for idx in vector_order]
-            ordered_ids = [moving_group_qubit_ids[group_idx][idx] for idx in vector_order]
-            ordered_positions = [moving_group_positions[group_idx][idx] for idx in vector_order]
-        else:
-            ordered_group = group
-            ordered_vectors = moving_group_vectors[group_idx]
-            ordered_ids = moving_group_qubit_ids[group_idx]
-            ordered_positions = moving_group_positions[group_idx]
-        #--------------------------
-        #now the vectors are order by alignment, we can then move in the highway and emit gates as we go.
-        #--------------------------
-        #starting from (0,0) we can reduce the vectors to successive differences, then we can emit moves for each vector in order.
-        #must ensure each move is on the odd-odd highway.
-
-        moves = [[0, 0]] #thus is mostly for timing.
-        #now to load the AOD with the first move.
-        same_as_previous = bool(prev_set) and _reuse_group_allowed(
-            Previous_Ids,
-            ordered_ids,
-            reuse_horizon,
-            stage_index,
-            next_use_by_id,
-        )
-        if not same_as_previous:
-            if Previous_Ids and Previous_Positions and len(Previous_Ids) == len(Previous_Positions):
-                prev_ids = [qid for qid in Previous_Ids if qid in qubit_map]
-                prev_current_positions = [Previous_Positions[i] for i, qid in enumerate(Previous_Ids) if qid in qubit_map]
-                prev_home_positions = [qubit_map[qid].grid_position() for qid in prev_ids]
-                if prev_ids:
-                    _return_(prev_ids, moves, prev_current_positions, prev_home_positions, event_log)
-                    for atom_id, home_position in zip(prev_ids, prev_home_positions):
-                        current_positions[atom_id] = home_position
-            ordered_positions = [
-                current_positions.get(qid, ordered_positions[i])
-                for i, qid in enumerate(ordered_ids)
-            ]
-            ordered_vectors = []
-            for node, moving_id in zip(ordered_group, ordered_ids):
-                _, _, gate_qubit_ids = op_node_signature(node)
-                partner_id = gate_qubit_ids[0] if gate_qubit_ids[1] == moving_id else gate_qubit_ids[1]
-                moving_position = current_positions.get(moving_id, qubit_map[moving_id].grid_position())
-                partner_position = current_positions.get(partner_id, qubit_map[partner_id].grid_position())
-                ordered_vectors.append(_movement_vector(moving_position, partner_position))
-        else:
-            prev_pos_by_id = {Previous_Ids[i]: Previous_Positions[i] for i in range(len(Previous_Ids))}
-            prev_home_by_id = {qid: qubit_map[qid].grid_position() for qid in Previous_Ids if qid in qubit_map}
-            if ordered_ids and ordered_vectors:
-                first_id = ordered_ids[0]
-                if first_id in prev_pos_by_id and first_id in prev_home_by_id:
-                    prev_r, prev_c = prev_pos_by_id[first_id]
-                    home_r, home_c = prev_home_by_id[first_id]
-                    offset = (prev_r - home_r, prev_c - home_c)
-                    ordered_vectors = [
-                        (vx - offset[0], vy - offset[1]) for vx, vy in ordered_vectors
-                    ]
-            ordered_positions = [prev_pos_by_id.get(qid, ordered_positions[i]) for i, qid in enumerate(ordered_ids)]
-            retained_ids = [qid for qid in Previous_Ids if qid not in ordered_ids]
-            ordered_ids.extend(retained_ids)
-            ordered_positions.extend(prev_pos_by_id[qid] for qid in retained_ids)
-
-        #------------
-        #Returned previous group to original positions.
-        #Now to move the current group
-        #------------
-
-        reduced_vectors = _start_(ordered_vectors, moves, ordered_ids, ordered_positions, event_log)
-        #shuttle will add moves to the event_log and update the moves.  
-        _shuttle_(
-            reduced_vectors,
-            moves,
-            ordered_ids,
-            ordered_positions,
-            ordered_group,
-            event_log,
-        )
-        movement_time += _time_trapezoid_(moves, config, add_transfer_time= (not same_as_previous))
-
-        Previous_Positions = ordered_positions[:]
-        Previous_Ids = ordered_ids[:]
-        for atom_id, atom_position in zip(ordered_ids, ordered_positions):
-            current_positions[atom_id] = atom_position
-
-
-
-    layer_time = len(moving_groups) * (config["average_two_gate_time"] + config["t_switch"]) + movement_time
-    layer_steps = len(event_log) - layer_event_start
-    return layer_steps, layer_time, Previous_Positions, Previous_Ids
-
-#--------------------------------
-#Now for timing
-#--------------------------------
-def _time_trapezoid_(
-    moves: list[tuple[int, int]],
-    config:dict,
-    add_transfer_time: bool = True,
+    layer_nodes: list[DAGOpNode], qubits: list[Qubit], config: dict,
+    event_log: list[ScheduleEvent], Previous_Ids=None,
+    Previous_Positions=None, current_positions=None, stage_index=0,
+    next_use_by_id=None,
 ):
-    """Compute movement time for axis-aligned segments using a trapezoidal/triangular profile."""
-    v = config["max_velocity"]        # Pint Quantity
-    a = config["max_acceleration"]    # Pint Quantity
-    transfer_time = config["transfer_SLM_AOD"]
-    grid_spacing = config["rydberg_radius"]
+    """Compatibility layer API; full-circuit guarantees use schedule_circuit."""
+    config = dict(config, _motion_parameters=_motion_parameters(config))
+    homes = {q.id: q.grid_position() for q in qubits}
+    positions = dict(homes if current_positions is None else current_positions)
+    ids = list(Previous_Ids or [])
+    if ids:
+        if Previous_Positions is None or len(ids) != len(Previous_Positions):
+            raise ValueError("Previous IDs and positions must have matching lengths.")
+        positions.update(zip(ids, Previous_Positions))
+    _check_layer(layer_nodes, homes)
+    plan = _plan_layer(
+        layer_nodes, _Plan(positions, ids, []), homes, config,
+        stage_index, next_use_by_id or {},
+    )
+    event_log.extend(plan.events)
+    if current_positions is not None:
+        current_positions.update(plan.positions)
+    from .scheduling import count_emitted_timesteps
+    return (
+        count_emitted_timesteps(plan.events), schedule_duration(plan.events, config),
+        [plan.positions[q] for q in plan.ids], plan.ids,
+    )
 
-    total_time = 0 * (v / a).units    # initializes time quantity (seconds)
 
-    for i in range(len(moves) - 1):
-        x1, y1 = moves[i]
-        x2, y2 = moves[i + 1]
-        
-        # Rounding Up
-        # If the Neutral atom is moving from an AOD-steered tweezer to an SLM trap or vice versa
-        # We approximate that has time to transfer_SLM_AOD + move from x1,y1 to x2,y2 using trapezoid. 
-        if add_transfer_time:
-            total_time += transfer_time
-        dx = (x2 - x1)
-        dy = (y2 - y1)
-    
-        if dx == 0 and dy == 0:
+def _check_layer(nodes, homes):
+    used = set()
+    for node in nodes:
+        ids = op_node_signature(node)[2]
+        if len(ids) != 2 or len(set(ids)) != 2:
+            raise ValueError("Expected two distinct gate operands.")
+        if not set(ids) <= homes.keys():
+            raise ValueError("Gate operand is missing from the initial placement.")
+        if used & set(ids):
+            raise ValueError("A DAG layer must have disjoint gate operands.")
+        used.update(ids)
+
+
+def validate_schedule(events, homes, config, reference_nodes=None, require_home=True):
+    """Replay continuity, highway interiors, full loads, gates, and wire order.
+
+    This is validation of the project's discrete rigid-AOD model, not a model
+    of finite trap extent, laser crosstalk, or physical AOD travel bounds.
+    """
+    if len(set(homes.values())) != len(homes) or any(_is_valid_aod_position(p) for p in homes.values()):
+        raise ValueError("Homes must be unique even-even SLM sites.")
+    positions = dict(homes)
+    active = set()
+    traces = defaultdict(list)
+    for batch in _event_batches(events):
+        if batch[0][0] == "gate":
+            used = set()
+            for statement, _, ids in _gate_parts(batch[0][1]):
+                if not ids or not set(ids) <= positions.keys() or used & set(ids):
+                    raise ValueError("Invalid operands or overlapping simultaneous gates.")
+                used.update(ids)
+                if len(ids) == 2:
+                    if len(set(ids) & active) != 1:
+                        raise ValueError("A two-qubit gate requires one AOD and one SLM atom.")
+                    if sum(abs(v) for v in _movement_vector(positions[ids[0]], positions[ids[1]])) != 1:
+                        raise ValueError("Two-qubit gate separation is not one grid step.")
+                elif len(ids) != 1:
+                    raise ValueError("Only one- and two-qubit gates are supported.")
+                for q in ids:
+                    traces[q].append(statement)
             continue
+        moved = {e[1] for e in batch}
+        first = batch[0]
+        loading = not _is_valid_aod_position(first[2])
+        unloading = not _is_valid_aod_position(first[3])
+        if loading and unloading:
+            raise ValueError("Direct SLM-to-SLM movement is forbidden.")
+        if loading:
+            if active:
+                raise ValueError("Load attempted before returning the existing AOD load.")
+            span_positions = [e[2] for e in batch]
+            if not all(_fits_same_aod(span_positions[:i], p, *_max_grid_spans(config["max_dimension"]))
+                       for i, p in enumerate(span_positions)):
+                raise ValueError("AOD load exceeds the configured span.")
+            active = moved.copy()
+        elif moved != active:
+            raise ValueError("The entire AOD load must move or unload together.")
+        for _, q, start, end in batch:
+            if q not in positions or positions[q] != start:
+                raise ValueError("Movement continuity violation.")
+            if loading or unloading:
+                if sum(abs(v) for v in _movement_vector(start, end)) != 1:
+                    raise ValueError("Transfers must be one cardinal grid step.")
+                if loading and (q in positions and _is_valid_aod_position(start)):
+                    raise ValueError("Load must start in an SLM trap.")
+                if unloading and _is_valid_aod_position(end):
+                    raise ValueError("Unload must end in an SLM trap.")
+            elif not _highway_segment(start, end):
+                raise ValueError("Movement crosses an SLM site or leaves the highway.")
+            positions[q] = end
+        if len({_movement_vector(e[2], e[3]) for e in batch}) != 1:
+            raise ValueError("The AOD batch must share one displacement.")
+        if len(set(positions.values())) != len(positions):
+            raise ValueError("Atom position collision.")
+        if unloading:
+            active = set()
+    if require_home and (active or positions != homes):
+        raise ValueError("The completed circuit must return every atom to its home.")
+    if reference_nodes is not None:
+        expected = defaultdict(list)
+        for node in reference_nodes:
+            if len(node.qargs) not in (1, 2):
+                continue
+            line = format_node_line(node)
+            for q in op_node_signature(node)[2]:
+                expected[q].append(line)
+        if dict(traces) != dict(expected):
+            raise ValueError("Gate identities, multiplicities, or per-qubit order changed.")
+    return positions
 
-        # convert grid movement to physical distance
-        d = (abs(dx) + abs(dy)) * grid_spacing/2
 
-        d_accel = v**2 / (2 * a)
+def _layered_candidate(layers, singles, homes, config, allow_reuse):
+    from .scheduling import single_qubit_layer_time
+    next_uses = [{} for _ in layers]
+    future = {}
+    for i in reversed(range(len(layers))):
+        next_uses[i] = dict(future)
+        for node in layers[i]:
+            future.update({q: i for q in op_node_signature(node)[2]})
+    plan = _Plan(dict(homes), [], [])
+    for i, nodes in enumerate(layers):
+        lines, _ = single_qubit_layer_time(
+            singles[i], config["average_single_gate_time"], config["t_switch"]
+        )
+        plan.events.extend(("gate", line) for line in lines)
+        layer_plan = _plan_layer(
+            nodes, _Plan(dict(plan.positions), list(plan.ids), []),
+            homes, config, i, next_uses[i], allow_reuse,
+        )
+        plan.events.extend(layer_plan.events)
+        plan.positions, plan.ids = layer_plan.positions, layer_plan.ids
+        plan.reused_groups += layer_plan.reused_groups
+    lines, _ = single_qubit_layer_time(
+        singles[-1], config["average_single_gate_time"], config["t_switch"]
+    )
+    plan.events.extend(("gate", line) for line in lines)
+    _return_plan(plan, homes, config)
+    return plan
 
-        if d > 2 * d_accel:
-            t = 2 * (v / a) + (d - 2 * d_accel) / v
+
+def _sequential_candidate(ops, homes, config):
+    """Home-return baseline with naive_dag's next-2Q-gate mover lookahead."""
+    from .scheduling import single_qubit_layer_time
+    plan = _Plan(dict(homes), [], [])
+    two_indices = [i for i, n in enumerate(ops) if len(n.qargs) == 2]
+    next_pairs = {}
+    for a, b in zip(two_indices, two_indices[1:]):
+        next_pairs[a] = set(op_node_signature(ops[b])[2])
+    i = 0
+    while i < len(ops):
+        node = ops[i]
+        if len(node.qargs) != 2:
+            block = []
+            while i < len(ops) and len(ops[i].qargs) != 2:
+                block.append(ops[i])
+                i += 1
+            lines, _ = single_qubit_layer_time(
+                block, config["average_single_gate_time"], config["t_switch"]
+            )
+            plan.events.extend(("gate", line) for line in lines)
+            continue
+        pair = op_node_signature(node)[2]
+        if plan.ids and plan.ids[0] not in pair:
+            _return_plan(plan, homes, config)
+        following = next_pairs.get(i, set())
+        mover = plan.ids[0] if plan.ids else (pair[1] if pair[1] in following else pair[0])
+        _execute_group(plan, [node], [mover], config, reuse=bool(plan.ids))
+        if mover not in following:
+            _return_plan(plan, homes, config)
+        i += 1
+    _return_plan(plan, homes, config)
+    return plan
+
+
+def _legacy_baseline(ops, homes, config):
+    """Capture actual naive_dag event choices on independent placement objects.
+
+    Ignore its legacy timer, restore initial homes, then retime/validate through
+    the same model as every other candidate. Invalid legacy paths are rejected.
+    """
+    #TODO: fix naive_dag to avoid rule conflicts.
+
+    from naive_dag import dynamics as legacy
+    from naive_dag.grid import generate_grid, place_qubit
+    from .scheduling import single_qubit_layer_time
+    grid = generate_grid(config["dimensions"], config["rydberg_radius"])
+    qubits = [place_qubit(grid, *homes[q], q) for q in sorted(homes)]
+    events = []
+    reused_groups = 0
+    i = 0
+    while i < len(ops):
+        if len(ops[i].qargs) == 2:
+            pair = op_node_signature(ops[i])[2]
+            reused_groups += int(any(
+                q.id in pair and _is_valid_aod_position(q.grid_position()) for q in qubits
+            ))
+            _, _, emitted = legacy.best_path_for_gate(ops, i, qubits, grid, config, 0)
+            # That API also emits trailing single-qubit gates using a different
+            # packer. Keep only its movement and two-qubit pulse here; emit 1Q
+            # operations once, below, with the common order-preserving packer.
+            for event in emitted:
+                if event[0] == "move" or any(len(ids) == 2 for _, _, ids in _gate_parts(event[1])):
+                    events.append(event)
+            i += 1
         else:
-            v_peak = (a * d)**(0.5)
-            t = 2 * (v_peak / a)
+            block = []
+            while i < len(ops) and len(ops[i].qargs) != 2:
+                block.append(ops[i])
+                i += 1
+            lines, _ = single_qubit_layer_time(
+                block, config["average_single_gate_time"], config["t_switch"]
+            )
+            events.extend(("gate", line) for line in lines)
+    positions = dict(homes)
+    for event in events:
+        if event[0] == "move":
+            positions[event[1]] = event[3]
+    # Usually there is one vacant original home and at most one displaced atom.
+    # More general relocations are accepted only when homes can be restored
+    # without occupying another atom's site; otherwise this candidate is invalid.
+    while positions != homes:
+        movable = [q for q in positions if positions[q] != homes[q] and homes[q] not in positions.values()]
+        if not movable:
+            raise ValueError("Legacy placement cannot be restored without an occupied home.")
+        loaded = [q for q, p in positions.items() if _is_valid_aod_position(p)]
+        q = loaded[0] if loaded else movable[0]
+        if q not in movable:
+            raise ValueError("Legacy loaded atom cannot return to its own home.")
+        current = [positions[q]]
+        if not _is_valid_aod_position(current[0]):
+            _start_([_movement_vector(current[0], homes[q])], [], [q], current, events)
+        _return_([q], [], current, [homes[q]], events, config)
+        positions[q] = current[0]
+    return _Plan(positions, [], events, reused_groups)
 
-        total_time += t
 
-    return total_time
+@dataclass
+class CircuitSchedule:
+    events: list[ScheduleEvent]
+    duration: Any
+    selected: str
+    candidate_times: dict[str, Any]
+    rejected_candidates: dict[str, str]
+    reused_groups: int
+
+
+def schedule_circuit(layers, singles, qubits, config, reference_nodes=None):
+    """Select a validated complete schedule with common homes and timing.
+
+    Always include a reset-only plan and a safe sequential baseline. Include
+    the actual naive_dag trajectory when it satisfies the same rules.
+    """
+    config = dict(config, _motion_parameters=_motion_parameters(config))
+    layers = [list(nodes) for nodes in layers]
+    if len(singles) != len(layers) + 1:
+        raise ValueError("Expected one single-qubit context bucket per layer boundary.")
+    homes = {q.id: q.grid_position() for q in qubits}
+    for nodes in layers:
+        _check_layer(nodes, homes)
+    if reference_nodes is None:
+        reference_nodes = [
+            node for i, layer in enumerate(layers) for node in list(singles[i]) + layer
+        ] + list(singles[-1])
+    reference_nodes = list(reference_nodes)
+    factories = {
+        "reset_only": lambda: _layered_candidate(layers, singles, homes, config, False),
+        "reuse": lambda: _layered_candidate(layers, singles, homes, config, True),
+        "sequential_home": lambda: _sequential_candidate(reference_nodes, homes, config),
+        "naive_dag": lambda: _legacy_baseline(reference_nodes, homes, config),
+    }
+    candidates = {}
+    rejected = {}
+    for name, build in factories.items():
+        try:
+            plan = build()
+            validate_schedule(plan.events, homes, config, reference_nodes)
+            candidates[name] = (schedule_duration(plan.events, config), plan)
+        except (ValueError, RuntimeError, IndexError) as exc:
+            rejected[name] = str(exc)
+    if "sequential_home" not in candidates:
+        raise ValueError(f"Sequential home baseline failed validation: {rejected.get('sequential_home')}")
+    selected = min(candidates, key=lambda name: candidates[name][0])
+    duration, plan = candidates[selected]
+    return CircuitSchedule(
+        plan.events, duration, selected,
+        {name: time for name, (time, _) in candidates.items()}, rejected, plan.reused_groups,
+    )

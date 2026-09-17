@@ -1,252 +1,435 @@
 from __future__ import annotations
 
+import math
+import re
+from collections import defaultdict
+from dataclasses import dataclass
+from functools import lru_cache
+
 from qiskit.dagcircuit.dagnode import DAGOpNode
 
 from .dag_helper import op_node_signature
-from .grid import GridNode, Qubit, move_qubit
-from .scheduling import _format_gate_line, collect_single_qubit_gate_block
+from .grid import GridNode, Qubit, generate_grid, move_qubit, place_qubit
+from .scheduling import _format_node_line, collect_single_qubit_gate_block
 
 MoveEvent = tuple[str, int, tuple[int, int], tuple[int, int]]
 GateEvent = tuple[str, str]
 ScheduleEvent = MoveEvent | GateEvent
+_CARDINAL = ((-1, 0), (0, -1), (0, 1), (1, 0))
+
+
+def _slm(point):
+    return point[0] % 2 == 0 and point[1] % 2 == 0
+
+
+def _neighbors(point):
+    return [(point[0] + dr, point[1] + dc) for dr, dc in _CARDINAL]
+
+
+def _highway_segment(start, end):
+    """Check the entire segment: horizontal on odd rows, vertical on odd columns."""
+    if _slm(start) or _slm(end):
+        return False
+    return ((start[0] == end[0] and start[0] % 2 == 1)
+            or (start[1] == end[1] and start[1] % 2 == 1))
+
+
+def _parameters(config):
+    return (
+        config['rydberg_radius'].to('meter').magnitude / 2,
+        config['max_velocity'].to('meter/second').magnitude,
+        config['max_acceleration'].to('meter/second^2').magnitude,
+        config['transfer_SLM_AOD'].to('seconds').magnitude,
+    )
+
+
+@lru_cache(maxsize=8192)
+def _motion_seconds(distance, velocity, acceleration):
+    if distance == 0:
+        return 0.0
+    ramp = velocity * velocity / acceleration
+    if distance > ramp:
+        return 2 * velocity / acceleration + (distance - ramp) / velocity
+    return 2 * math.sqrt(distance / acceleration)
+
+
+def _path_seconds(points, parameters):
+    spacing, velocity, acceleration, transfer = parameters
+    total = 0.0
+    for a, b in zip(points, points[1:]):
+        if a == b:
+            continue
+        total += _motion_seconds(math.hypot(b[0] - a[0], b[1] - a[1]) * spacing,
+                                 velocity, acceleration)
+        if _slm(a) or _slm(b):
+            total += transfer
+    return total
+
+
+def _compact(points):
+    """Merge same-direction highway pieces; never merge a turn or transfer."""
+    result = []
+    for p in points:
+        if result and result[-1] == p:
+            continue
+        if len(result) >= 2:
+            a, b = result[-2:]
+            same_direction = ((b[0] - a[0]) * (p[0] - b[0]) > 0 and a[1] == b[1] == p[1]
+                              or (b[1] - a[1]) * (p[1] - b[1]) > 0 and a[0] == b[0] == p[0])
+            if same_direction and _highway_segment(a, b) and _highway_segment(b, p):
+                result[-1] = p
+                continue
+        result.append(p)
+    return tuple(result)
+
+
+def _route_key(points, parameters):
+    return _path_seconds(points, parameters), len(points), points
+
+
+@lru_cache(maxsize=32768)
+def _highway_route(start, end, parameters):
+    """Route AOD coordinates through adjacent odd-odd intersections.
+
+    Coordinates outside the SLM rectangle remain legal highway coordinates;
+    they are never used as indices into the finite SLM grid.
+    """
+    if _slm(start) or _slm(end):
+        raise ValueError('Highway endpoints must be AOD positions.')
+    if start == end:
+        return (start,)
+
+    def intersections(p):
+        r, c = p
+        if r % 2 and c % 2:
+            return [p]
+        if r % 2:
+            return [(r, c - 1), (r, c + 1)]
+        return [(r - 1, c), (r + 1, c)]
+
+    candidates = []
+    if _highway_segment(start, end):
+        candidates.append((start, end))
+    for a in intersections(start):
+        for b in intersections(end):
+            for corner in ((a[0], b[1]), (b[0], a[1])):
+                candidates.append(_compact((start, a, corner, b, end)))
+    return min(candidates, key=lambda path: _route_key(path, parameters))
+
+
+@lru_cache(maxsize=32768)
+def _interaction_route(start, target, parameters):
+    if not _slm(target):
+        raise ValueError('The interaction partner must remain in an SLM trap.')
+    candidates = []
+    for first in _neighbors(start) if _slm(start) else [start]:
+        for end in _neighbors(target):
+            route = _highway_route(first, end, parameters)
+            candidates.append((start,) + route if _slm(start) else route)
+    return min(candidates, key=lambda path: _route_key(path, parameters))
+
+
+@lru_cache(maxsize=32768)
+def _unload_route(start, destination, parameters):
+    if _slm(start) or not _slm(destination):
+        raise ValueError('Unloading requires an AOD start and an SLM destination.')
+    return min((_highway_route(start, end, parameters) + (destination,)
+                for end in _neighbors(destination)),
+               key=lambda path: _route_key(path, parameters))
+
 
 def gate_qubit_ids(ops: list[DAGOpNode], gate_index: int) -> list[int]:
-    """Return qubit ids used by the operation at ``gate_index``."""
-    _, _, qubit_ids = op_node_signature(ops[gate_index])
-    if len(qubit_ids) > 2:
-        raise ValueError("This method does not support 3+ qubit gates")
-    return qubit_ids
+    _, _, ids = op_node_signature(ops[gate_index])
+    if len(ids) > 2:
+        raise ValueError('This method does not support 3+ qubit gates')
+    return ids
 
 
-def gate_qubits(ops: list[DAGOpNode], gate_index: int, qubits: list[Qubit]) -> list[Qubit]:
-    """Map gate qubit ids to concrete ``Qubit`` objects from ``qubits``."""
-    qubit_ids = gate_qubit_ids(ops, gate_index)
-    if not qubit_ids or len(qubit_ids) < 2:
-        return [None,None]
-    qubit_map = {q.id: q for q in qubits}
-    return [qubit_map[qid] for qid in qubit_ids]
+def gate_qubits(ops, gate_index, qubits):
+    ids = gate_qubit_ids(ops, gate_index)
+    if len(ids) != 2 or ops[gate_index].op.name == 'swap':
+        return [None, None]
+    mapping = {q.id: q for q in qubits}
+    return [mapping[q] for q in ids]
 
-
-def _in_bounds(grid: list[list[GridNode]], row: int, col: int) -> bool:
-    """Return True if ``(row, col)`` is within the rectangular grid bounds."""
-    return 0 <= row < len(grid) and 0 <= col < len(grid[0])
-
-
-def _start_(q1: Qubit, q2: Qubit, moves: list[tuple[int, int]], grid: list[list[GridNode]]) -> None:
-    """Append the first move that places ``q1`` onto a valid movement highway."""
-    row1, col1 = q1.grid_position()
-    row2, col2 = q2.grid_position()
-    q1_odd = (row1 % 2 != 0) or (col1 % 2 != 0)
-    if q1_odd != True: #if it is in a grid position
-        if row1 == row2:
-            if col2-col1==2:
-                moves.append((row1,col2-1))
-            elif col1-col2==2:
-                moves.append((row1,col2+1))
-            elif _in_bounds(grid,row1+1,col1):
-                moves.append((row1+1,col1))
-            else:
-                moves.append((row1-1,col1))
-        elif col1 == col2:
-            if row2-row1==2:
-                moves.append((row1-1,col1))
-            elif row1-row2==2:
-                moves.append((row1+1,col1))
-            elif _in_bounds(grid,row1,col1+1):
-                moves.append((row1,col1+1))
-            else:
-                moves.append((row1,col1-1))
-        elif abs(row1-row2) > abs(col1-col2):
-            if col1-col2 > 2:
-                moves.append((row1,col1+1))
-            else:
-                moves.append((row1,col1-1))
-        else:
-            if row1-row2 > 2:
-                moves.append((row1+1,col1))
-            else:
-                moves.append((row1-1,col1))
-
-def _shuttle_(q1_pos: tuple[int, int], q2_pos: tuple[int, int], moves: list[tuple[int, int]]) -> None:
-    """Append intermediate straight-line routing moves from ``q1_pos`` toward ``q2_pos``."""
-    row1, col1 = q1_pos
-    row2, col2 = q2_pos
-
-    if row1 == row2 + 1 or row1 == row2 - 1:
-        moves.append((row1,col2))
-    elif col1 == col2 + 1 or col2 == col2 - 1:
-        moves.append((row2,col1))
-    elif abs(row2-row1) > abs(col2-col1):
-        if row2 - row1 > 0:
-            moves.append(((row2 - 1),col1))
-            moves.append(((row2 - 1),col2))
-        else:
-            moves.append(((row2 + 1),col1))
-            moves.append(((row2 + 1),col2))
-    else:
-        if col2 - col1 > 0:
-            moves.append((row1,col2-1))
-            moves.append((row2,col2-1))
-        else:
-            moves.append((row1,col2+1))
-            moves.append((row2,col2+1))
-
-def _return_(q1:Qubit, moves: list[tuple[int, int]], grid: list[list[GridNode]]) -> None:
-    """Route ``q1`` from highway space back to an available even-even trap site."""
-    row1, col1 = q1.grid_position()
-    q1_odd = (row1 % 2 != 0) or (col1 % 2 != 0)
-    if not q1_odd:
-        _shuttle_(moves[-1],q1.grid_position(),moves)
-        moves.append(q1.grid_position())
-    else:
-        found = False
-        for i in range(0, len(grid),2):
-            for j in range(0,len(grid[i]),2):
-                if not grid[i][j].is_occupied():
-                    move_qubit(q1, grid[i][j])
-                    found = True
-                    break
-            if found:
-                break
-        if not found:
-            raise RuntimeError("No free even-position grid node found")
-        _shuttle_(moves[-1],q1.grid_position(),moves)
-        moves.append(q1.grid_position())
 
 def find_next_two_qubit_gate(ops, start_index):
-    """Return the index of the next 2Q gate after ``start_index``, else ``None``."""
-    i = start_index + 1
-    while i < len(ops):
-        node = ops[i]
-        if len(node.qargs) == 2:
-            return i
-        i += 1
-    return None
+    return next((i for i in range(start_index + 1, len(ops))
+                 if len(ops[i].qargs) == 2 and ops[i].op.name != 'swap'), None)
 
-def best_path_for_gate(
-    ops: list[DAGOpNode],
-    gate_index: int,
-    qubits: list[Qubit],
-    grid: list[list[GridNode]],
-    config:dict,
-    T: int
-):
-    """Plan movement/events for one 2Q gate and any immediate trailing 1Q block.
 
-    Movement rules:
-    - If the first qubit starts on an even-even node, it must first move to an adjacent node.
-    - The long move must be a straight line along an odd row or odd column.
-    - The destination must be one of the 4 neighbor sites of the second qubit.
+def _future_pairs(ops, gate_index, mover, config):
+    """Bound the rollout by both all upcoming 2Q gates and uses of this atom."""
+    max_gates = int(config.get('relocation_lookahead_gates', 8))
+    max_uses = int(config.get('relocation_lookahead_uses', 2))
+    if max_gates < 1 or max_uses < 1:
+        raise ValueError('Relocation lookahead limits must be positive.')
+    pairs, uses = [], 0
+    for node in ops[gate_index + 1:]:
+        if len(node.qargs) != 2 or node.op.name == 'swap':
+            continue
+        pair = tuple(op_node_signature(node)[2])
+        pairs.append(pair)
+        uses += mover in pair
+        if len(pairs) >= max_gates or uses >= max_uses:
+            break
+    return pairs
 
-    Returns the timestep duration contribution, updated timestep counter, and
-    emitted schedule events for moves and gates.
+
+def _choose_mover(pair, following, positions):
+    loaded = [q for q, p in positions.items() if not _slm(p)]
+    if len(loaded) > 1 or loaded and loaded[0] not in pair:
+        raise ValueError('Return the existing AOD atom before loading a different mover.')
+    if loaded:
+        return loaded[0]
+    return pair[1] if pair[1] in following else pair[0]
+
+
+def _rollout_cost(positions, pairs, parameters):
+    """Simulate intervening gates on private state with previous-home returns.
+
+    A hypothetical closing unload gives all options an unloaded terminal state.
+    Immediate reuse is mandatory inside the horizon. No recursive relocation.
     """
-    Stay_in_Highway = False
+    positions = dict(positions)
+    homes = dict(positions)
+    total = 0.0
+    for i, pair in enumerate(pairs):
+        following = pairs[i + 1] if i + 1 < len(pairs) else ()
+        mover = _choose_mover(pair, following, positions)
+        partner = pair[1] if mover == pair[0] else pair[0]
+        route = _interaction_route(positions[mover], positions[partner], parameters)
+        total += _path_seconds(route, parameters)
+        positions[mover] = route[-1]
+        if mover not in following:
+            route = _unload_route(positions[mover], homes[mover], parameters)
+            total += _path_seconds(route, parameters)
+            positions[mover] = route[-1]
+    return total
+
+
+def _choose_unload(mover, positions, previous_home, grid, pairs, parameters, config):
+    occupied = {p for q, p in positions.items() if q != mover}
+    vacant = [(r, c) for r in range(0, len(grid), 2)
+              for c in range(0, len(grid[0]), 2) if (r, c) not in occupied]
+    if previous_home not in vacant:
+        raise ValueError('The moving atom\'s previous home is unexpectedly occupied.')
+    if not config.get('relocation_enabled', True) or len(vacant) == 1:
+        return _unload_route(positions[mover], previous_home, parameters)
+
+    limit = int(config.get('relocation_candidates', 8))
+    if limit < 1:
+        raise ValueError('relocation_candidates must be positive.')
+    routes = {p: _unload_route(positions[mover], p, parameters) for p in vacant}
+    nearby = sorted(vacant, key=lambda p: _route_key(routes[p], parameters))
+    partners = [positions[b if a == mover else a] for a, b in pairs if mover in (a, b)]
+    rankings = [nearby] + [sorted(vacant, key=lambda p: (abs(p[0] - t[0]) + abs(p[1] - t[1]), p))
+                          for t in partners]
+    # Always include the previous home. Round-robin nearby and future-partner sites.
+    candidates = [previous_home]
+    for rank in range(len(vacant)):
+        for ranking in rankings:
+            if len(candidates) >= limit:
+                break
+            p = ranking[rank]
+            if p not in candidates:
+                candidates.append(p)
+        if len(candidates) >= limit:
+            break
+
+    def cost(p):
+        future_positions = dict(positions)
+        future_positions[mover] = p
+        return (_path_seconds(routes[p], parameters)
+                + _rollout_cost(future_positions, pairs, parameters))
+
+    selected, best = previous_home, cost(previous_home)
+    for p in candidates[1:]:
+        candidate_cost = cost(p)
+        if candidate_cost < best - 1e-12:
+            selected, best = p, candidate_cost
+    return routes[selected]
+
+
+def _set_position(qubit, position, grid, config):
+    if _slm(position):
+        r, c = position
+        if not (0 <= r < len(grid) and 0 <= c < len(grid[0])):
+            raise ValueError('Unloading destination is outside the SLM grid.')
+        node = grid[r][c]
+    else:
+        r, c = position
+        spacing = config['rydberg_radius'] / 2
+        node = GridNode(x=c * spacing, y=r * spacing, row=r, col=c)
+    move_qubit(qubit, node)
+
+
+def best_path_for_gate(ops, gate_index, qubits, grid, config, T):
+    """Single-mover parity routing with mandatory next-gate retention.
+
+    The legacy public signature and absolute-position move events are preserved.
+    Relocation is considered only when this atom must leave the AOD.
+    """
     q1, q2 = gate_qubits(ops, gate_index, qubits)
     if q1 is None:
-        return 0 * config["t_switch"], T, []
-    r1, c1 = q1.grid_position()
-    r2, c2 = q2.grid_position()
-    #Checking which qubit to move
-    q1_odd = (r1 % 2 != 0) or (c1 % 2 != 0)
-    q2_odd = (r2 % 2 != 0) or (c2 % 2 != 0)
-    i = find_next_two_qubit_gate(ops,gate_index)
-    if q1_odd and q2_odd:
-        raise ValueError("Both Atoms have odd positions - they shouldn't move at the same time.")
-    elif q1_odd:
-        q1, q2 = q1, q2
-    elif q2_odd:
-        q1, q2 = q2, q1 #swap so q1 is being moved
-    else:#Checking which qubit to move based on if it is in another two gate
-        if i == None:
-            q1, q2 = q1, q2
-        else:
-            q3, q4 = gate_qubits(ops, i, qubits)
-            if q2 == q3 or q2 == q4:
-                q1, q2 = q2, q1
-            else:
-                q1, q2 = q1, q2
-    if i != None: #if the qubit must move to another sight
-        q3, q4 = gate_qubits(ops, i, qubits)
-        if q1 == q3 or q1 == q4:
-            Stay_in_Highway = True
-    #-------------------------------------------
-    # Finished with deciding which moves and how ends
-    #-------------------------------------------
-    moves = [q1.grid_position()]# This will hold how many moves, the length is the number of time steps taken
-    events: list[ScheduleEvent] = []
-    #Now if the qubit is not in a highway we must transfer to an AOD
-    _start_(q1,q2,moves,grid)
-    _shuttle_(moves[-1],q2.grid_position(),moves)
+        return 0 * config['t_switch'], T, []
+    mapping = {q.id: q for q in qubits}
+    positions = {q.id: q.grid_position() for q in qubits}
+    pair = tuple(gate_qubit_ids(ops, gate_index))
+    next_index = find_next_two_qubit_gate(ops, gate_index)
+    following = tuple(gate_qubit_ids(ops, next_index)) if next_index is not None else ()
+    mover = _choose_mover(pair, following, positions)
+    partner = pair[1] if mover == pair[0] else pair[0]
+    atom = mapping[mover]
+    if _slm(positions[mover]):
+        atom._naive_home = positions[mover]
+    elif not hasattr(atom, '_naive_home'):
+        raise ValueError('A retained AOD atom needs its previous SLM home.')
+    parameters = _parameters(config)
+    route = _interaction_route(positions[mover], positions[partner], parameters)
+    events = [('move', mover, a, b) for a, b in zip(route, route[1:])]
+    positions[mover] = route[-1]
+    if sum(abs(a - b) for a, b in zip(route[-1], positions[partner])) != 1:
+        raise ValueError('Gate operands must be one grid step apart.')
+    events.append(('gate', _format_node_line(ops[gate_index])))
+    lines, _, pulse_counts = collect_single_qubit_gate_block(ops, gate_index + 1)
+    events.extend(('gate', line) for line in lines)
+    seconds = _path_seconds(route, parameters)
+    if mover not in following:
+        pairs = _future_pairs(ops, gate_index, mover, config)
+        returning = _choose_unload(mover, positions, atom._naive_home, grid,
+                                   pairs, parameters, config)
+        events.extend(('move', mover, a, b) for a, b in zip(returning, returning[1:]))
+        seconds += _path_seconds(returning, parameters)
+        positions[mover] = returning[-1]
+        atom._naive_home = returning[-1]
+    _set_position(atom, positions[mover], grid, config)
+    duration = (seconds * config['t_switch'].to('seconds').units
+                + config['average_two_gate_time'] + config['t_switch']
+                + sum(pulse_counts) * (config['average_single_gate_time'] + config['t_switch']))
+    return duration, T + len(events), events
 
-    for idx in range(len(moves) - 1):
-        events.append(("move", q1.id, moves[idx], moves[idx + 1]))
 
-    gate_name, gate_params, qubit_ids = op_node_signature(ops[gate_index])
-    gate_line = _format_gate_line(gate_name, gate_params, qubit_ids)
-    events.append(("gate", gate_line))
-    one_qubit_layers, _, layer_counts = collect_single_qubit_gate_block(ops, gate_index + 1)
-    for layer_line in one_qubit_layers:
-        events.append(("gate", layer_line))
 
-    split_index = len(moves) - 1
-    if Stay_in_Highway:
-        i, j = moves[-1]
-        move_qubit(q1,grid[i][j])
-    else:
-        _return_(q1,moves,grid)
-        for idx in range(split_index, len(moves) - 1):
-            events.append(("move", q1.id, moves[idx], moves[idx + 1]))
-    T_step = len(events)
-    time = _time_trapezoid_(q1,q2,moves,config) + config["average_two_gate_time"] + config["t_switch"]
-    # Single-qubit pulses always include a pulse-switch penalty per gate pulse.
-    for layer_count in layer_counts:
-        time += layer_count * (config["average_single_gate_time"] + config["t_switch"])
+def validate_schedule(events, initial, config, reference_nodes):
+    """Replay one-AOD legality and SWAP-filtered wire order; allow changed homes."""
+    positions = dict(initial)
+    rows, cols = config['dimensions']
+    if len(set(initial.values())) != len(initial) or any(
+        not _slm(p) or not (0 <= p[0] < 2 * rows - 1 and 0 <= p[1] < 2 * cols - 1)
+        for p in initial.values()
+    ):
+        raise ValueError('Initial positions must be unique in-bounds SLM traps.')
+    active = None
+    traces = defaultdict(list)
+    next_pairs = [()] * len(events)
+    following = ()
+    for index in range(len(events) - 1, -1, -1):
+        next_pairs[index] = following
+        event = events[index]
+        if event[0] == 'gate':
+            for statement in reversed(event[1].split(';')):
+                ids = tuple(map(int, re.findall(r'q\[(\d+)\]', statement)))
+                if len(ids) == 2:
+                    following = ids
+    for index, event in enumerate(events):
+        if event[0] == 'gate':
+            used = set()
+            for statement in event[1].split(';'):
+                statement = statement.strip()
+                if not statement:
+                    continue
+                ids = list(map(int, re.findall(r'q\[(\d+)\]', statement)))
+                if (not ids or len(set(ids)) != len(ids) or used.intersection(ids)
+                        or not set(ids) <= positions.keys() or statement.startswith('swap ')):
+                    raise ValueError('Invalid or overlapping gate operands, or an emitted SWAP.')
+                used.update(ids)
+                if len(ids) == 2:
+                    if active not in ids or sum(abs(a-b) for a,b in zip(positions[ids[0]], positions[ids[1]])) != 1:
+                        raise ValueError('A 2Q gate needs one AOD atom adjacent to its SLM partner.')
+                elif len(ids) != 1:
+                    raise ValueError('Only one- and two-qubit gates are supported.')
+                for q in ids:
+                    traces[q].append(statement + ';')
+            continue
+        _, q, a, b = event
+        if q not in positions or positions[q] != a or a == b:
+            raise ValueError('Movement continuity violation or no-op event.')
+        if _slm(a):
+            if active is not None or _slm(b):
+                raise ValueError('Load requires an empty AOD and an AOD destination.')
+            active = q
+        elif active != q:
+            raise ValueError('Only the active atom may move.')
+        if _slm(a) or _slm(b):
+            if sum(abs(x-y) for x,y in zip(a,b)) != 1:
+                raise ValueError('Transfers must be one cardinal step.')
+        elif not _highway_segment(a,b):
+            raise ValueError('Movement crosses an SLM site or leaves the highway.')
+        if _slm(b):
+            if not (0 <= b[0] < 2 * rows - 1 and 0 <= b[1] < 2 * cols - 1):
+                raise ValueError('Unload outside the SLM grid.')
+            if q in next_pairs[index]:
+                raise ValueError('An atom needed by the next 2Q gate must remain loaded.')
+            active = None
+        if any(other != q and p == b for other,p in positions.items()):
+            raise ValueError('Movement ends at an occupied position.')
+        positions[q] = b
+    if active is not None:
+        raise ValueError('The completed schedule must unload its remaining AOD atom.')
+    expected = defaultdict(list)
+    for node in reference_nodes:
+        if node.op.name in ('swap', 'barrier'):
+            continue
+        if len(node.qargs) not in (1, 2):
+            raise ValueError('Unsupported reference operation.')
+        for q in op_node_signature(node)[2]:
+            expected[q].append(_format_node_line(node))
+    if dict(traces) != dict(expected):
+        raise ValueError('Gate identities, measurement destinations, or per-qubit order changed.')
+    return positions
 
-    return time, T_step + T, events
 
-#--------------------------------
-#Now for timing
-#--------------------------------
-def _time_trapezoid_(
-    q1: Qubit,
-    q2: Qubit,
-    moves: list[tuple[int, int]],
-    config:dict,
-):
-    """Compute movement time using a trapezoidal/triangular velocity profile."""
-    v = config["max_velocity"]        # Pint Quantity
-    a = config["max_acceleration"]    # Pint Quantity
-    transfer_time = config["transfer_SLM_AOD"]
-    grid_spacing = config["rydberg_radius"]
+@dataclass
+class CircuitSchedule:
+    events: list[ScheduleEvent]
+    duration: object
+    selected: str
+    candidate_times: dict
+    final_positions: dict
 
-    total_time = 0 * (v / a).units    # initializes time quantity (seconds)
 
-    for i in range(len(moves) - 1):
-        x1, y1 = moves[i]
-        x2, y2 = moves[i + 1]
-        
-        # Rounding Up
-        # If the Neutral atom is moving from an AOD-steered tweezer to an SLM trap or vice versa
-        # We approximate that has time to transfer_SLM_AOD + move from x1,y1 to x2,y2 using trapezoid.   
-        q1_even = (x1 % 2 == 0) or (y1 % 2 == 0)
-        q2_even = (x2 % 2 == 0) or (y2 % 2 == 0)
-        if q1_even or q2_even:
-            total_time += transfer_time
-        dx = (x2 - x1)
-        dy = (y2 - y1)
+def schedule_circuit(ops, qubits, config):
+    """Choose the faster complete valid plan, preserving the caller's placement.
 
-        # convert grid movement to physical distance
-        d = (dx**2 + dy**2)**(0.5) * grid_spacing/2
-
-        d_accel = v**2 / (2 * a)
-
-        if d > 2 * d_accel:
-            t = 2 * (v / a) + (d - 2 * d_accel) / v
-        else:
-            v_peak = (a * d)**(0.5)
-            t = 2 * (v_peak / a)
-
-        total_time += t
-
-    return total_time
+    Both candidates retain immediate reuse. They differ only in whether a
+    required unload returns to the previous home or uses relocation lookahead.
+    """
+    ops = [n for n in ops if n.op.name not in ('swap', 'barrier')]
+    initial = {q.id: q.grid_position() for q in qubits}
+    plans = {}
+    modes = [('previous_home', False)]
+    if config.get('relocation_enabled', True):
+        modes.append(('relocation', True))
+    for name, enabled in modes:
+        grid = generate_grid(config['dimensions'], config['rydberg_radius'])
+        placed = [place_qubit(grid, *initial[q], q) for q in sorted(initial)]
+        cfg = dict(config, relocation_enabled=enabled)
+        lines, first, counts = collect_single_qubit_gate_block(ops, 0)
+        events = [('gate', line) for line in lines]
+        duration = sum(counts) * (config['average_single_gate_time'] + config['t_switch'])
+        i = first
+        while i < len(ops):
+            delta, _, emitted = best_path_for_gate(ops, i, placed, grid, cfg, len(events))
+            duration += delta
+            events.extend(emitted)
+            following = find_next_two_qubit_gate(ops, i)
+            if following is None:
+                break
+            i = following
+        ending = validate_schedule(events, initial, config, ops)
+        plans[name] = (duration, events, ending)
+    selected = min(plans, key=lambda name: plans[name][0])
+    duration, events, ending = plans[selected]
+    return CircuitSchedule(events, duration, selected,
+                           {name: plan[0] for name, plan in plans.items()}, ending)

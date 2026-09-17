@@ -21,6 +21,7 @@
     ],
     "fill_strategy": "fastsa",
     "alignment_conc": -1,
+    "T_reuse": 3,
     "Fastsa_fill": {
         "stage1_iterations": 5,
         "stage2_iterations": 2000,

@@ -21,5 +21,6 @@
         12
     ],
     "fill_strategy": "Given",
-    "alignment_conc": -1
+    "alignment_conc": 0,
+    "T_reuse": "Inf"
 }

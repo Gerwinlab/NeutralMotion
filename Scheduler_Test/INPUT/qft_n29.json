@@ -30,5 +30,5 @@
         "stage3_section_size": 6
     },
     "parallel": true,
-    "T_reuse": 100
+    "T_reuse": 3
 }

@@ -59,6 +59,16 @@ def _format_gate_line(gate_name: str, gate_params: list, qubit_ids: list[int]) -
     return f"{gate_name} " + ",".join(f"q[{qid}]" for qid in qubit_ids) + ";"
 
 
+def _format_node_line(node: DAGOpNode) -> str:
+    name, params, ids = op_node_signature(node)
+    if name == "measure":
+        if len(ids) != 1 or len(node.cargs) != 1:
+            raise ValueError("Measurement requires one quantum and one classical operand.")
+        classical_id = int(repr(node.cargs[0]).split("index=", 1)[1].split(">", 1)[0])
+        return f"measure q[{ids[0]}] -> c[{classical_id}];"
+    return _format_gate_line(name, params, ids)
+
+
 def collect_single_qubit_gate_block(ops: list[DAGOpNode], start_index: int) -> tuple[list[str], int, list[int]]:
     """Collect contiguous 1Q gates and pack them into disjoint-qubit time layers.
 
@@ -66,33 +76,37 @@ def collect_single_qubit_gate_block(ops: list[DAGOpNode], start_index: int) -> t
     Returns:
     - A list of gate lines, one line per time layer.
     - The index where scanning stopped.
-    - The number of 1Q pulses in each returned layer.
+    - The number of distinct 1Q pulse identities in each returned layer.
     """
     layers: list[list[str]] = []
     layer_qubits: list[set[int]] = []
-    layer_counts: list[int] = []
+    layer_pulses: list[set[tuple]] = []
     i = start_index
     while i < len(ops):
         gate_name, gate_params, qubit_ids = op_node_signature(ops[i])
+        if gate_name in {"swap", "barrier"}:
+            i += 1
+            continue
         if len(qubit_ids) == 2:
             break
         if len(qubit_ids) == 1:
             qid = qubit_ids[0]
-            gate_line = _format_gate_line(gate_name, gate_params, qubit_ids)
+            gate_line = _format_node_line(ops[i])
+            pulse = (gate_name, tuple(gate_params))
             placed = False
             for layer_idx, used_qubits in enumerate(layer_qubits):
                 if qid not in used_qubits:
                     layers[layer_idx].append(gate_line)
                     used_qubits.add(qid)
-                    layer_counts[layer_idx] += 1
+                    layer_pulses[layer_idx].add(pulse)
                     placed = True
                     break
             if not placed:
                 layers.append([gate_line])
                 layer_qubits.append({qid})
-                layer_counts.append(1)
+                layer_pulses.append({pulse})
         i += 1
-    return [" ".join(layer) for layer in layers], i, layer_counts
+    return [" ".join(layer) for layer in layers], i, [len(pulses) for pulses in layer_pulses]
 
 
 def _format_initialization_line(qubits: Iterable[Qubit]) -> str:

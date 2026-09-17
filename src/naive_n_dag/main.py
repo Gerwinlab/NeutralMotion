@@ -9,17 +9,16 @@ from naive_n_dag.grid import Fastsa_Fill, generate_grid, initial_layout_fill, na
 from naive_n_dag.dag_helper import (
     dag_from_txt_auto,
     load_qasm_to_two_qubit_dag_with_single_qubit_context,
-    op_node_signature,
 )
-from naive_n_dag.dynamics import best_path_for_layer
+from naive_n_dag.dynamics import schedule_circuit
 from naive_n_dag.scheduling import (
-    ScheduleEvent,
     count_emitted_timesteps,
-    single_qubit_layer_time,
     write_timed_schedule,
 )
 import pint
-
+#TODO: Add a additional parameter that actually has rydberg radius and the current metric turns to lattice spacing. The code should make sure gates that are within the same radius should not happen at the same time, different time steps with a switching time addon for each timestep.
+#TODO: Update the version, AI Usage for this version, and the readme to reflect the new changes. Make sure all examples work properly.
+#TODO: Make a new function or runable command that reads movements and the unload/load to calculate to measure of fidelity and loss.
 PathLike = str | pathlib.Path
 ureg = pint.UnitRegistry()
 
@@ -270,60 +269,26 @@ def main(
     if qubits is None:
         raise RuntimeError("Qubit placement is required before scheduling two-qubit layers.")
 
-    # Start schedule construction.
-    time = 0 * (config["max_velocity"] / config["max_acceleration"]).units
-    emitted_timesteps = 0
-    event_log: list[ScheduleEvent] = []
-    current_positions: dict[int, tuple[int, int]] = {q.id: q.grid_position() for q in qubits}
-    previous_positions: list[tuple[int, int]] = []
-    previous_ids: list[int] = []
-
-    next_use_by_layer: list[dict[int, int]] = [{} for _ in two_qubit_layers]
-    next_use: dict[int, int] = {}
-    for layer_idx in range(len(two_qubit_layers) - 1, -1, -1):
-        next_use_by_layer[layer_idx] = next_use.copy()
-        for node in two_qubit_layers[layer_idx]["graph"].op_nodes():
-            _, _, qubit_ids = op_node_signature(node)
-            for qubit_id in qubit_ids:
-                next_use[qubit_id] = layer_idx
-
-    for layer_idx, twoq_layer in enumerate(two_qubit_layers):
-        single_step_lines, single_time = single_qubit_layer_time(
-            single_layers[layer_idx],
-            config["average_single_gate_time"],
-            config["t_switch"],
-        )
-        for line in single_step_lines:
-            event_log.append(("gate", line))
-            emitted_timesteps += 1
-        time += single_time
-
-        twoq_nodes = twoq_layer["graph"].op_nodes()
-        if twoq_nodes:
-            layer_steps, layer_time, previous_positions, previous_ids = best_path_for_layer(
-                twoq_nodes,
-                qubits,
-                config,
-                event_log,
-                Previous_Ids=previous_ids,
-                Previous_Positions=previous_positions,
-                current_positions=current_positions,
-                stage_index=layer_idx,
-                next_use_by_id=next_use_by_layer[layer_idx],
-            )
-            emitted_timesteps += layer_steps
-            time += layer_time
-
-    trailing_step_lines, trailing_time = single_qubit_layer_time(
-        single_layers[-1],
-        config["average_single_gate_time"],
-        config["t_switch"],
+    # Dynamics owns candidate construction, common timing, validation, and
+    # the mandatory final return. Placement objects remain at their home sites.
+    reference_nodes = None
+    if step_order_file is None:
+        from naive_dag.dag_helper import load_qasm_to_gate_dag
+        reference_nodes = list(load_qasm_to_gate_dag(qasm_path))
+    schedule = schedule_circuit(
+        [list(layer["graph"].op_nodes()) for layer in two_qubit_layers],
+        single_layers, qubits, config, reference_nodes,
     )
-    for line in trailing_step_lines:
-        event_log.append(("gate", line))
-        emitted_timesteps += 1
-    time += trailing_time
+    event_log = schedule.events
+    time = schedule.duration
     emitted_timesteps = count_emitted_timesteps(event_log)
+    if not quiet:
+        print(f"selected_schedule={schedule.selected}")
+        print(f"reused_groups={schedule.reused_groups}")
+        for name, duration in schedule.candidate_times.items():
+            print(f"candidate_{name}_time={duration.to('microseconds')}")
+        for name, reason in schedule.rejected_candidates.items():
+            print(f"rejected_candidate_{name}={reason}")
 
     final_time_us = time.to("microseconds")
 
