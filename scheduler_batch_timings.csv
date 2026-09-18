@@ -30,4 +30,4 @@ PowerMove,,vqe_n50.qasm,76.01,,2946.26,VQE-50
 naive_n_dag,,bb144_bivariate_bicycle_cz.qasm,1898.63,Scheduler_Test/OUTPUT/bb144_n_fastsa_k1000.naive_n_dag.schedule.txt,109416.96722982454,"[[144,12,12]]"
 naive_dag,,bb144_bivariate_bicycle_cz.qasm,2.14,Scheduler_Test/OUTPUT/bb144_n_fastsa_k1000.naive_dag.schedule.txt,562868.6664511404,"[[144,12,12]]"
 Enola,script.py,bb144_bivariate_bicycle_cz.qasm,258.15,,742617.95,"[[144,12,12]]"
-PowerMove,script.py,bb144_bivariate_bicycle_cz.qasm,30.36,,113226.17,"[[144,12,12]]"
+PowerMove,script.py,bb144_bivariate_bicycle_cz.qasm,30.66,,111798.29,"[[144,12,12]]"

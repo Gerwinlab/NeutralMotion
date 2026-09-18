@@ -3,6 +3,7 @@ import contextlib
 import io
 import math
 import os
+import random
 import sys
 import time
 
@@ -33,12 +34,16 @@ def load_cz_blocks(qasm_path: str):
     return test_circuit.num_qubits, get_cz_blocks(test_circuit)
 
 
-def run_powermove(qasm_path: str, d: int, num_aod: int, quiet: bool) -> dict:
+def run_powermove(
+    qasm_path: str,
+    d: int,
+    num_aod: int,
+    quiet: bool,
+    storage_flag: bool = False,
+) -> dict:
     t0 = time.time()
     n, cz_blocks = load_cz_blocks(qasm_path)
     row = math.ceil(math.sqrt(n))
-    storage_flag = True#False
-
     list_gates = []
     for gates in cz_blocks:
         list_gates += powermove_stage_scheduling(gates, storage_flag)
@@ -107,6 +112,8 @@ def print_result(name: str, result: dict) -> None:
     print(f"{name}:")
     print(f"  qasm={result['qasm']}")
     print(f"  qubits={result['qubits']} row={result['row']}")
+    if "storage_flag" in result:
+        print(f"  storage={result['storage_flag']}")
     print(f"  gate_stages={result['gate_stages']}")
     print(f"  transfer_us={result['transfer_us']:.6f}")
     print(f"  move_us={result['move_us']:.6f}")
@@ -129,6 +136,21 @@ def main() -> None:
     parser.add_argument("--d", type=int, default=1, help="Distance scaling factor d (default: 1)")
     parser.add_argument("--num-aod", type=int, default=1, help="PowerMove number of AODs (default: 1)")
     parser.add_argument(
+        "--storage",
+        action="store_true",
+        help="Enable the storage-zone model (default: disabled, matching the paper's non-storage column)",
+    )
+    parser.add_argument(
+        "--paper-placement",
+        action="store_true",
+        help="Reproduce the RNG advance in PowerMove's original BV benchmark script",
+    )
+    parser.add_argument(
+        "--skip-enola",
+        action="store_true",
+        help="Run only PowerMove instead of also running the Enola comparison",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Show raw PowerMove/Enola logs",
@@ -141,11 +163,16 @@ def main() -> None:
 
     quiet = not args.verbose
 
-    pm = run_powermove(qasm_path, args.d, args.num_aod, quiet)
-    en = run_enola(qasm_path, args.d, quiet)
+    if args.paper_placement:
+        # The artifact's BV benchmark makes this otherwise-unused draw before
+        # simulated-annealing placement, changing the deterministic layout.
+        random.choice(range(10))
 
+    pm = run_powermove(qasm_path, args.d, args.num_aod, quiet, args.storage)
     print_result("PowerMove", pm)
-    print_result("Enola", en)
+    if not args.skip_enola:
+        en = run_enola(qasm_path, args.d, quiet)
+        print_result("Enola", en)
 
 
 if __name__ == "__main__":
