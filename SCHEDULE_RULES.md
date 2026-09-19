@@ -30,10 +30,19 @@ The following rules apply to both schedulers.
 - Circuit comparison is performed against the supported input operation sequence **after SWAP removal**.
 - Every remaining supported one- and two-qubit operation must appear exactly once. No operation may be added, duplicated, or omitted.
 - Gate identity, parameters, measurement destinations, and per-qubit operation order must be preserved.
+- Optional exception for `naive_n_dag` QASM input: `reorder_cz=true` permits
+  exchanging unconditional CZs within commuting blocks before scheduling.
+  Preprocessing preserves every operation occurrence and checks that each
+  quantum/classical wire changes only by permutations within consecutive CZ
+  runs. It does not cross non-CZ wire boundaries. The movement scheduler then
+  preserves exact per-qubit order against the prepared, SWAP-filtered circuit.
+  The default `reorder_cz=false` retains original input ordering. This option
+  rejects conditional gates/control flow and `step_order` input.
 - Operations on disjoint qubits may be reordered or emitted in the same timestep when the scheduler's batching rules permit it.
 - A gate may not use the same qubit twice.
 - Simultaneous gates must have disjoint operands.
-- Measurements retain the classical destination, for example `measure q[2] -> c[5];`.
+- Measurements retain the classical register and destination, for example
+  `measure q[2] -> c_x[5];`. Equal local indices in different registers remain distinct.
 - Barriers are scheduling metadata and are not emitted as physical operations.
 - The supported physical scheduling model handles one- and two-qubit operations. Unsupported higher-arity operations must not be silently scheduled as if they were supported.
 
@@ -189,6 +198,15 @@ This differs intentionally from standalone `naive_dag`, which may finish at a ch
 ### 8.3 Layer and reuse rules
 
 - A two-qubit DAG layer contains gates with disjoint operands.
+- With CZ preprocessing enabled, bipartite commuting blocks use optimal
+  edge coloring (Delta colors, via regularization and perfect matchings);
+  non-bipartite blocks use greedy coloring. Rebuilding the DAG in color order
+  permits the ordinary layer extractor to compact independent gates across
+  colors. It does not guarantee minimum movement time or fixed color boundaries.
+- Before placement, compare original and proposed extracted two-qubit layer
+  counts. If the proposed count is larger, retain the original full circuit,
+  single-qubit context and validation reference. Accept equal or smaller
+  counts. This depth safeguard does not guarantee shorter physical execution.
 - Grouping decisions use the candidate's actual execution state after any proposed reset.
 - Reuse may execute only gates having exactly one operand in the existing active load.
 - A gate whose two operands are both loaded cannot execute until the load has returned and an appropriate load is created.

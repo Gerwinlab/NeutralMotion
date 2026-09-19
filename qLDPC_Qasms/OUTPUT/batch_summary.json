@@ -1,0 +1,632 @@
+[
+    {
+        "qasm": "bb_n108_k8_d10_cz_syndrome.qasm",
+        "config": "bb_n108_k8_d10_cz_syndrome.json",
+        "fingerprint": {
+            "qasm_sha256": "1af29e35e984bad07316bb12b1a6aef259baa68edd7672e76d767aaaf4c73340",
+            "config_sha256": "2a43bb5f24bb325b7c72b8186b75eafb31e2645aa0f8a662b555c09c9f593cac",
+            "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+            "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+            "seed": 0,
+            "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+        },
+        "started_utc": "2026-09-19T05:15:55.280713+00:00",
+        "command": [
+            "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+            "-u",
+            "-m",
+            "naive_n_dag",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n108_k8_d10_cz_syndrome.json",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n108_k8_d10_cz_syndrome.qasm",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+            "--seed",
+            "0",
+            "--output-name",
+            "bb_n108_k8_d10_cz_syndrome.fastsa.naive_n_dag",
+            "--log"
+        ],
+        "status": "success",
+        "fill_strategy": "fastsa",
+        "outputs": {
+            "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n108_k8_d10_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+            "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n108_k8_d10_cz_syndrome.fastsa.naive_n_dag.log",
+            "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n108_k8_d10_cz_syndrome.fastsa.naive_n_dag.result.json",
+            "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n108_k8_d10_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+        },
+        "returncode": 0,
+        "validation_warnings": [
+            "Saved schedule does not preserve all operations, wire order, and measurement bits"
+        ],
+        "elapsed_seconds": 765.173,
+        "artifact_sha256": {
+            "console_log": "fcfde53110ff2e12c41e4dcb8a9c35bb041474b57dee98f2152687105d9c404e",
+            "fastsa_log": "f7f9f4ef8db319ec815eb4e2d3feb4176797296bbd3ebd7809d792efe3c2883c",
+            "schedule": "2ecc90b56f30bf0a99ba2a442ea86cd00bb61d0b2f9e8fdc9603280b06ce23d9"
+        }
+    },
+    {
+        "qasm": "bb_n144_k12_d12_cz_syndrome.qasm",
+        "config": "bb_n144_k12_d12_cz_syndrome.json",
+        "fingerprint": {
+            "qasm_sha256": "2eb3558f079991ba780d2033956697c5f7ad08d8526fb4ea968191e5ac4bf628",
+            "config_sha256": "2ff8c54a1acc9bd3aaf1356566bd84491e4514dcad0b1c180e851e90e989741c",
+            "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+            "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+            "seed": 0,
+            "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+        },
+        "started_utc": "2026-09-19T05:29:45.426367+00:00",
+        "command": [
+            "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+            "-u",
+            "-m",
+            "naive_n_dag",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n144_k12_d12_cz_syndrome.json",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n144_k12_d12_cz_syndrome.qasm",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+            "--seed",
+            "0",
+            "--output-name",
+            "bb_n144_k12_d12_cz_syndrome.fastsa.naive_n_dag",
+            "--log"
+        ],
+        "status": "success",
+        "fill_strategy": "fastsa",
+        "outputs": {
+            "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n144_k12_d12_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+            "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n144_k12_d12_cz_syndrome.fastsa.naive_n_dag.log",
+            "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n144_k12_d12_cz_syndrome.fastsa.naive_n_dag.result.json",
+            "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n144_k12_d12_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+        },
+        "returncode": 0,
+        "validation_warnings": [
+            "Saved schedule does not preserve all operations, wire order, and measurement bits"
+        ],
+        "elapsed_seconds": 1214.76,
+        "artifact_sha256": {
+            "console_log": "35151e6edd28f03f3c432117f5632fc49bc2a4a6ed227a89ae1277135d9bc4ce",
+            "fastsa_log": "6e989571b74e285a1e29e2ba3a3c6968666b75ed2a4abad18b9d49d75751fc50",
+            "schedule": "db2822f730a3a3396485bd402cb842fefb15e1f608161ff5f46707d939c14532"
+        }
+    },
+    {
+        "qasm": "bb_n288_k12_d18_cz_syndrome.qasm",
+        "config": "bb_n288_k12_d18_cz_syndrome.json",
+        "fingerprint": {
+            "qasm_sha256": "deb477b8ec09074eba61287fe7969396a664e3f47e16fbb1439626ad092da19c",
+            "config_sha256": "56adb36b7c75817372432b9161967e7ff2c64faedd877ba292e16f906b22b63a",
+            "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+            "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+            "seed": 0,
+            "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+        },
+        "started_utc": "2026-09-19T05:51:45.755714+00:00",
+        "command": [
+            "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+            "-u",
+            "-m",
+            "naive_n_dag",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n288_k12_d18_cz_syndrome.json",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n288_k12_d18_cz_syndrome.qasm",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+            "--seed",
+            "0",
+            "--output-name",
+            "bb_n288_k12_d18_cz_syndrome.fastsa.naive_n_dag",
+            "--log"
+        ],
+        "status": "success",
+        "fill_strategy": "fastsa",
+        "outputs": {
+            "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n288_k12_d18_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+            "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n288_k12_d18_cz_syndrome.fastsa.naive_n_dag.log",
+            "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n288_k12_d18_cz_syndrome.fastsa.naive_n_dag.result.json",
+            "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n288_k12_d18_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+        },
+        "returncode": 0,
+        "validation_warnings": [
+            "Saved schedule does not preserve all operations, wire order, and measurement bits"
+        ],
+        "elapsed_seconds": 4192.169,
+        "artifact_sha256": {
+            "console_log": "73a7f8fd875a9b4609521191d739cb7dbc2334d85e9804247e5c6b13873a775d",
+            "fastsa_log": "3228e3247178b04aee966faa45278c82cddd06f91acf9a952828f7077e7248aa",
+            "schedule": "2057111c978aa7597f687f6e69f236cfcd41781570870e01a3510ded649c2fc2"
+        }
+    },
+    {
+        "qasm": "bb_n360_k12_dle24_cz_syndrome.qasm",
+        "config": "bb_n360_k12_dle24_cz_syndrome.json",
+        "fingerprint": {
+            "qasm_sha256": "02baa9d78ee7cd22baca58b667b610cebbfbb064476f3c411ed23bee0267a8d5",
+            "config_sha256": "4534ca42cb1cc2452aa26666668bc1ca0bb1c733856b31417df8e40a0a22578c",
+            "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+            "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+            "seed": 0,
+            "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+        },
+        "started_utc": "2026-09-19T07:07:47.771746+00:00",
+        "command": [
+            "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+            "-u",
+            "-m",
+            "naive_n_dag",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n360_k12_dle24_cz_syndrome.json",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n360_k12_dle24_cz_syndrome.qasm",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+            "--seed",
+            "0",
+            "--output-name",
+            "bb_n360_k12_dle24_cz_syndrome.fastsa.naive_n_dag",
+            "--log"
+        ],
+        "status": "success",
+        "fill_strategy": "fastsa",
+        "outputs": {
+            "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n360_k12_dle24_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+            "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n360_k12_dle24_cz_syndrome.fastsa.naive_n_dag.log",
+            "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n360_k12_dle24_cz_syndrome.fastsa.naive_n_dag.result.json",
+            "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n360_k12_dle24_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+        },
+        "returncode": 0,
+        "validation_warnings": [
+            "Saved schedule does not preserve all operations, wire order, and measurement bits"
+        ],
+        "elapsed_seconds": 6336.083,
+        "artifact_sha256": {
+            "console_log": "81051512a84a3943662032fdbb586f97b4116d586c4d98d5d21b050d26b768e7",
+            "fastsa_log": "d9f6731fe49cbf6a3717c94fa95684885dcd580fe1b3b9695d10fa756c3e6903",
+            "schedule": "2596aab9107e6e37b3a19f4f3bee986f2c96dd2c0133a69f80d2e5aba5dba736"
+        }
+    },
+    {
+        "qasm": "bb_n72_k12_d6_cz_syndrome.qasm",
+        "config": "bb_n72_k12_d6_cz_syndrome.json",
+        "fingerprint": {
+            "qasm_sha256": "97360b2de73dc8646c541e195fd1c21af81c41beb6c7936096b75dcbd175a85d",
+            "config_sha256": "f8fda4558361242f350d910f6b944ffb45081531a247afaa5cb3ea571567fc2f",
+            "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+            "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+            "seed": 0,
+            "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+        },
+        "started_utc": "2026-09-19T09:01:46.423890+00:00",
+        "command": [
+            "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+            "-u",
+            "-m",
+            "naive_n_dag",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n72_k12_d6_cz_syndrome.json",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n72_k12_d6_cz_syndrome.qasm",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+            "--seed",
+            "0",
+            "--output-name",
+            "bb_n72_k12_d6_cz_syndrome.fastsa.naive_n_dag",
+            "--log"
+        ],
+        "status": "success",
+        "fill_strategy": "fastsa",
+        "outputs": {
+            "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n72_k12_d6_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+            "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n72_k12_d6_cz_syndrome.fastsa.naive_n_dag.log",
+            "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n72_k12_d6_cz_syndrome.fastsa.naive_n_dag.result.json",
+            "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n72_k12_d6_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+        },
+        "returncode": 0,
+        "validation_warnings": [
+            "Saved schedule does not preserve all operations, wire order, and measurement bits"
+        ],
+        "elapsed_seconds": 415.522,
+        "artifact_sha256": {
+            "console_log": "bbdc66aec63aa91563031ea0e135430d2d2d89ee0ed697871784292f06a7d962",
+            "fastsa_log": "22da5f50fc5c2c824af587342021a9b8897d2480b950d602147e7c35b912ddab",
+            "schedule": "f172dd5fa7000fa3f6af6c79f4dde269ebc70c4b5568110252706390bb51357f"
+        }
+    },
+    {
+        "qasm": "bb_n90_k8_d10_cz_syndrome.qasm",
+        "config": "bb_n90_k8_d10_cz_syndrome.json",
+        "fingerprint": {
+            "qasm_sha256": "c817ceedda345e42f8d4fb81517e28305e615279a16f45ddc86e17ff37e66f8f",
+            "config_sha256": "53f8ee09c788f3939a22945136651a021bcedb36196e7292b4ce1311edddd3fe",
+            "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+            "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+            "seed": 0,
+            "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+        },
+        "started_utc": "2026-09-19T09:09:12.801843+00:00",
+        "command": [
+            "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+            "-u",
+            "-m",
+            "naive_n_dag",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n90_k8_d10_cz_syndrome.json",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n90_k8_d10_cz_syndrome.qasm",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+            "--seed",
+            "0",
+            "--output-name",
+            "bb_n90_k8_d10_cz_syndrome.fastsa.naive_n_dag",
+            "--log"
+        ],
+        "status": "success",
+        "fill_strategy": "fastsa",
+        "outputs": {
+            "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n90_k8_d10_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+            "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n90_k8_d10_cz_syndrome.fastsa.naive_n_dag.log",
+            "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n90_k8_d10_cz_syndrome.fastsa.naive_n_dag.result.json",
+            "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n90_k8_d10_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+        },
+        "returncode": 0,
+        "validation_warnings": [
+            "Saved schedule does not preserve all operations, wire order, and measurement bits"
+        ],
+        "elapsed_seconds": 566.805,
+        "artifact_sha256": {
+            "console_log": "42e6f5dc4c037c69314a8efece131771f6732d2080a78e5a6a1e9460a06d6f1a",
+            "fastsa_log": "667f9d472dc5f93f5e562016ffb9a670bc116ac27aec6080356db63684c6e19e",
+            "schedule": "5677356211eb2396f6d7b07770f64b117fec4188165a3774998e806f0af7e622"
+        }
+    },
+    {
+        "qasm": "hgp_hamming_n58_k16_d3_cz_syndrome.qasm",
+        "config": "hgp_hamming_n58_k16_d3_cz_syndrome.json",
+        "fingerprint": {
+            "qasm_sha256": "98c2664ccd01dbf9fb1f466f7c638164a8ba8f9b55bb7d5b6de03e4f80c15db3",
+            "config_sha256": "39e71bb6c2f9f5385d7b950819b57d5c7fd27a7b24abc13a4a308e09bbd593c7",
+            "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+            "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+            "seed": 0,
+            "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+        },
+        "started_utc": "2026-09-19T09:19:29.618060+00:00",
+        "command": [
+            "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+            "-u",
+            "-m",
+            "naive_n_dag",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/hgp_hamming_n58_k16_d3_cz_syndrome.json",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/hgp_hamming_n58_k16_d3_cz_syndrome.qasm",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+            "--seed",
+            "0",
+            "--output-name",
+            "hgp_hamming_n58_k16_d3_cz_syndrome.fastsa.naive_n_dag",
+            "--log"
+        ],
+        "status": "success",
+        "fill_strategy": "fastsa",
+        "outputs": {
+            "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_hamming_n58_k16_d3_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+            "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_hamming_n58_k16_d3_cz_syndrome.fastsa.naive_n_dag.log",
+            "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_hamming_n58_k16_d3_cz_syndrome.fastsa.naive_n_dag.result.json",
+            "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_hamming_n58_k16_d3_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+        },
+        "returncode": 0,
+        "validation_warnings": [
+            "Saved schedule does not preserve all operations, wire order, and measurement bits"
+        ],
+        "elapsed_seconds": 195.453,
+        "artifact_sha256": {
+            "console_log": "8cfe682b8a7ccd198a147df742e116e731e95796b9efe087da8f319e7623c636",
+            "fastsa_log": "980f2a1515803557b4bde0a5d16cac1ca1214f741cb66eb47a597a8e6d8d0806",
+            "schedule": "2358efcad235f720b3c166e43b9b8f0a2bbe63c368ca9dd8661cb030826e1249"
+        }
+    },
+    {
+        "qasm": "hgp_repetition_n13_k1_d3_cz_syndrome.qasm",
+        "config": "hgp_repetition_n13_k1_d3_cz_syndrome.json",
+        "fingerprint": {
+            "qasm_sha256": "274948f440192954607be25020dbd05d2bf1e5c0d62f403839233bd82f241525",
+            "config_sha256": "d9a6ef7df3b283d48d38f371a3c7e39d848c95021b39317c3d2a4ba31e1dc851",
+            "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+            "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+            "seed": 0,
+            "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+        },
+        "started_utc": "2026-09-19T09:23:01.897745+00:00",
+        "command": [
+            "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+            "-u",
+            "-m",
+            "naive_n_dag",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/hgp_repetition_n13_k1_d3_cz_syndrome.json",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/hgp_repetition_n13_k1_d3_cz_syndrome.qasm",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+            "--seed",
+            "0",
+            "--output-name",
+            "hgp_repetition_n13_k1_d3_cz_syndrome.fastsa.naive_n_dag",
+            "--log"
+        ],
+        "status": "success",
+        "fill_strategy": "fastsa",
+        "outputs": {
+            "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_repetition_n13_k1_d3_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+            "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_repetition_n13_k1_d3_cz_syndrome.fastsa.naive_n_dag.log",
+            "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_repetition_n13_k1_d3_cz_syndrome.fastsa.naive_n_dag.result.json",
+            "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_repetition_n13_k1_d3_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+        },
+        "returncode": 0,
+        "validation_warnings": [
+            "Saved schedule does not preserve all operations, wire order, and measurement bits"
+        ],
+        "elapsed_seconds": 37.296,
+        "artifact_sha256": {
+            "console_log": "b7ff2eb406c32ef7d715d1418c97cc67876603988403049790ab59c278f9ecfb",
+            "fastsa_log": "e11592a4265234cb1781e7a8cf4eda6d4ad98bb918e9cfba5aefafab0eff5154",
+            "schedule": "59a75ce1d0c4248810592ccba2b554821ef3607b7971561ebcb905e0174f791a"
+        }
+    },
+    {
+        "qasm": "hgp_repetition_n41_k1_d5_cz_syndrome.qasm",
+        "config": "hgp_repetition_n41_k1_d5_cz_syndrome.json",
+        "fingerprint": {
+            "qasm_sha256": "05b2fc9c1227681400d79fdd0ee7279defbc63eb1b30fd4ee486045b191a981c",
+            "config_sha256": "74b5d91804317ef64e2db7c27e77f1d1324df130507da5f115c48f782351d577",
+            "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+            "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+            "seed": 0,
+            "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+        },
+        "started_utc": "2026-09-19T09:23:41.617160+00:00",
+        "command": [
+            "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+            "-u",
+            "-m",
+            "naive_n_dag",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/hgp_repetition_n41_k1_d5_cz_syndrome.json",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/hgp_repetition_n41_k1_d5_cz_syndrome.qasm",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+            "--seed",
+            "0",
+            "--output-name",
+            "hgp_repetition_n41_k1_d5_cz_syndrome.fastsa.naive_n_dag",
+            "--log"
+        ],
+        "status": "success",
+        "fill_strategy": "fastsa",
+        "outputs": {
+            "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_repetition_n41_k1_d5_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+            "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_repetition_n41_k1_d5_cz_syndrome.fastsa.naive_n_dag.log",
+            "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_repetition_n41_k1_d5_cz_syndrome.fastsa.naive_n_dag.result.json",
+            "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_repetition_n41_k1_d5_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+        },
+        "returncode": 0,
+        "validation_warnings": [
+            "Saved schedule does not preserve all operations, wire order, and measurement bits"
+        ],
+        "elapsed_seconds": 113.551,
+        "artifact_sha256": {
+            "console_log": "49f2d25a9a8717af17aa18f5c2c6b75aaf3b0178bc6e2baecb74491fb338a63a",
+            "fastsa_log": "49a56e365ac4882b4c9eef3e8caab700220c0e560bdd47522d9caa87a26ecdd8",
+            "schedule": "664be6d4cadc926aa8a22e23eb8896cdc68baa489064660411637a6a895ddb02"
+        }
+    },
+    {
+        "qasm": "surface_rotated_n25_k1_d5_cz_syndrome.qasm",
+        "config": "surface_rotated_n25_k1_d5_cz_syndrome.json",
+        "fingerprint": {
+            "qasm_sha256": "b2ea03f34262297430d3b3d00efe8c1e57e91cd8f768ae6fa48a63fe9f8610ce",
+            "config_sha256": "3a9cd6ccb7a3a0c173bbba9db285881ed1e3f8a0adfe89af1f913ee29ba7ce5b",
+            "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+            "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+            "seed": 0,
+            "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+        },
+        "started_utc": "2026-09-19T09:25:46.199100+00:00",
+        "command": [
+            "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+            "-u",
+            "-m",
+            "naive_n_dag",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/surface_rotated_n25_k1_d5_cz_syndrome.json",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/surface_rotated_n25_k1_d5_cz_syndrome.qasm",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+            "--seed",
+            "0",
+            "--output-name",
+            "surface_rotated_n25_k1_d5_cz_syndrome.fastsa.naive_n_dag",
+            "--log"
+        ],
+        "status": "success",
+        "fill_strategy": "fastsa",
+        "outputs": {
+            "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n25_k1_d5_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+            "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n25_k1_d5_cz_syndrome.fastsa.naive_n_dag.log",
+            "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n25_k1_d5_cz_syndrome.fastsa.naive_n_dag.result.json",
+            "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n25_k1_d5_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+        },
+        "returncode": 0,
+        "validation_warnings": [
+            "Saved schedule does not preserve all operations, wire order, and measurement bits"
+        ],
+        "elapsed_seconds": 65.823,
+        "artifact_sha256": {
+            "console_log": "bb951425481c4e3a79d340cb69b69764dc190f937d6d32c3fff70d2c8db6bfd7",
+            "fastsa_log": "29d99d3584420f64405ed265eeca720bb4ffbcb971203b24c37f26d75319a7d0",
+            "schedule": "9a38b54a61a7af49f6ba6c5b7a50720e38ca64af18b3556b21a7ea509ed350a5"
+        }
+    },
+    {
+        "qasm": "surface_rotated_n49_k1_d7_cz_syndrome.qasm",
+        "config": "surface_rotated_n49_k1_d7_cz_syndrome.json",
+        "fingerprint": {
+            "qasm_sha256": "d654b2907b6d280b323ed842b429c284d0c0080965e46a2c1fcf073c41f22679",
+            "config_sha256": "ce367da90f3fa72a5e3e0736f43008e23a153151f2bc392ce5f18464ddebb086",
+            "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+            "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+            "seed": 0,
+            "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+        },
+        "started_utc": "2026-09-19T09:26:57.561290+00:00",
+        "command": [
+            "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+            "-u",
+            "-m",
+            "naive_n_dag",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/surface_rotated_n49_k1_d7_cz_syndrome.json",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/surface_rotated_n49_k1_d7_cz_syndrome.qasm",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+            "--seed",
+            "0",
+            "--output-name",
+            "surface_rotated_n49_k1_d7_cz_syndrome.fastsa.naive_n_dag",
+            "--log"
+        ],
+        "status": "success",
+        "fill_strategy": "fastsa",
+        "outputs": {
+            "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n49_k1_d7_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+            "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n49_k1_d7_cz_syndrome.fastsa.naive_n_dag.log",
+            "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n49_k1_d7_cz_syndrome.fastsa.naive_n_dag.result.json",
+            "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n49_k1_d7_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+        },
+        "returncode": 0,
+        "validation_warnings": [
+            "Saved schedule does not preserve all operations, wire order, and measurement bits"
+        ],
+        "elapsed_seconds": 137.476,
+        "artifact_sha256": {
+            "console_log": "d67bccdfa32a767ae6663647da010647cb4040eab4897d558a8542937b9e2c1d",
+            "fastsa_log": "07daed87891193d73774aafcc062e77bf61d93970ca9ee69f8b0502734506439",
+            "schedule": "eafd8dbcf2c34c5a4c241bb9b773b26e4aba9e6100fd7ecc123e5b317af3aa03"
+        }
+    },
+    {
+        "qasm": "surface_rotated_n9_k1_d3_cz_syndrome.qasm",
+        "config": "surface_rotated_n9_k1_d3_cz_syndrome.json",
+        "fingerprint": {
+            "qasm_sha256": "c2c322da1f87bf2f44e11a45e52452b7fbc7ce9294b4adbccf2acac2768307e5",
+            "config_sha256": "7c6a49454a320102f5d4a192c23ea66c4142dbb9bb2d448c38c4417cb34c4067",
+            "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+            "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+            "seed": 0,
+            "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+        },
+        "started_utc": "2026-09-19T09:29:26.478350+00:00",
+        "command": [
+            "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+            "-u",
+            "-m",
+            "naive_n_dag",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/surface_rotated_n9_k1_d3_cz_syndrome.json",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/surface_rotated_n9_k1_d3_cz_syndrome.qasm",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+            "--seed",
+            "0",
+            "--output-name",
+            "surface_rotated_n9_k1_d3_cz_syndrome.fastsa.naive_n_dag",
+            "--log"
+        ],
+        "status": "success",
+        "fill_strategy": "fastsa",
+        "outputs": {
+            "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n9_k1_d3_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+            "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n9_k1_d3_cz_syndrome.fastsa.naive_n_dag.log",
+            "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n9_k1_d3_cz_syndrome.fastsa.naive_n_dag.result.json",
+            "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n9_k1_d3_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+        },
+        "returncode": 0,
+        "validation_warnings": [
+            "Saved schedule does not preserve all operations, wire order, and measurement bits"
+        ],
+        "elapsed_seconds": 30.394,
+        "artifact_sha256": {
+            "console_log": "1c4db86cb3e58a723aa2b7b0fa39364ac5554db3b2e1a4dfb3d8978dec7c4381",
+            "fastsa_log": "75045ac232d34dae7f85685b3dc145a045ecc12f0e967464f4f6cb33d8d30683",
+            "schedule": "5abeefe6dd6f82e07c3efb970b9b014114694d24a7272c3b37ea6a18e21e8aa7"
+        }
+    },
+    {
+        "qasm": "toric_n18_k2_d3_cz_syndrome.qasm",
+        "config": "toric_n18_k2_d3_cz_syndrome.json",
+        "fingerprint": {
+            "qasm_sha256": "5003de1cda256a4c1119260f9819e22dcf9dc576faa23a51350607900961d120",
+            "config_sha256": "26d3bfa820be0047a4c6916e921d8bb8f5e0a07c62e61be097074d65feebfa72",
+            "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+            "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+            "seed": 0,
+            "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+        },
+        "started_utc": "2026-09-19T09:29:59.748158+00:00",
+        "command": [
+            "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+            "-u",
+            "-m",
+            "naive_n_dag",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/toric_n18_k2_d3_cz_syndrome.json",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/toric_n18_k2_d3_cz_syndrome.qasm",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+            "--seed",
+            "0",
+            "--output-name",
+            "toric_n18_k2_d3_cz_syndrome.fastsa.naive_n_dag",
+            "--log"
+        ],
+        "status": "success",
+        "fill_strategy": "fastsa",
+        "outputs": {
+            "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/toric_n18_k2_d3_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+            "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/toric_n18_k2_d3_cz_syndrome.fastsa.naive_n_dag.log",
+            "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/toric_n18_k2_d3_cz_syndrome.fastsa.naive_n_dag.result.json",
+            "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/toric_n18_k2_d3_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+        },
+        "returncode": 0,
+        "validation_warnings": [
+            "Saved schedule does not preserve all operations, wire order, and measurement bits"
+        ],
+        "elapsed_seconds": 56.18,
+        "artifact_sha256": {
+            "console_log": "5d8c81d43c4eb8f3a2b8cf1cf5bdf78bac1a6aa4aa1909a69719fd2f3cd47ddd",
+            "fastsa_log": "5c95f8344a6746b054575052f199f71fd94428a8a880767014d3380f8e5e4d90",
+            "schedule": "9fcc78a308c767624652d71a3e443a3637187fcc09c4b3db671939eb7dd8f05d"
+        }
+    },
+    {
+        "qasm": "toric_n50_k2_d5_cz_syndrome.qasm",
+        "config": "toric_n50_k2_d5_cz_syndrome.json",
+        "fingerprint": {
+            "qasm_sha256": "0302e38dd5e6aee2929ccc8a8099827b654cd1e7b6c682bfd563780efa1fe3d0",
+            "config_sha256": "39e71bb6c2f9f5385d7b950819b57d5c7fd27a7b24abc13a4a308e09bbd593c7",
+            "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+            "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+            "seed": 0,
+            "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+        },
+        "started_utc": "2026-09-19T09:31:01.794164+00:00",
+        "command": [
+            "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+            "-u",
+            "-m",
+            "naive_n_dag",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/toric_n50_k2_d5_cz_syndrome.json",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/toric_n50_k2_d5_cz_syndrome.qasm",
+            "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+            "--seed",
+            "0",
+            "--output-name",
+            "toric_n50_k2_d5_cz_syndrome.fastsa.naive_n_dag",
+            "--log"
+        ],
+        "status": "success",
+        "fill_strategy": "fastsa",
+        "outputs": {
+            "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/toric_n50_k2_d5_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+            "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/toric_n50_k2_d5_cz_syndrome.fastsa.naive_n_dag.log",
+            "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/toric_n50_k2_d5_cz_syndrome.fastsa.naive_n_dag.result.json",
+            "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/toric_n50_k2_d5_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+        },
+        "returncode": 0,
+        "validation_warnings": [
+            "Saved schedule does not preserve all operations, wire order, and measurement bits"
+        ],
+        "elapsed_seconds": 165.779,
+        "artifact_sha256": {
+            "console_log": "eb8619789bc00f81e781a308d4e0a0f18441d62ed7ec5041990c85602e99bb46",
+            "fastsa_log": "91f5273e9be469b29db2e5403ed112e0a556b28d17c5218ee1f4ac4889973b24",
+            "schedule": "e10963d570a5eb3e31d331e228300d731b88a37b25492f5ad3ad71d5316f17bd"
+        }
+    }
+]

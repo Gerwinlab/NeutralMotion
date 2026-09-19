@@ -1,0 +1,25 @@
+Source QASM: /home/gage/Quantum_Class/Phys765/qLDPC_Qasms/hgp_repetition_n13_k1_d3_cz_syndrome.qasm
+Config: /home/gage/Quantum_Class/Phys765/qLDPC_Qasms/hgp_repetition_n13_k1_d3_cz_syndrome.json
+Seed: 0
+
+naive_n_dag config loaded
+dimensions=[5, 5] num_NA=25 qasm_dir=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms
+qasm_file=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/hgp_repetition_n13_k1_d3_cz_syndrome.qasm
+max_dimension=[5, 5]
+fill_strategy=fastsa
+schedule_output_dir=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT
+reorder_cz=True
+selected_schedule=reset_only
+reused_groups=0
+candidate_reset_only_time=8866.594930787598 microsecond
+candidate_reuse_time=8866.594930787598 microsecond
+candidate_sequential_home_time=20440.432471211985 microsecond
+candidate_naive_dag_time=19435.059291916066 microsecond
+two_qubit_layers=7
+scheduled_timesteps=95
+estimated_time=8866.594930787598 microsecond
+schedule_file=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_repetition_n13_k1_d3_cz_syndrome.fastsa.naive_n_dag.schedule.txt
+fastsa_log_file=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_repetition_n13_k1_d3_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv
+
+Batch result: success
+Validation warning: Saved schedule does not preserve all operations, wire order, and measurement bits

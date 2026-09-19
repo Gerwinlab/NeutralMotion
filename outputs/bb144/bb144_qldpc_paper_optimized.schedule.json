@@ -1,0 +1,540 @@
+{
+  "qasm": "qLDPC_Qasms/bb_n144_k12_d12_cz_syndrome.qasm",
+  "qasm_sha256": "2eb3558f079991ba780d2033956697c5f7ad08d8526fb4ea968191e5ac4bf628",
+  "coords": "/home/gage/Quantum_Class/bb144_coords.json",
+  "config": {
+    "dimensions": [
+      24,
+      12
+    ],
+    "initial_layout": "../qasm_files/bb144_coords.json",
+    "num_NA": 288,
+    "qasm_base_dir": "../qasm_files",
+    "parallel": true,
+    "transfer_SLM_AOD": "15 microseconds",
+    "max_acceleration": "2750 m/s^2",
+    "max_velocity": "0.55 m/s",
+    "rydberg_radius": "5 micrometers",
+    "average_single_gate_time": "0.1 microseconds",
+    "average_two_gate_time": "0.27 microseconds",
+    "t_switch": "1.5 microseconds",
+    "jerk": "constant",
+    "movement_shape": "trapezoidal",
+    "max_dimension": [
+      24,
+      12
+    ],
+    "fill_strategy": "Given",
+    "alignment_conc": 0,
+    "T_reuse": "Inf"
+  },
+  "operation_counts": {
+    "h": 576,
+    "cz": 864
+  },
+  "validation": "PASS: internal and serialized replay, exact operation multiset, original homes; commuting CZs reordered within X/Z phases",
+  "timing": {
+    "motion_us": 5274.536609609264,
+    "transfer_us": 59.99999999999999,
+    "gate_us": 47.28000000000002,
+    "total_us": 5381.816609609264,
+    "paper_eq3_same_segments_motion_us": 2393.3059473335766,
+    "counts": {
+      "1q_pulses": 3,
+      "transfer_batches": 4,
+      "move_batches": 28,
+      "2q_pulses": 24
+    }
+  },
+  "phases": [
+    {
+      "check_ids": [
+        144,
+        145,
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        152,
+        153,
+        154,
+        155,
+        156,
+        157,
+        158,
+        159,
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        172,
+        173,
+        174,
+        175,
+        176,
+        177,
+        178,
+        179,
+        180,
+        181,
+        182,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192,
+        193,
+        194,
+        195,
+        196,
+        197,
+        198,
+        199,
+        200,
+        201,
+        202,
+        203,
+        204,
+        205,
+        206,
+        207,
+        208,
+        209,
+        210,
+        211,
+        212,
+        213,
+        214,
+        215
+      ],
+      "visits": [
+        {
+          "group": 9,
+          "offset": [
+            -36,
+            -2
+          ],
+          "aod_displacement": [
+            -36,
+            -1
+          ]
+        },
+        {
+          "group": 10,
+          "offset": [
+            -38,
+            0
+          ],
+          "aod_displacement": [
+            -38,
+            -1
+          ]
+        },
+        {
+          "group": 11,
+          "offset": [
+            -42,
+            0
+          ],
+          "aod_displacement": [
+            -42,
+            -1
+          ]
+        },
+        {
+          "group": 2,
+          "offset": [
+            12,
+            -2
+          ],
+          "aod_displacement": [
+            12,
+            -1
+          ]
+        },
+        {
+          "group": 5,
+          "offset": [
+            10,
+            0
+          ],
+          "aod_displacement": [
+            10,
+            -1
+          ]
+        },
+        {
+          "group": 4,
+          "offset": [
+            6,
+            0
+          ],
+          "aod_displacement": [
+            6,
+            -1
+          ]
+        },
+        {
+          "group": 6,
+          "offset": [
+            2,
+            -12
+          ],
+          "aod_displacement": [
+            1,
+            -12
+          ]
+        },
+        {
+          "group": 7,
+          "offset": [
+            0,
+            -18
+          ],
+          "aod_displacement": [
+            1,
+            -18
+          ]
+        },
+        {
+          "group": 8,
+          "offset": [
+            0,
+            -22
+          ],
+          "aod_displacement": [
+            1,
+            -22
+          ]
+        },
+        {
+          "group": 3,
+          "offset": [
+            2,
+            12
+          ],
+          "aod_displacement": [
+            1,
+            12
+          ]
+        },
+        {
+          "group": 1,
+          "offset": [
+            0,
+            6
+          ],
+          "aod_displacement": [
+            1,
+            6
+          ]
+        },
+        {
+          "group": 0,
+          "offset": [
+            0,
+            2
+          ],
+          "aod_displacement": [
+            0,
+            1
+          ]
+        }
+      ],
+      "motion_us": 2637.268304804633,
+      "group_sizes": [
+        60,
+        48,
+        54,
+        36,
+        66,
+        60,
+        36,
+        24,
+        12,
+        18,
+        12,
+        6
+      ],
+      "predecessor_masks": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "check_ids": [
+        216,
+        217,
+        218,
+        219,
+        220,
+        221,
+        222,
+        223,
+        224,
+        225,
+        226,
+        227,
+        228,
+        229,
+        230,
+        231,
+        232,
+        233,
+        234,
+        235,
+        236,
+        237,
+        238,
+        239,
+        240,
+        241,
+        242,
+        243,
+        244,
+        245,
+        246,
+        247,
+        248,
+        249,
+        250,
+        251,
+        252,
+        253,
+        254,
+        255,
+        256,
+        257,
+        258,
+        259,
+        260,
+        261,
+        262,
+        263,
+        264,
+        265,
+        266,
+        267,
+        268,
+        269,
+        270,
+        271,
+        272,
+        273,
+        274,
+        275,
+        276,
+        277,
+        278,
+        279,
+        280,
+        281,
+        282,
+        283,
+        284,
+        285,
+        286,
+        287
+      ],
+      "visits": [
+        {
+          "group": 5,
+          "offset": [
+            36,
+            2
+          ],
+          "aod_displacement": [
+            36,
+            1
+          ]
+        },
+        {
+          "group": 1,
+          "offset": [
+            38,
+            0
+          ],
+          "aod_displacement": [
+            38,
+            1
+          ]
+        },
+        {
+          "group": 2,
+          "offset": [
+            42,
+            0
+          ],
+          "aod_displacement": [
+            42,
+            1
+          ]
+        },
+        {
+          "group": 11,
+          "offset": [
+            -12,
+            2
+          ],
+          "aod_displacement": [
+            -12,
+            1
+          ]
+        },
+        {
+          "group": 10,
+          "offset": [
+            -10,
+            0
+          ],
+          "aod_displacement": [
+            -10,
+            1
+          ]
+        },
+        {
+          "group": 9,
+          "offset": [
+            -6,
+            0
+          ],
+          "aod_displacement": [
+            -6,
+            1
+          ]
+        },
+        {
+          "group": 0,
+          "offset": [
+            -2,
+            12
+          ],
+          "aod_displacement": [
+            -1,
+            12
+          ]
+        },
+        {
+          "group": 3,
+          "offset": [
+            0,
+            18
+          ],
+          "aod_displacement": [
+            -1,
+            18
+          ]
+        },
+        {
+          "group": 4,
+          "offset": [
+            0,
+            22
+          ],
+          "aod_displacement": [
+            -1,
+            22
+          ]
+        },
+        {
+          "group": 8,
+          "offset": [
+            -2,
+            -12
+          ],
+          "aod_displacement": [
+            -1,
+            -12
+          ]
+        },
+        {
+          "group": 7,
+          "offset": [
+            0,
+            -6
+          ],
+          "aod_displacement": [
+            -1,
+            -6
+          ]
+        },
+        {
+          "group": 6,
+          "offset": [
+            0,
+            -2
+          ],
+          "aod_displacement": [
+            0,
+            -1
+          ]
+        }
+      ],
+      "motion_us": 2637.268304804633,
+      "group_sizes": [
+        36,
+        12,
+        6,
+        24,
+        12,
+        18,
+        60,
+        48,
+        36,
+        66,
+        60,
+        54
+      ],
+      "predecessor_masks": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "candidate_us": {
+    "separate_check_loads": 5381.8166096092655,
+    "combined_check_load": null
+  },
+  "circuit_audit": {
+    "measurement_count": 144,
+    "odd_overlap_X_Z_check_pairs": 0,
+    "warning": "Treating the labeled X/Z neighborhoods as CSS checks gives odd overlaps; this QASM is not the paper's stabilizer measurement round. The supplied operations are preserved."
+  },
+  "paper_comparison": "Eq. (3), PDF p. 6: sqrt(6*distance_um/0.02) per axis. The paper's 2.97 ms is a different circuit/layout/routing and motion model. Retiming these same segments is a comparison, not a reproduction of that result.",
+  "optimality_scope": "Minimum motion within the enumerated separate/combined rigid check-load tours, one visit per displacement group and all input wire-order constraints; not global scheduling optimality. Gate pulse overhead does not enter the tour optimization."
+}

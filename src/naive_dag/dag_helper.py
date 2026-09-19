@@ -57,3 +57,17 @@ def op_node_signature(node: DAGOpNode) -> tuple[str, list[float], list[int]]:
         idx = int(idx_str)
         qubit_indices.append(int(idx))
     return gate_name, params, qubit_indices
+
+
+def format_classical_bit(bit) -> str:
+    """Render a classical bit with its QASM register name and local index."""
+    register = getattr(bit, "_register", None)
+    index = getattr(bit, "_index", None)
+    if register is not None and index is not None:
+        return f"{register.name}[{int(index)}]"
+
+    rep = repr(bit)
+    if "index=" not in rep:
+        raise ValueError(f"Unable to extract classical bit index from {rep}")
+    index = int(rep.split("index=", 1)[1].split(">", 1)[0].strip())
+    return f"c[{index}]"

@@ -7,7 +7,7 @@ from typing import Iterable
 
 from qiskit.dagcircuit.dagnode import DAGOpNode
 
-from .dag_helper import op_node_signature
+from .dag_helper import format_classical_bit, op_node_signature
 from .grid import Qubit
 
 
@@ -64,8 +64,8 @@ def _format_node_line(node: DAGOpNode) -> str:
     if name == "measure":
         if len(ids) != 1 or len(node.cargs) != 1:
             raise ValueError("Measurement requires one quantum and one classical operand.")
-        classical_id = int(repr(node.cargs[0]).split("index=", 1)[1].split(">", 1)[0])
-        return f"measure q[{ids[0]}] -> c[{classical_id}];"
+        classical_bit = format_classical_bit(node.cargs[0])
+        return f"measure q[{ids[0]}] -> {classical_bit};"
     return _format_gate_line(name, params, ids)
 
 

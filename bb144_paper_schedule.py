@@ -108,8 +108,13 @@ def optimize_tour(offsets, predecessors, config):
     return steps, visits, transfer_motion + solve(0, start)
 
 
-def emit_phase(nodes, check_ids, homes, config):
+def emit_phase(nodes, check_ids, homes, config, preserve_wire_order=True):
     offsets, groups, predecessors = groups_and_precedence(nodes, homes, check_ids)
+    if not preserve_wire_order:
+        # CZ gates in a check-extraction phase commute.  QASM exporters often
+        # serialize them check-by-check, which can create artificial cycles
+        # between the rigid-displacement groups used by this scheduler.
+        predecessors = [0] * len(predecessors)
     steps, visits, optimal_motion = optimize_tour(offsets, predecessors, config)
     events = []
     displacement = (0, 0)
@@ -284,15 +289,16 @@ def audit_circuit(nodes):
             "warning": "Treating the labeled X/Z neighborhoods as CSS checks gives odd overlaps; this QASM is not the paper's stabilizer measurement round. The supplied operations are preserved."}
 
 
-def validate_raw_operations(qasm_path, schedule_path):
+def validate_raw_operations(qasm_path, schedule_path, preserve_wire_order=True):
     """Also compare literal gate traces, independently of the DAG converter."""
     pattern = r"(?:h|z|cz) q\[\d+\](?:,q\[\d+\])?;"
     expected = re.findall(pattern, qasm_path.read_text())
     actual = re.findall(pattern, schedule_path.read_text())
     assert Counter(expected) == Counter(actual)
-    for q in range(288):
-        operand = f"q[{q}]"
-        assert [g for g in expected if operand in g] == [g for g in actual if operand in g]
+    if preserve_wire_order:
+        for q in range(288):
+            operand = f"q[{q}]"
+            assert [g for g in expected if operand in g] == [g for g in actual if operand in g]
 
 
 def main():
@@ -301,6 +307,10 @@ def main():
     parser.add_argument("--coords", type=Path, default=ROOT.parent / "bb144_coords.json")
     parser.add_argument("--config", type=Path, default=ROOT / "inputs/algorithms/bb144_n_init.json")
     parser.add_argument("--output", type=Path, default=ROOT / "outputs/bb144_paper_optimized.schedule.txt")
+    parser.add_argument(
+        "--allow-cz-reordering", action="store_true",
+        help="reorder commuting CZ gates within each X/Z phase when QASM wire order cycles across displacement groups",
+    )
     args = parser.parse_args()
     raw_config = json.loads(args.config.read_text())
     config = dict(raw_config)
@@ -309,8 +319,11 @@ def main():
     coords = json.loads(args.coords.read_text())
     qubits = initial_layout_fill(generate_grid(config["dimensions"], config["rydberg_radius"]), 288, coords)
     homes = {q.id: q.grid_position() for q in qubits}
-    nodes = list(load_qasm_to_dag(args.qasm).topological_op_nodes())
-    nodes = [n for n in nodes if n.op.name != "barrier"]
+    raw_nodes = list(load_qasm_to_dag(args.qasm).topological_op_nodes())
+    # The paper scheduler models the unitary interaction block only.  Allow it
+    # to consume complete syndrome-extraction QASM by excluding initialization,
+    # synchronization, and readout operations from the scheduling DAG.
+    nodes = [n for n in raw_nodes if n.op.name not in {"barrier", "reset", "measure"}]
     assert all(n.op.name in {"h", "z", "cz"} for n in nodes)
     phase_nodes = [[n for n in nodes if n.op.name == "cz" and any(lo <= q < lo+72 for q in op_node_signature(n)[2])]
                    for lo in (144, 216)]
@@ -336,20 +349,25 @@ def main():
 
     singles_ready()
     for lo, phase in zip((144, 216), phase_nodes):
-        emitted, info = emit_phase(phase, range(lo, lo+72), homes, config)
+        emitted, info = emit_phase(
+            phase, range(lo, lo+72), homes, config,
+            preserve_wire_order=not args.allow_cz_reordering,
+        )
         events.extend(emitted)
         phases.append(info)
         phase_ids = {id(n) for n in phase}
         remaining[:] = [n for n in remaining if id(n) not in phase_ids]
         singles_ready()
     assert not remaining
-    validate_schedule(events, homes, config, nodes)
+    validate_schedule(events, homes, config, None if args.allow_cz_reordering else nodes)
     separate_time = schedule_duration(events, config)
-    combined_events, combined_info = emit_combined(nodes, homes, config)
-    validate_schedule(combined_events, homes, config, nodes)
-    combined_time = schedule_duration(combined_events, config)
-    if combined_time < separate_time:
-        events, phases = combined_events, [combined_info]
+    combined_time = None
+    if not args.allow_cz_reordering:
+        combined_events, combined_info = emit_combined(nodes, homes, config)
+        validate_schedule(combined_events, homes, config, nodes)
+        combined_time = schedule_duration(combined_events, config)
+        if combined_time < separate_time:
+            events, phases = combined_events, [combined_info]
     duration = schedule_duration(events, config)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     write_timed_schedule(args.output, solver="paper_ordered (naive_n_dag rules)",
@@ -358,8 +376,8 @@ def main():
                          fill_seed=0, events=events, initial_qubits=qubits)
     read_homes, read_events = parse_serialized(args.output)
     assert read_homes == homes
-    validate_schedule(read_events, read_homes, config, nodes)
-    validate_raw_operations(args.qasm, args.output)
+    validate_schedule(read_events, read_homes, config, None if args.allow_cz_reordering else nodes)
+    validate_raw_operations(args.qasm, args.output, not args.allow_cz_reordering)
     assert abs((schedule_duration(read_events, config)-duration).to("second").magnitude) < 1e-12
     header_time = float(re.search(r"final_time: ([\d.e+-]+) microsecond", args.output.read_text())[1])
     assert abs(header_time - duration.to("microsecond").magnitude) < 1e-8
@@ -367,11 +385,14 @@ def main():
     report = {"qasm": str(args.qasm), "qasm_sha256": hashlib.sha256(args.qasm.read_bytes()).hexdigest(),
               "coords": str(args.coords), "config": raw_config,
               "operation_counts": dict(Counter(n.op.name for n in nodes)),
-              "validation": "PASS: internal and serialized replay, full per-qubit operation order, original homes",
+              "validation": ("PASS: internal and serialized replay, exact operation multiset, original homes; "
+                             "commuting CZs reordered within X/Z phases" if args.allow_cz_reordering else
+                             "PASS: internal and serialized replay, full per-qubit operation order, original homes"),
               "timing": timing_breakdown(events, config), "phases": phases,
               "candidate_us": {"separate_check_loads": separate_time.to("microsecond").magnitude,
-                               "combined_check_load": combined_time.to("microsecond").magnitude},
-              "circuit_audit": audit_circuit(nodes),
+                               "combined_check_load": (None if combined_time is None else
+                                                       combined_time.to("microsecond").magnitude)},
+              "circuit_audit": audit_circuit(raw_nodes),
               "paper_comparison": "Eq. (3), PDF p. 6: sqrt(6*distance_um/0.02) per axis. The paper's 2.97 ms is a different circuit/layout/routing and motion model. Retiming these same segments is a comparison, not a reproduction of that result.",
               "optimality_scope": "Minimum motion within the enumerated separate/combined rigid check-load tours, one visit per displacement group and all input wire-order constraints; not global scheduling optimality. Gate pulse overhead does not enter the tour optimization."}
     args.output.with_suffix(".json").write_text(json.dumps(report, indent=2) + "\n")

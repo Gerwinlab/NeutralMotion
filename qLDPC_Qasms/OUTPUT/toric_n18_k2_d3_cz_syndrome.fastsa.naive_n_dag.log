@@ -1,0 +1,25 @@
+Source QASM: /home/gage/Quantum_Class/Phys765/qLDPC_Qasms/toric_n18_k2_d3_cz_syndrome.qasm
+Config: /home/gage/Quantum_Class/Phys765/qLDPC_Qasms/toric_n18_k2_d3_cz_syndrome.json
+Seed: 0
+
+naive_n_dag config loaded
+dimensions=[6, 6] num_NA=36 qasm_dir=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms
+qasm_file=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/toric_n18_k2_d3_cz_syndrome.qasm
+max_dimension=[6, 6]
+fill_strategy=fastsa
+schedule_output_dir=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT
+reorder_cz=True
+selected_schedule=reset_only
+reused_groups=0
+candidate_reset_only_time=14294.642014234934 microsecond
+candidate_reuse_time=14294.642014234934 microsecond
+candidate_sequential_home_time=38000.75592293961 microsecond
+candidate_naive_dag_time=36397.86738365134 microsecond
+two_qubit_layers=8
+scheduled_timesteps=148
+estimated_time=14294.642014234934 microsecond
+schedule_file=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/toric_n18_k2_d3_cz_syndrome.fastsa.naive_n_dag.schedule.txt
+fastsa_log_file=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/toric_n18_k2_d3_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv
+
+Batch result: success
+Validation warning: Saved schedule does not preserve all operations, wire order, and measurement bits

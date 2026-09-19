@@ -99,6 +99,10 @@ def _resolve_qasm_file(config: Mapping[str, Any], qasm_file: PathLike) -> pathli
 
 def _validate_required_config(config: Mapping[str, Any]) -> None:
     """Validate required scheduler config keys and core value constraints."""
+    if not isinstance(config.get("reorder_cz", False), bool):
+        raise ValueError("reorder_cz must be a boolean.")
+    if config.get("reorder_cz", False) and config.get("step_order") is not None:
+        raise ValueError("reorder_cz requires QASM input with full gate context, not step_order.")
     required_keys = [
         "dimensions",
         "num_NA",
@@ -217,10 +221,16 @@ def main(
     dims = config["dimensions"]
     num_na = config["num_NA"]
     grid = generate_grid(dims, config["rydberg_radius"])
+    reference_nodes = None
     if step_order_file is None:
         if qasm_path is None:
             raise RuntimeError("Internal error: qasm_path was not resolved.")
-        two_qubit_dag, single_layers = load_qasm_to_two_qubit_dag_with_single_qubit_context(qasm_path)
+        two_qubit_dag, single_layers, reference_nodes = load_qasm_to_two_qubit_dag_with_single_qubit_context(
+            qasm_path, reorder_cz=config.get("reorder_cz", False),
+            return_reference_nodes=True,
+        )
+        if not quiet:
+            print(f"reorder_cz={config.get('reorder_cz', False)}")
     else:
         two_qubit_dag, single_layers = dag_from_txt_auto(source_path)
     two_qubit_layers = list(two_qubit_dag.layers())
@@ -271,10 +281,8 @@ def main(
 
     # Dynamics owns candidate construction, common timing, validation, and
     # the mandatory final return. Placement objects remain at their home sites.
-    reference_nodes = None
-    if step_order_file is None:
-        from naive_dag.dag_helper import load_qasm_to_gate_dag
-        reference_nodes = list(load_qasm_to_gate_dag(qasm_path))
+    # The loader checked allowed CZ permutations against the source. Replay
+    # strictly preserves the resulting full circuit, including 1Q context.
     schedule = schedule_circuit(
         [list(layer["graph"].op_nodes()) for layer in two_qubit_layers],
         single_layers, qubits, config, reference_nodes,

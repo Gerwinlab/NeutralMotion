@@ -27,8 +27,9 @@
         "c": 100,
         "initial_accept_prob": 0.999,
         "stage3_temperature_threshold": 1e-06,
-        "stage3_max_iterations": 100000,
+        "stage3_max_iterations": 10000,
         "stage3_section_size": 8
     },
-    "T_reuse": 3
+    "T_reuse": 3,
+    "reorder_cz": true
 }

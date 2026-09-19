@@ -1,0 +1,571 @@
+{
+  "environment": {
+    "qldpc": "0.3.3",
+    "qiskit": "2.3.0",
+    "stim": "1.16.0",
+    "numpy": "2.4.2",
+    "sympy": "1.14.0",
+    "qldpc_module": "/home/gage/Quantum_Class/Phys765_Test/lib/python3.12/site-packages/qldpc/__init__.py"
+  },
+  "circuits": [
+    {
+      "filename": "bb_n72_k12_d6_cz_syndrome.qasm",
+      "family": "bb",
+      "n": 72,
+      "k": 12,
+      "d": 6,
+      "distance_status": "literature_reported",
+      "distance_source": "https://arxiv.org/html/2404.18809v2#S2.T1",
+      "construction": {
+        "orders": [
+          6,
+          6
+        ],
+        "poly_a": "x**3 + y**2 + y",
+        "poly_b": "x**2 + x + y**3"
+      },
+      "style": "syndrome",
+      "rounds": 1,
+      "total_qubits": 144,
+      "x_checks": 36,
+      "z_checks": 36,
+      "rank_x": 30,
+      "rank_z": 30,
+      "x_check_weights": [
+        6
+      ],
+      "z_check_weights": [
+        6
+      ],
+      "cz_gates": 432,
+      "gate_counts": {
+        "cz": 432,
+        "h": 288,
+        "reset": 72,
+        "measure": 72,
+        "barrier": 2
+      },
+      "check_supports": "checks/bb_n72_k12_d6.json",
+      "sha256": "97360b2de73dc8646c541e195fd1c21af81c41beb6c7936096b75dcbd175a85d",
+      "validation": "passed: CSS/ranks, exact Clifford observables, QASM round-trip/resources/wiring, simulated I/X/Z/Y syndromes"
+    },
+    {
+      "filename": "bb_n90_k8_d10_cz_syndrome.qasm",
+      "family": "bb",
+      "n": 90,
+      "k": 8,
+      "d": 10,
+      "distance_status": "literature_reported",
+      "distance_source": "https://arxiv.org/html/2404.18809v2#S2.T1",
+      "construction": {
+        "orders": [
+          15,
+          3
+        ],
+        "poly_a": "x**9 + y**2 + y",
+        "poly_b": "x**7 + x**2 + 1"
+      },
+      "style": "syndrome",
+      "rounds": 1,
+      "total_qubits": 180,
+      "x_checks": 45,
+      "z_checks": 45,
+      "rank_x": 41,
+      "rank_z": 41,
+      "x_check_weights": [
+        6
+      ],
+      "z_check_weights": [
+        6
+      ],
+      "cz_gates": 540,
+      "gate_counts": {
+        "cz": 540,
+        "h": 360,
+        "reset": 90,
+        "measure": 90,
+        "barrier": 2
+      },
+      "check_supports": "checks/bb_n90_k8_d10.json",
+      "sha256": "c817ceedda345e42f8d4fb81517e28305e615279a16f45ddc86e17ff37e66f8f",
+      "validation": "passed: CSS/ranks, exact Clifford observables, QASM round-trip/resources/wiring, simulated I/X/Z/Y syndromes"
+    },
+    {
+      "filename": "bb_n108_k8_d10_cz_syndrome.qasm",
+      "family": "bb",
+      "n": 108,
+      "k": 8,
+      "d": 10,
+      "distance_status": "literature_reported",
+      "distance_source": "https://arxiv.org/html/2404.18809v2#S2.T1",
+      "construction": {
+        "orders": [
+          9,
+          6
+        ],
+        "poly_a": "x**3 + y**2 + y",
+        "poly_b": "x**2 + x + y**3"
+      },
+      "style": "syndrome",
+      "rounds": 1,
+      "total_qubits": 216,
+      "x_checks": 54,
+      "z_checks": 54,
+      "rank_x": 50,
+      "rank_z": 50,
+      "x_check_weights": [
+        6
+      ],
+      "z_check_weights": [
+        6
+      ],
+      "cz_gates": 648,
+      "gate_counts": {
+        "cz": 648,
+        "h": 432,
+        "reset": 108,
+        "measure": 108,
+        "barrier": 2
+      },
+      "check_supports": "checks/bb_n108_k8_d10.json",
+      "sha256": "1af29e35e984bad07316bb12b1a6aef259baa68edd7672e76d767aaaf4c73340",
+      "validation": "passed: CSS/ranks, exact Clifford observables, QASM round-trip/resources/wiring, simulated I/X/Z/Y syndromes"
+    },
+    {
+      "filename": "bb_n144_k12_d12_cz_syndrome.qasm",
+      "family": "bb",
+      "n": 144,
+      "k": 12,
+      "d": 12,
+      "distance_status": "literature_reported",
+      "distance_source": "https://arxiv.org/html/2404.18809v2#S2.T1",
+      "construction": {
+        "orders": [
+          12,
+          6
+        ],
+        "poly_a": "x**3 + y**2 + y",
+        "poly_b": "x**2 + x + y**3"
+      },
+      "style": "syndrome",
+      "rounds": 1,
+      "total_qubits": 288,
+      "x_checks": 72,
+      "z_checks": 72,
+      "rank_x": 66,
+      "rank_z": 66,
+      "x_check_weights": [
+        6
+      ],
+      "z_check_weights": [
+        6
+      ],
+      "cz_gates": 864,
+      "gate_counts": {
+        "cz": 864,
+        "h": 576,
+        "reset": 144,
+        "measure": 144,
+        "barrier": 2
+      },
+      "check_supports": "checks/bb_n144_k12_d12.json",
+      "sha256": "2eb3558f079991ba780d2033956697c5f7ad08d8526fb4ea968191e5ac4bf628",
+      "validation": "passed: CSS/ranks, exact Clifford observables, QASM round-trip/resources/wiring, simulated I/X/Z/Y syndromes"
+    },
+    {
+      "filename": "bb_n288_k12_d18_cz_syndrome.qasm",
+      "family": "bb",
+      "n": 288,
+      "k": 12,
+      "d": 18,
+      "distance_status": "literature_reported",
+      "distance_source": "https://arxiv.org/html/2404.18809v2#S2.T1",
+      "construction": {
+        "orders": [
+          12,
+          12
+        ],
+        "poly_a": "x**3 + y**7 + y**2",
+        "poly_b": "x**2 + x + y**3"
+      },
+      "style": "syndrome",
+      "rounds": 1,
+      "total_qubits": 576,
+      "x_checks": 144,
+      "z_checks": 144,
+      "rank_x": 138,
+      "rank_z": 138,
+      "x_check_weights": [
+        6
+      ],
+      "z_check_weights": [
+        6
+      ],
+      "cz_gates": 1728,
+      "gate_counts": {
+        "cz": 1728,
+        "h": 1152,
+        "reset": 288,
+        "measure": 288,
+        "barrier": 2
+      },
+      "check_supports": "checks/bb_n288_k12_d18.json",
+      "sha256": "deb477b8ec09074eba61287fe7969396a664e3f47e16fbb1439626ad092da19c",
+      "validation": "passed: CSS/ranks, exact Clifford observables, QASM round-trip/resources/wiring, simulated I/X/Z/Y syndromes"
+    },
+    {
+      "filename": "bb_n360_k12_dle24_cz_syndrome.qasm",
+      "family": "bb",
+      "n": 360,
+      "k": 12,
+      "d": 24,
+      "distance_status": "published_upper_bound",
+      "distance_source": "qLDPC/examples/bivariate_bicycle_codes.ipynb (Table 3 of arXiv:2308.07915v2)",
+      "construction": {
+        "orders": [
+          30,
+          6
+        ],
+        "poly_a": "x**9 + y**2 + y",
+        "poly_b": "x**26 + x**25 + y**3"
+      },
+      "style": "syndrome",
+      "rounds": 1,
+      "total_qubits": 720,
+      "x_checks": 180,
+      "z_checks": 180,
+      "rank_x": 174,
+      "rank_z": 174,
+      "x_check_weights": [
+        6
+      ],
+      "z_check_weights": [
+        6
+      ],
+      "cz_gates": 2160,
+      "gate_counts": {
+        "cz": 2160,
+        "h": 1440,
+        "reset": 360,
+        "measure": 360,
+        "barrier": 2
+      },
+      "check_supports": "checks/bb_n360_k12_dle24.json",
+      "sha256": "02baa9d78ee7cd22baca58b667b610cebbfbb064476f3c411ed23bee0267a8d5",
+      "validation": "passed: CSS/ranks, exact Clifford observables, QASM round-trip/resources/wiring, simulated I/X/Z/Y syndromes"
+    },
+    {
+      "filename": "surface_rotated_n9_k1_d3_cz_syndrome.qasm",
+      "family": "surface_rotated",
+      "n": 9,
+      "k": 1,
+      "d": 3,
+      "distance_status": "construction_exact",
+      "distance_source": "qldpc.codes.SurfaceCode: square rotated surface code",
+      "construction": {
+        "rows": 3,
+        "cols": 3,
+        "rotated": true
+      },
+      "style": "syndrome",
+      "rounds": 1,
+      "total_qubits": 17,
+      "x_checks": 4,
+      "z_checks": 4,
+      "rank_x": 4,
+      "rank_z": 4,
+      "x_check_weights": [
+        2,
+        4
+      ],
+      "z_check_weights": [
+        2,
+        4
+      ],
+      "cz_gates": 24,
+      "gate_counts": {
+        "h": 34,
+        "cz": 24,
+        "reset": 8,
+        "measure": 8,
+        "barrier": 2
+      },
+      "check_supports": "checks/surface_rotated_n9_k1_d3.json",
+      "sha256": "c2c322da1f87bf2f44e11a45e52452b7fbc7ce9294b4adbccf2acac2768307e5",
+      "validation": "passed: CSS/ranks, exact Clifford observables, QASM round-trip/resources/wiring, simulated I/X/Z/Y syndromes"
+    },
+    {
+      "filename": "surface_rotated_n25_k1_d5_cz_syndrome.qasm",
+      "family": "surface_rotated",
+      "n": 25,
+      "k": 1,
+      "d": 5,
+      "distance_status": "construction_exact",
+      "distance_source": "qldpc.codes.SurfaceCode: square rotated surface code",
+      "construction": {
+        "rows": 5,
+        "cols": 5,
+        "rotated": true
+      },
+      "style": "syndrome",
+      "rounds": 1,
+      "total_qubits": 49,
+      "x_checks": 12,
+      "z_checks": 12,
+      "rank_x": 12,
+      "rank_z": 12,
+      "x_check_weights": [
+        2,
+        4
+      ],
+      "z_check_weights": [
+        2,
+        4
+      ],
+      "cz_gates": 80,
+      "gate_counts": {
+        "h": 98,
+        "cz": 80,
+        "reset": 24,
+        "measure": 24,
+        "barrier": 2
+      },
+      "check_supports": "checks/surface_rotated_n25_k1_d5.json",
+      "sha256": "b2ea03f34262297430d3b3d00efe8c1e57e91cd8f768ae6fa48a63fe9f8610ce",
+      "validation": "passed: CSS/ranks, exact Clifford observables, QASM round-trip/resources/wiring, simulated I/X/Z/Y syndromes"
+    },
+    {
+      "filename": "surface_rotated_n49_k1_d7_cz_syndrome.qasm",
+      "family": "surface_rotated",
+      "n": 49,
+      "k": 1,
+      "d": 7,
+      "distance_status": "construction_exact",
+      "distance_source": "qldpc.codes.SurfaceCode: square rotated surface code",
+      "construction": {
+        "rows": 7,
+        "cols": 7,
+        "rotated": true
+      },
+      "style": "syndrome",
+      "rounds": 1,
+      "total_qubits": 97,
+      "x_checks": 24,
+      "z_checks": 24,
+      "rank_x": 24,
+      "rank_z": 24,
+      "x_check_weights": [
+        2,
+        4
+      ],
+      "z_check_weights": [
+        2,
+        4
+      ],
+      "cz_gates": 168,
+      "gate_counts": {
+        "h": 194,
+        "cz": 168,
+        "reset": 48,
+        "measure": 48,
+        "barrier": 2
+      },
+      "check_supports": "checks/surface_rotated_n49_k1_d7.json",
+      "sha256": "d654b2907b6d280b323ed842b429c284d0c0080965e46a2c1fcf073c41f22679",
+      "validation": "passed: CSS/ranks, exact Clifford observables, QASM round-trip/resources/wiring, simulated I/X/Z/Y syndromes"
+    },
+    {
+      "filename": "toric_n18_k2_d3_cz_syndrome.qasm",
+      "family": "toric",
+      "n": 18,
+      "k": 2,
+      "d": 3,
+      "distance_status": "construction_exact",
+      "distance_source": "qLDPC/examples/basics.ipynb: ring x ring",
+      "construction": {
+        "classical_a": "RingCode(3)",
+        "classical_b": "RingCode(3)"
+      },
+      "style": "syndrome",
+      "rounds": 1,
+      "total_qubits": 36,
+      "x_checks": 9,
+      "z_checks": 9,
+      "rank_x": 8,
+      "rank_z": 8,
+      "x_check_weights": [
+        4
+      ],
+      "z_check_weights": [
+        4
+      ],
+      "cz_gates": 72,
+      "gate_counts": {
+        "h": 72,
+        "cz": 72,
+        "reset": 18,
+        "measure": 18,
+        "barrier": 2
+      },
+      "check_supports": "checks/toric_n18_k2_d3.json",
+      "sha256": "5003de1cda256a4c1119260f9819e22dcf9dc576faa23a51350607900961d120",
+      "validation": "passed: CSS/ranks, exact Clifford observables, QASM round-trip/resources/wiring, simulated I/X/Z/Y syndromes"
+    },
+    {
+      "filename": "toric_n50_k2_d5_cz_syndrome.qasm",
+      "family": "toric",
+      "n": 50,
+      "k": 2,
+      "d": 5,
+      "distance_status": "construction_exact",
+      "distance_source": "qLDPC/examples/basics.ipynb: ring x ring",
+      "construction": {
+        "classical_a": "RingCode(5)",
+        "classical_b": "RingCode(5)"
+      },
+      "style": "syndrome",
+      "rounds": 1,
+      "total_qubits": 100,
+      "x_checks": 25,
+      "z_checks": 25,
+      "rank_x": 24,
+      "rank_z": 24,
+      "x_check_weights": [
+        4
+      ],
+      "z_check_weights": [
+        4
+      ],
+      "cz_gates": 200,
+      "gate_counts": {
+        "h": 200,
+        "cz": 200,
+        "reset": 50,
+        "measure": 50,
+        "barrier": 2
+      },
+      "check_supports": "checks/toric_n50_k2_d5.json",
+      "sha256": "0302e38dd5e6aee2929ccc8a8099827b654cd1e7b6c682bfd563780efa1fe3d0",
+      "validation": "passed: CSS/ranks, exact Clifford observables, QASM round-trip/resources/wiring, simulated I/X/Z/Y syndromes"
+    },
+    {
+      "filename": "hgp_repetition_n13_k1_d3_cz_syndrome.qasm",
+      "family": "hgp_repetition",
+      "n": 13,
+      "k": 1,
+      "d": 3,
+      "distance_status": "construction_exact",
+      "distance_source": "qLDPC/examples/basics.ipynb: repetition x repetition (unrotated surface code)",
+      "construction": {
+        "classical_a": "RepetitionCode(3)",
+        "classical_b": "RepetitionCode(3)"
+      },
+      "style": "syndrome",
+      "rounds": 1,
+      "total_qubits": 25,
+      "x_checks": 6,
+      "z_checks": 6,
+      "rank_x": 6,
+      "rank_z": 6,
+      "x_check_weights": [
+        3,
+        4
+      ],
+      "z_check_weights": [
+        3,
+        4
+      ],
+      "cz_gates": 40,
+      "gate_counts": {
+        "h": 50,
+        "cz": 40,
+        "reset": 12,
+        "measure": 12,
+        "barrier": 2
+      },
+      "check_supports": "checks/hgp_repetition_n13_k1_d3.json",
+      "sha256": "274948f440192954607be25020dbd05d2bf1e5c0d62f403839233bd82f241525",
+      "validation": "passed: CSS/ranks, exact Clifford observables, QASM round-trip/resources/wiring, simulated I/X/Z/Y syndromes"
+    },
+    {
+      "filename": "hgp_repetition_n41_k1_d5_cz_syndrome.qasm",
+      "family": "hgp_repetition",
+      "n": 41,
+      "k": 1,
+      "d": 5,
+      "distance_status": "construction_exact",
+      "distance_source": "qLDPC/examples/basics.ipynb: repetition x repetition (unrotated surface code)",
+      "construction": {
+        "classical_a": "RepetitionCode(5)",
+        "classical_b": "RepetitionCode(5)"
+      },
+      "style": "syndrome",
+      "rounds": 1,
+      "total_qubits": 81,
+      "x_checks": 20,
+      "z_checks": 20,
+      "rank_x": 20,
+      "rank_z": 20,
+      "x_check_weights": [
+        3,
+        4
+      ],
+      "z_check_weights": [
+        3,
+        4
+      ],
+      "cz_gates": 144,
+      "gate_counts": {
+        "h": 162,
+        "cz": 144,
+        "reset": 40,
+        "measure": 40,
+        "barrier": 2
+      },
+      "check_supports": "checks/hgp_repetition_n41_k1_d5.json",
+      "sha256": "05b2fc9c1227681400d79fdd0ee7279defbc63eb1b30fd4ee486045b191a981c",
+      "validation": "passed: CSS/ranks, exact Clifford observables, QASM round-trip/resources/wiring, simulated I/X/Z/Y syndromes"
+    },
+    {
+      "filename": "hgp_hamming_n58_k16_d3_cz_syndrome.qasm",
+      "family": "hgp_hamming",
+      "n": 58,
+      "k": 16,
+      "d": 3,
+      "distance_status": "construction_exact",
+      "distance_source": "HGP of two full-row-rank [7,4,3] Hamming codes: n=7*7+3*3, k=4*4, d=3",
+      "construction": {
+        "classical_a": "HammingCode(3)",
+        "classical_b": "HammingCode(3)"
+      },
+      "style": "syndrome",
+      "rounds": 1,
+      "total_qubits": 100,
+      "x_checks": 21,
+      "z_checks": 21,
+      "rank_x": 21,
+      "rank_z": 21,
+      "x_check_weights": [
+        5,
+        6,
+        7
+      ],
+      "z_check_weights": [
+        5,
+        6,
+        7
+      ],
+      "cz_gates": 240,
+      "gate_counts": {
+        "cz": 240,
+        "h": 200,
+        "reset": 42,
+        "measure": 42,
+        "barrier": 2
+      },
+      "check_supports": "checks/hgp_hamming_n58_k16_d3.json",
+      "sha256": "98c2664ccd01dbf9fb1f466f7c638164a8ba8f9b55bb7d5b6de03e4f80c15db3",
+      "validation": "passed: CSS/ranks, exact Clifford observables, QASM round-trip/resources/wiring, simulated I/X/Z/Y syndromes"
+    }
+  ]
+}

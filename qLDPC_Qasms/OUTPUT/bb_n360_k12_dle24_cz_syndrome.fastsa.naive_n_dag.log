@@ -1,0 +1,25 @@
+Source QASM: /home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n360_k12_dle24_cz_syndrome.qasm
+Config: /home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n360_k12_dle24_cz_syndrome.json
+Seed: 0
+
+naive_n_dag config loaded
+dimensions=[27, 27] num_NA=720 qasm_dir=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms
+qasm_file=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n360_k12_dle24_cz_syndrome.qasm
+max_dimension=[27, 27]
+fill_strategy=fastsa
+schedule_output_dir=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT
+reorder_cz=True
+selected_schedule=reset_only
+reused_groups=0
+candidate_reset_only_time=591840.3531338073 microsecond
+candidate_reuse_time=591840.3531338073 microsecond
+candidate_sequential_home_time=2838902.5234756097 microsecond
+rejected_candidate_naive_dag=Legacy placement cannot be restored without an occupied home.
+two_qubit_layers=12
+scheduled_timesteps=4681
+estimated_time=591840.3531338073 microsecond
+schedule_file=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n360_k12_dle24_cz_syndrome.fastsa.naive_n_dag.schedule.txt
+fastsa_log_file=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n360_k12_dle24_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv
+
+Batch result: success
+Validation warning: Saved schedule does not preserve all operations, wire order, and measurement bits

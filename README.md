@@ -53,6 +53,28 @@ Common required timing keys in JSON configs:
 Scheduling behavior flags:
 
 - `parallel`: set to `true` to allow grouped/parallel movement scheduling in `naive_n_dag` (recommended for most benchmark-style runs).
+- `reorder_cz`: optional boolean, default `false`. In `naive_n_dag`, reorder
+  unconditional CZs within commuting blocks before extracting the two-qubit DAG
+  and single-qubit context. Other operations constrain block formation. Bipartite
+  blocks use exact edge coloring by repeated perfect matchings; other graphs use
+  greedy coloring. If the proposed ordering increases the extracted two-qubit
+  layer count, the loader retains the original ordering and single-qubit
+  context. Equal-depth proposals are accepted. This protects logical depth,
+  but does not guarantee shorter atom movement. Requires
+  QASM input, not `step_order`; conditional gates/control flow are unsupported.
+
+`inputs/algorithms/bb144_n_init_qldpc.json` enables `reorder_cz`. Run it with:
+
+```bash
+PYTHONPATH=src python -m naive_n_dag inputs/algorithms/bb144_n_init_qldpc.json qLDPC_Qasms/bb_n144_k12_d12_cz_syndrome.qasm outputs/bb144 --output-name bb144_qldpc_edge_colored
+```
+
+For the Python loader, pass `reorder_cz=True` to
+`load_qasm_to_two_qubit_dag_with_single_qubit_context`. The default two-item return
+is unchanged. `return_reference_nodes=True` additionally returns the full
+prepared, SWAP-filtered circuit for strict schedule replay. Preprocessing checks
+operation occurrences and non-CZ wire boundaries against the original circuit;
+motion validation then checks exact wire order against this prepared reference.
 
 Example configs:
 
@@ -79,5 +101,3 @@ AI assistance was used to:
 - improve code readability
 - improve inline documentation and docstrings
 - limited usage in the writing of the actual scheduler
-
-

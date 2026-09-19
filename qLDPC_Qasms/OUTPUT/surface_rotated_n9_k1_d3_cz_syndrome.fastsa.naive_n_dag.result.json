@@ -1,0 +1,45 @@
+{
+    "qasm": "surface_rotated_n9_k1_d3_cz_syndrome.qasm",
+    "config": "surface_rotated_n9_k1_d3_cz_syndrome.json",
+    "fingerprint": {
+        "qasm_sha256": "c2c322da1f87bf2f44e11a45e52452b7fbc7ce9294b4adbccf2acac2768307e5",
+        "config_sha256": "7c6a49454a320102f5d4a192c23ea66c4142dbb9bb2d448c38c4417cb34c4067",
+        "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+        "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+        "seed": 0,
+        "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+    },
+    "started_utc": "2026-09-19T09:29:26.478350+00:00",
+    "command": [
+        "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+        "-u",
+        "-m",
+        "naive_n_dag",
+        "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/surface_rotated_n9_k1_d3_cz_syndrome.json",
+        "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/surface_rotated_n9_k1_d3_cz_syndrome.qasm",
+        "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+        "--seed",
+        "0",
+        "--output-name",
+        "surface_rotated_n9_k1_d3_cz_syndrome.fastsa.naive_n_dag",
+        "--log"
+    ],
+    "status": "success",
+    "fill_strategy": "fastsa",
+    "outputs": {
+        "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n9_k1_d3_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+        "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n9_k1_d3_cz_syndrome.fastsa.naive_n_dag.log",
+        "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n9_k1_d3_cz_syndrome.fastsa.naive_n_dag.result.json",
+        "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/surface_rotated_n9_k1_d3_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+    },
+    "returncode": 0,
+    "validation_warnings": [
+        "Saved schedule does not preserve all operations, wire order, and measurement bits"
+    ],
+    "elapsed_seconds": 30.394,
+    "artifact_sha256": {
+        "console_log": "1c4db86cb3e58a723aa2b7b0fa39364ac5554db3b2e1a4dfb3d8978dec7c4381",
+        "fastsa_log": "75045ac232d34dae7f85685b3dc145a045ecc12f0e967464f4f6cb33d8d30683",
+        "schedule": "5abeefe6dd6f82e07c3efb970b9b014114694d24a7272c3b37ea6a18e21e8aa7"
+    }
+}

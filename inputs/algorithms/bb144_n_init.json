@@ -7,6 +7,7 @@
     "num_NA": 288,
     "qasm_base_dir": "../qasm_files",
     "parallel": true,
+    "reorder_cz": true,
     "transfer_SLM_AOD": "15 microseconds",
     "max_acceleration": "2750 m/s^2",
     "max_velocity": "0.55 m/s",
@@ -21,6 +22,6 @@
         12
     ],
     "fill_strategy": "Given",
-    "alignment_conc": 0,
-    "T_reuse": "Inf"
+    "alignment_conc": -1,
+    "T_reuse": 0
 }

@@ -1,0 +1,45 @@
+{
+    "qasm": "bb_n72_k12_d6_cz_syndrome.qasm",
+    "config": "bb_n72_k12_d6_cz_syndrome.json",
+    "fingerprint": {
+        "qasm_sha256": "97360b2de73dc8646c541e195fd1c21af81c41beb6c7936096b75dcbd175a85d",
+        "config_sha256": "f8fda4558361242f350d910f6b944ffb45081531a247afaa5cb3ea571567fc2f",
+        "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+        "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+        "seed": 0,
+        "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+    },
+    "started_utc": "2026-09-19T09:01:46.423890+00:00",
+    "command": [
+        "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+        "-u",
+        "-m",
+        "naive_n_dag",
+        "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n72_k12_d6_cz_syndrome.json",
+        "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n72_k12_d6_cz_syndrome.qasm",
+        "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+        "--seed",
+        "0",
+        "--output-name",
+        "bb_n72_k12_d6_cz_syndrome.fastsa.naive_n_dag",
+        "--log"
+    ],
+    "status": "success",
+    "fill_strategy": "fastsa",
+    "outputs": {
+        "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n72_k12_d6_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+        "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n72_k12_d6_cz_syndrome.fastsa.naive_n_dag.log",
+        "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n72_k12_d6_cz_syndrome.fastsa.naive_n_dag.result.json",
+        "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n72_k12_d6_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+    },
+    "returncode": 0,
+    "validation_warnings": [
+        "Saved schedule does not preserve all operations, wire order, and measurement bits"
+    ],
+    "elapsed_seconds": 415.522,
+    "artifact_sha256": {
+        "console_log": "bbdc66aec63aa91563031ea0e135430d2d2d89ee0ed697871784292f06a7d962",
+        "fastsa_log": "22da5f50fc5c2c824af587342021a9b8897d2480b950d602147e7c35b912ddab",
+        "schedule": "f172dd5fa7000fa3f6af6c79f4dde269ebc70c4b5568110252706390bb51357f"
+    }
+}

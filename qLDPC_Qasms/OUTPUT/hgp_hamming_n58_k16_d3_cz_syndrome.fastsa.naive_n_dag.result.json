@@ -1,0 +1,45 @@
+{
+    "qasm": "hgp_hamming_n58_k16_d3_cz_syndrome.qasm",
+    "config": "hgp_hamming_n58_k16_d3_cz_syndrome.json",
+    "fingerprint": {
+        "qasm_sha256": "98c2664ccd01dbf9fb1f466f7c638164a8ba8f9b55bb7d5b6de03e4f80c15db3",
+        "config_sha256": "39e71bb6c2f9f5385d7b950819b57d5c7fd27a7b24abc13a4a308e09bbd593c7",
+        "solver_sha256": "7a875ea29baec14d6a49cd20fe0560dd204004c3b0174b5ed8f98f8fd32775cc",
+        "runner_sha256": "ab0ab9eaf1ac3b7503018eb0b533fb4d864ae56ce5d3af41176f54b29637a84d",
+        "seed": 0,
+        "python": "/home/gage/Quantum_Class/Phys765_Test/bin/python3"
+    },
+    "started_utc": "2026-09-19T09:19:29.618060+00:00",
+    "command": [
+        "/home/gage/Quantum_Class/Phys765_Test/bin/python3",
+        "-u",
+        "-m",
+        "naive_n_dag",
+        "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/hgp_hamming_n58_k16_d3_cz_syndrome.json",
+        "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/hgp_hamming_n58_k16_d3_cz_syndrome.qasm",
+        "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT",
+        "--seed",
+        "0",
+        "--output-name",
+        "hgp_hamming_n58_k16_d3_cz_syndrome.fastsa.naive_n_dag",
+        "--log"
+    ],
+    "status": "success",
+    "fill_strategy": "fastsa",
+    "outputs": {
+        "schedule": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_hamming_n58_k16_d3_cz_syndrome.fastsa.naive_n_dag.schedule.txt",
+        "console_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_hamming_n58_k16_d3_cz_syndrome.fastsa.naive_n_dag.log",
+        "result": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_hamming_n58_k16_d3_cz_syndrome.fastsa.naive_n_dag.result.json",
+        "fastsa_log": "/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/hgp_hamming_n58_k16_d3_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv"
+    },
+    "returncode": 0,
+    "validation_warnings": [
+        "Saved schedule does not preserve all operations, wire order, and measurement bits"
+    ],
+    "elapsed_seconds": 195.453,
+    "artifact_sha256": {
+        "console_log": "8cfe682b8a7ccd198a147df742e116e731e95796b9efe087da8f319e7623c636",
+        "fastsa_log": "980f2a1515803557b4bde0a5d16cac1ca1214f741cb66eb47a597a8e6d8d0806",
+        "schedule": "2358efcad235f720b3c166e43b9b8f0a2bbe63c368ca9dd8661cb030826e1249"
+    }
+}

@@ -1,0 +1,25 @@
+Source QASM: /home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n288_k12_d18_cz_syndrome.qasm
+Config: /home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n288_k12_d18_cz_syndrome.json
+Seed: 0
+
+naive_n_dag config loaded
+dimensions=[24, 24] num_NA=576 qasm_dir=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms
+qasm_file=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/bb_n288_k12_d18_cz_syndrome.qasm
+max_dimension=[24, 24]
+fill_strategy=fastsa
+schedule_output_dir=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT
+reorder_cz=True
+selected_schedule=reset_only
+reused_groups=0
+candidate_reset_only_time=455165.30970130337 microsecond
+candidate_reuse_time=455165.30970130337 microsecond
+candidate_sequential_home_time=2072978.2210306004 microsecond
+candidate_naive_dag_time=2050239.1925631308 microsecond
+two_qubit_layers=12
+scheduled_timesteps=3657
+estimated_time=455165.30970130337 microsecond
+schedule_file=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n288_k12_d18_cz_syndrome.fastsa.naive_n_dag.schedule.txt
+fastsa_log_file=/home/gage/Quantum_Class/Phys765/qLDPC_Qasms/OUTPUT/bb_n288_k12_d18_cz_syndrome.fastsa.naive_n_dag.fastsa_log.csv
+
+Batch result: success
+Validation warning: Saved schedule does not preserve all operations, wire order, and measurement bits
