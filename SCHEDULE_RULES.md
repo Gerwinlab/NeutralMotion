@@ -236,58 +236,59 @@ This differs intentionally from standalone `naive_dag`, which may finish at a ch
   load active until the ordinary planner decides to return it. Gates are moved
   only within disjoint groups, never across noncommuting dependencies.
 
+- After the ordinary planner chooses load/reuse boundaries, continuous loads
+  spanning multiple DAG layers are jointly rerouted in `dynamics.py`.
+  Each graph city is a `(layer, displacement)` pair. Same-layer and adjacent-
+  layer target edges have symmetric costs; nonconsecutive edges are absent
+  (infinite cost and excluded from transitions). Entry is restricted to the
+  first layer and exit to the last, orienting the home-to-home cycle forward.
+- Every layer-crossing edge adds a penalty greater than the movement cost of
+  a known feasible unpenalized tour. Additional crossings cannot pay for
+  themselves through movement savings. The exact recurrence exploits this
+  bound to prune paths that leave a layer unfinished or return to an earlier
+  layer. The penalty is an optimization device, never emitted schedule time.
+- Empty layers are skipped when numbering graph stages. Intervening 1Q contexts
+  fence stages and remain in their original logical order. Repeated targets in
+  different stages are separate cities. Gates with identical targets within a
+  stage retain occurrence order and remain consecutive.
+- The 24-city cutoff applies to distinct labelled targets. Above it, warn and
+  apply alignment ordering separately within each stage, never mixing stages.
+  Validate the returned permutation and stage order before emitting movements.
+- The configured side policy applies across the retained-load interval: default
+  side DP prices one load and one final return, not a return between layers.
+  Greedy mode never invokes this DP. No load membership or retention decision
+  changes during rerouting. Physical replay still checks the complete circuit.
+  Exactness concerns the layered displacement proxy, not the joint physical
+  order/side/load-selection problem.
+
 ### 8.3 Layer and reuse rules
 
 - A two-qubit DAG layer contains gates with disjoint operands.
-- With CZ preprocessing enabled, bipartite commuting blocks use optimal
-  edge coloring (Delta colors, via regularization and perfect matchings);
-  non-bipartite blocks use greedy coloring. Rebuilding the DAG in color order
-  permits the ordinary layer extractor to compact independent gates across
-  colors. It does not guarantee minimum movement time or fixed color boundaries.
-- Before placement, compare original and proposed extracted two-qubit layer
-  counts. If the proposed count is larger, retain the original full circuit,
-  single-qubit context and validation reference. Accept equal or smaller
-  counts. This depth safeguard does not guarantee shorter physical execution.
-- After placement, `reorder_cz_by_displacement` optionally repacks reachable
-  commuting CZ blocks using signed home-to-partner displacement, with the same
-  reset-identified ancilla preference as dynamics (otherwise the first operand
-  defines the proxy mover). Equal-displacement disjoint matchings are kept
-  intact and packed largest-first into compatible layers. Conflicting gates,
-  including repeated occurrences, remain separate. Near-home layers run first
-  within each commuting block. This is a heuristic, not an optimal pulse solver.
-- The placement pass preserves operation occurrences, quantum/classical wire
-  boundaries and global barrier epochs. Non-CZ operations are not commuted on
-  shared wires. It rebuilds the single-qubit context and validation reference
-  together with the explicit layers; no later ASAP extraction may split the
-  displacement bundles. AOD span/alignment and interaction legality are still
-  checked by grouping, shuttling and replay.
-- Packed layerings may increase logical depth. Complete original and packed
-  schedules are compared by actual duration, retaining the original on ties.
-- The optional `phase_tour` candidate bypasses the packed layer boundaries:
-  it orders the unique home-relative displacements across a whole reachable
-  commuting CZ block. A consistent bipartition, honoring preferred movers,
-  keeps exactly one operand of every interaction in a single rigid load.
-  All movers, including atoms first used later in the tour, load together.
-  Partners remain stationary; the complete load returns home after the block.
-- Phase tours use the same at-most-24-target displacement Held-Karp objective
-  (warn and use alignment above 24), without adding interaction-side states
-  to the subset search. After ordering, a separate fixed-order DP retains four
-  endpoint states per visit and evaluates 16 transitions between visits, plus
-  four load/unload directions at the endpoints. It minimizes parity-routed
-  motion for that order, not jointly over all visit orders or all pulse costs.
-  The existing parity router, highway rules and replay validator are unchanged.
-  Planned routes arrive adjacent to every gate before invoking its existing
-  executor, so shuttling need not choose another side. Forward and reverse
-  traversals use only the configured side policy (DP by default, greedy only
-  when requested) and are physically replayed; the lowest complete duration
-  is selected. Every equal-target visit is split
-  into disjoint pulses when necessary to preserve repeated gate occurrences.
-- Non-bipartite blocks, contradictory mover preferences, oversized full loads,
-  or incompatibility with `parallel`/`T_reuse` reject only the phase candidate.
-  Non-CZ operations, reset, measurement and global barriers remain present.
-  The reported phase layer count is the number of disjoint visit groups, not
-  the count of previous packed layers. The selected complete duration, not
-  that count, determines whether the candidate is accepted.
+- The CLI completes initial placement before CZ displacement reordering.
+  Within each reachable commuting block, gates with identical signed
+  home-to-partner displacement are collected into the same layer whenever
+  their operands are disjoint. The proxy mover is the reset-identified
+  ancilla when preferred, otherwise the first operand.
+- Each displacement bucket is edge-colored into disjoint matchings, preserving
+  repeated occurrences. Bipartite graphs use optimal edge coloring; other
+  graphs use greedy coloring. Whole matchings are packed largest-first into
+  compatible layers without splitting a matching; ties keep first-appearance
+  order. This layer-packing heuristic is not a global pulse-count optimum.
+- `reorder_cz=true` always enables this pass. The compatibility option
+  `reorder_cz_by_displacement=true` also enables it independently.
+- The pass in `dag_helper.py` preserves operation occurrences, quantum and
+  classical wire dependencies, and global barrier epochs. It rebuilds the
+  single-qubit context and checked reference with the explicit layers.
+  No later ASAP extraction may split equal-displacement bundles.
+- This is logical reordering only: no Held-Karp travel search, side selection,
+  AOD grouping, movement emission, or load-retention planning occurs in the
+  pass. Those decisions remain in ordinary `dynamics.py` scheduling.
+- Layers contain disjoint operands, not entire overlapping CZ blocks.
+  AOD span, alignment, parallelism, and reuse settings may split a layer into
+  several physical groups. Layer count and physical duration may increase;
+  no original-layer or separate block-tour schedule is compared.
+- The Python loader's geometry-free `reorder_cz` API remains available for
+  callers without placement, but the CLI uses only the post-placement pass.
 - Grouping decisions use the candidate's actual execution state after any proposed reset.
 - Reuse may execute only gates having exactly one operand in the existing active load.
 - With `prefer_moving_ancillas=true`, a data-ancilla gate may reuse its loaded
@@ -301,9 +302,6 @@ This differs intentionally from standalone `naive_dag`, which may finish at a ch
 `T_reuse` controls eligibility for retaining extra loaded atoms:
 
 - The horizon is counted in two-qubit DAG layers, not microseconds or emitted timesteps.
-- For `phase_tour`, the horizon is counted in its disjoint displacement visits;
-  extra atoms in the full load must satisfy the same retention predicate at
-  every visit. `Inf` permits retaining the entire load until the block ends.
 - A finite positive value permits an extra loaded atom only when its next use is known within the horizon.
 - `Inf` permits indefinite eligibility but does not override legality or cost comparison.
 - `T_reuse=0` permits identical-load continuation but forbids retaining extra loaded atoms.
@@ -330,17 +328,10 @@ No complete no-reuse, alignment, sequential-home, or legacy baseline is built.
 Held-Karp is exact for its reduced displacement objective, not the complete
 physical duration; there is no duration guarantee against uncomputed policies.
 
-With placement-aware preprocessing enabled, `main.py` still compares original
-layers, packed layers (with the `displacement_` name prefix), and the optional
-`phase_tour`. All use the same configured side and retention policies.
-Each is replayed against its checked reference order. Phase tours compare both
-traversal directions without trying another side policy. Phase-wide side plans
-bypass group-level reoptimization when emitting already-positioned gates.
-
-Gate occurrences and legal CZ permutations are checked before full replay.
-Invalid phase candidates are reported and excluded; ties retain the previously
-selected schedule. This preprocessing comparison is independent of the removed
-scheduling-policy sweep.
+With placement-aware preprocessing enabled, `main.py` passes only the reordered
+layers to `schedule_circuit`. Otherwise it passes the original extracted layers.
+There is one scheduling call and no preprocessing-candidate duration comparison.
+Legal CZ permutations and occurrence counts are checked before physical replay.
 
 ### 8.5 Legacy adapter
 

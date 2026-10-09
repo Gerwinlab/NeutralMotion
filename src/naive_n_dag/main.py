@@ -9,10 +9,9 @@ from naive_n_dag.grid import Fastsa_Fill, generate_grid, initial_layout_fill, na
 from naive_n_dag.dag_helper import (
     dag_from_txt_auto,
     load_qasm_to_two_qubit_dag_with_single_qubit_context,
+    reorder_cz_layers_by_displacement,
 )
 from naive_n_dag.dynamics import schedule_circuit
-from naive_n_dag.precompile import precompile_displacement_layers
-from naive_n_dag.phase_schedule import schedule_phase_tours
 from naive_n_dag.scheduling import (
     count_emitted_timesteps,
     write_timed_schedule,
@@ -237,7 +236,7 @@ def main(
         if qasm_path is None:
             raise RuntimeError("Internal error: qasm_path was not resolved.")
         two_qubit_dag, single_layers, reference_nodes = load_qasm_to_two_qubit_dag_with_single_qubit_context(
-            qasm_path, reorder_cz=config.get("reorder_cz", False),
+            qasm_path, reorder_cz=False,
             return_reference_nodes=True,
         )
         if not quiet:
@@ -294,50 +293,19 @@ def main(
     if qubits is None:
         raise RuntimeError("Qubit placement is required before scheduling two-qubit layers.")
 
-    # Placement-aware preprocessing keeps explicit layer boundaries so shared
-    # displacement bundles survive all the way to grouping and shuttling.
-    prepared = None
-    if config.get("reorder_cz_by_displacement", config.get("reorder_cz", False)):
-        prepared = precompile_displacement_layers(
+    # CZ displacement packing is an unconditional preprocessing step when
+    # enabled, not a candidate competing with unreordered physical schedules.
+    if config.get("reorder_cz", False) or config.get("reorder_cz_by_displacement", False):
+        two_qubit_layers, single_layers, reference_nodes = reorder_cz_layers_by_displacement(
             reference_nodes, {q.id: q.grid_position() for q in qubits}, config,
         )
-
-    # Dynamics owns candidate construction, common timing, validation, and
-    # the mandatory final return. Placement objects remain at their home sites.
-    # The loader checked allowed CZ permutations against the source. Replay
-    # strictly preserves the resulting full circuit, including 1Q context.
-    schedule = schedule_circuit(
-        two_qubit_layers,
-        single_layers, qubits, config, reference_nodes,
-    )
-    if prepared is not None:
-        source_reference = reference_nodes
-        packed_layers, packed_singles, packed_reference = prepared
-        packed = schedule_circuit(packed_layers, packed_singles, qubits, config, packed_reference)
-        candidate_times = dict(schedule.candidate_times)
-        candidate_times.update({f"displacement_{name}": time for name, time in packed.candidate_times.items()})
-        rejected = dict(schedule.rejected_candidates)
-        rejected.update({f"displacement_{name}": reason for name, reason in packed.rejected_candidates.items()})
         if not quiet:
-            print(f"displacement_precompile_layers={sum(bool(layer) for layer in packed_layers)}")
-            print(f"original_two_qubit_layers={sum(bool(layer) for layer in two_qubit_layers)}")
-        if packed.duration < schedule.duration:
-            schedule = packed
-            schedule.selected = f"displacement_{schedule.selected}"
-            two_qubit_layers, single_layers, reference_nodes = prepared
-        schedule.candidate_times = candidate_times
-        schedule.rejected_candidates = rejected
-        try:
-            phase, phase_prepared = schedule_phase_tours(source_reference, qubits, config)
-        except (ValueError, RuntimeError, IndexError) as exc:
-            schedule.rejected_candidates["phase_tour"] = str(exc)
-        else:
-            candidate_times["phase_tour"] = phase.duration
-            if phase.duration < schedule.duration:
-                schedule = phase
-                two_qubit_layers, single_layers, reference_nodes = phase_prepared
-            schedule.candidate_times = candidate_times
-            schedule.rejected_candidates = rejected
+            print(f"displacement_precompile_layers={sum(bool(layer) for layer in two_qubit_layers)}")
+
+    # Group and route only after the placement-aware gate order is finalized.
+    schedule = schedule_circuit(
+        two_qubit_layers, single_layers, qubits, config, reference_nodes,
+    )
     event_log = schedule.events
     time = schedule.duration
     emitted_timesteps = count_emitted_timesteps(event_log)

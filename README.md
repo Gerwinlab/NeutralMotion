@@ -85,44 +85,43 @@ identical-load continuation at zero. There is no group-ordering configuration:
 alignment ordering is used only when the exact displacement-tour limit is exceeded.
 Planning or replay errors are reported instead of switching policies.
 
-- `reorder_cz`: optional boolean, default `false`. In `naive_n_dag`, reorder
-  unconditional CZs within commuting blocks before extracting the two-qubit DAG
-  and single-qubit context. Other operations constrain block formation. Bipartite
-  blocks use exact edge coloring by repeated perfect matchings; other graphs use
-  greedy coloring. If the proposed ordering increases the extracted two-qubit
-  layer count, the loader retains the original ordering and single-qubit
-  context. Equal-depth proposals are accepted. This protects logical depth,
-  but does not guarantee shorter atom movement. Requires
-  QASM input, not `step_order`; conditional gates/control flow are unsupported.
-- `reorder_cz_by_displacement`: optional boolean, defaults to the value of
-  `reorder_cz`. After initial placement (including FastSA), a second pass packs
-  commuting CZs with the same signed `partner_home - mover_home` displacement
-  into explicit layers. It honors reset-identified ancilla mover preference,
-  disjoint operands, non-CZ dependencies and global barriers. Equal-displacement
-  matchings are kept together using a greedy packing heuristic; this is not a
-  global pulse-count optimum and may increase logical depth. Both the original
-  and packed layerings are fully scheduled and validated. A `phase_tour`
-  candidate additionally orders unique displacements across each entire
-  commuting CZ block, avoiding restrictive cross-layer target pairings. It
-  holds a consistent moving bipartition in one load, including atoms needed
-  later in the tour, and returns home at each block boundary. Held-Karp uses
-  only displacement states (at most 24 unique targets; above that, warn and use
-  alignment). For each traversal direction, a separate fixed-order dynamic
-  program chooses four interaction-side states per visit, including loading
-  and returning home. Its roughly `16 * visits` transitions are costed and
-  executed using the unchanged parity router. This does not add side states
-  to Held-Karp's exponential search or change its visit order. Both directions
-  use the configured side policy (DP by default, greedy only when requested)
-  and are replay-validated; the fastest complete route is retained.
-  This optional wider search supplements the ordinary
-  group-level Held-Karp and side DP; disabling preprocessing does not disable
-  either group-level optimizer. The parity router and legality rules are unchanged.
-  Non-bipartite blocks, incompatible mover preferences, or loads violating
-  `parallel`, AOD span or `T_reuse` reject this optional candidate. Resets,
-  readout and barriers remain intact. The fastest valid complete schedule is
-  selected. Packed candidates have the `displacement_` prefix. Set this option
-  to `false` to retain only the earlier layer-count-based preprocessing, or set
-  it to `true` independently of `reorder_cz`. Requires full QASM context.
+Once those load/reuse decisions are made, `dynamics.py` jointly reroutes each
+continuous load that spans multiple layers. Held-Karp uses `(layer, displacement)`
+cities: only same-layer and consecutive-layer edges exist, with a dominant
+penalty on layer crossings. Entry is through the first layer and return home
+through the last. Duplicate targets in different layers stay distinct; duplicates
+within a layer stay consecutive. The 24-city limit counts these labelled cities;
+above it, alignment ordering runs separately within each layer with a warning.
+The side DP then plans the complete retained-load route with one final return.
+Greedy sides remain opt-in. Load membership, retention decisions, gate dependencies,
+and intervening single-qubit contexts are preserved and the result is replayed.
+This improves routes for existing loads; it does not search for better load
+partitions or prove globally minimum physical duration.
+
+- `reorder_cz`: optional boolean, default `false`. After initial placement
+  (including FastSA), the CLI swaps commuting, unconditional CZ gates to put
+  equal signed home-to-partner displacements on the same explicit 2Q layer.
+  Reset-identified ancilla preference determines the proxy mover when enabled;
+  otherwise the first operand is used. Shared-operand gates and repeated
+  occurrences remain in separate layers. Non-CZ wire dependencies, classical
+  destinations, and global barrier boundaries are preserved.
+- `reorder_cz_by_displacement`: compatibility option that enables the same
+  placement-aware pass independently. Setting it to `false` does not disable
+  displacement packing when `reorder_cz=true`. Both options require QASM
+  input with full circuit context, not `step_order`.
+
+The pass uses edge coloring within each displacement bucket to produce disjoint
+matchings, then packs whole matchings largest-first into compatible layers.
+Ties retain first-appearance order. It does not optimize a travel tour,
+interaction sides, or AOD loads. Explicit
+layer boundaries preserve shared-pulse opportunities, possibly increasing
+logical depth. Parallelism is subject to subsequent AOD grouping constraints;
+neither globally minimum pulse count nor minimum duration is guaranteed.
+
+Only the reordered layers are scheduled, once, by the ordinary `dynamics.py`
+grouping and shuttling code. `parallel`, `alignment_conc`, AOD span, `T_reuse`,
+and the configured side policy continue to control physical execution.
+Disabling CZ reordering does not disable group-level Held-Karp or side DP.
 
 `inputs/algorithms/bb144_n_init_qldpc.json` enables `reorder_cz`. Run it with:
 
@@ -136,14 +135,12 @@ is unchanged. `return_reference_nodes=True` additionally returns the full
 prepared, SWAP-filtered circuit for strict schedule replay. Preprocessing checks
 operation occurrences and non-CZ wire boundaries against the original circuit;
 motion validation then checks exact wire order against this prepared reference.
-The placement-aware pass is separate from this loader: the CLI invokes
-`naive_n_dag.precompile.precompile_displacement_layers` after placing atoms and
-before grouping/shuttling. It returns explicit layers, rebuilt single-qubit
-context buckets and the checked reordered reference; these must be kept together.
-`naive_n_dag.phase_schedule.schedule_phase_tours` uses the same dependency-safe
-block extraction but routes across the old layer boundaries. Its reported
-`two_qubit_layers` counts disjoint displacement visits, not the earlier packed
-layers; increasing this count need not increase CZ pulses or movement time.
+The CLI performs placement-aware reordering only after placement, using
+`naive_n_dag.dag_helper.reorder_cz_layers_by_displacement`. It returns explicit
+layers, rebuilt single-qubit context buckets, and the checked reordered
+reference; these must be kept together. There is no separate block-routing
+candidate or custom shuttler. The loader's optional geometry-free edge coloring
+remains available to Python callers but is not the CLI's placement-aware pass.
 
 Example configs:
 

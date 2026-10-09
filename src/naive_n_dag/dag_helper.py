@@ -332,6 +332,119 @@ def _validate_cz_reordering(original, reordered):
         raise ValueError("CZ preprocessing crossed a noncommuting operation.")
 
 
+def _commuting_cz_sections(reference_nodes):
+    """Yield non-CZ operations and reachable CZ blocks without crossing barriers."""
+    original = list(reference_nodes)
+    if any(getattr(n.op, "condition", None) is not None or
+           getattr(n.op, "blocks", ()) for n in original):
+        raise ValueError("CZ preprocessing does not support conditional gates or control flow.")
+    all_wires = {wire for node in original for wire in (*node.qargs, *node.cargs)}
+    last = {}
+    successors = defaultdict(set)
+    pending = {}
+    for index, node in enumerate(original):
+        wires = all_wires if node.op.name == "barrier" else (*node.qargs, *node.cargs)
+        predecessors = {last[wire] for wire in wires if wire in last}
+        pending[index] = len(predecessors)
+        for predecessor in predecessors:
+            successors[predecessor].add(index)
+        for wire in wires:
+            last[wire] = index
+    ready = {index for index, count in pending.items() if count == 0}
+
+    def consume(index):
+        ready.remove(index)
+        for successor in successors[index]:
+            pending[successor] -= 1
+            if pending[successor] == 0:
+                ready.add(successor)
+
+    while ready:
+        while True:
+            non_cz = sorted(index for index in ready if not _is_reorderable_cz(original[index]))
+            if not non_cz:
+                break
+            for index in non_cz:
+                yield False, [original[index]]
+                consume(index)
+        block = []
+        while True:
+            cz = sorted(index for index in ready if _is_reorderable_cz(original[index]))
+            if not cz:
+                break
+            for index in cz:
+                block.append(original[index])
+                consume(index)
+        if block:
+            yield True, block
+
+
+def reorder_cz_layers_by_displacement(reference_nodes, homes, config):
+    """Re-layer commuting CZs after placement; do not group loads or plan motion.
+
+    Return explicit disjoint 2Q layers, their 1Q contexts, and the checked
+    reference order. Keep these together: ASAP re-extraction could split the
+    equal-displacement bundles. Only geometry and ancilla preference are used;
+    Held-Karp, side selection, grouping, reuse and shuttling belong to dynamics.
+    """
+    if reference_nodes is None:
+        raise ValueError("Displacement reordering requires full circuit context.")
+    original = list(reference_nodes)
+    ancillas = {q for node in original if node.op.name == "reset"
+                for q in op_node_signature(node)[2]}
+    layers, singles, reordered = [], [[]], []
+
+    def append_layer(layer):
+        layers.append(layer)
+        singles.append([])
+        reordered.extend(layer)
+
+    for is_cz, nodes in _commuting_cz_sections(original):
+        if is_cz:
+            buckets = defaultdict(list)
+            for node in nodes:
+                pair = op_node_signature(node)[2]
+                preferred = [q for q in pair if q in ancillas]
+                mover = (preferred[0] if config.get("prefer_moving_ancillas", False)
+                         and len(preferred) == 1 else pair[0])
+                partner = pair[1] if mover == pair[0] else pair[0]
+                displacement = tuple(homes[partner][axis] - homes[mover][axis] for axis in (0, 1))
+                buckets[displacement].append(node)
+            # Keep each equal-displacement matching intact. Compatible
+            # matchings can share a layer so dynamics can group their movers
+            # and choose the travel order; no travel cost is evaluated here.
+            bundles = [matching for bucket in buckets.values()
+                       for matching in _color_cz_block(bucket)]
+            bundles.sort(key=lambda matching: -len(matching))
+            packed = []
+            for matching in bundles:
+                operands = {q for node in matching for q in node.qargs}
+                for layer, used in packed:
+                    if not operands & used:
+                        layer.extend(matching)
+                        used.update(operands)
+                        break
+                else:
+                    packed.append((list(matching), set(operands)))
+            for layer, _ in packed:
+                append_layer(layer)
+        else:
+            node = nodes[0]
+            if node.op.name == "barrier" or len(node.qargs) == 1:
+                # Separate repeated classical writes: the 1Q pulse packer
+                # tracks quantum operands, not classical destinations.
+                if node.cargs and any(set(node.cargs) & set(previous.cargs) for previous in singles[-1]):
+                    append_layer([])
+                singles[-1].append(node)
+                reordered.append(node)
+            elif len(node.qargs) == 2 and node.op.name != "swap":
+                append_layer([node])
+            else:
+                raise ValueError("Displacement reordering requires a SWAP-filtered 1Q/2Q circuit.")
+    _validate_cz_reordering(original, reordered)
+    return layers, singles, reordered
+
+
 def reorder_commuting_cz_blocks(dag: DAGCircuit) -> DAGCircuit:
     """Rebuild a full DAG with colored commuting CZ blocks.
 
@@ -344,44 +457,13 @@ def reorder_commuting_cz_blocks(dag: DAGCircuit) -> DAGCircuit:
     if any(getattr(n.op, "condition", None) is not None or
            getattr(n.op, "blocks", ()) for n in original):
         raise ValueError("CZ preprocessing does not support conditional gates or control flow.")
-    by_id = {n._node_id: n for n in original}
-    rank = {n._node_id: i for i, n in enumerate(original)}
-    successors = defaultdict(set)
-    pending = {}
-    for node in original:
-        predecessors = {p._node_id for p in dag.predecessors(node) if isinstance(p, DAGOpNode)}
-        pending[node._node_id] = len(predecessors)
-        for pred in predecessors:
-            successors[pred].add(node._node_id)
-    ready = {key for key, count in pending.items() if count == 0}
-
-    def consume(key):
-        ready.remove(key)
-        for nxt in successors[key]:
-            pending[nxt] -= 1
-            if pending[nxt] == 0:
-                ready.add(nxt)
-
     reordered = []
-    while ready:
-        while True:
-            non_cz = [key for key in ready if not _is_reorderable_cz(by_id[key])]
-            if not non_cz:
-                break
-            for key in sorted(non_cz, key=rank.get):
-                reordered.append(by_id[key])
-                consume(key)
-        block = []
-        while True:
-            cz = [key for key in ready if _is_reorderable_cz(by_id[key])]
-            if not cz:
-                break
-            for key in sorted(cz, key=rank.get):
-                block.append(by_id[key])
-                consume(key)
-        if block:
-            for layer in _color_cz_block(block):
+    for is_cz, nodes in _commuting_cz_sections(original):
+        if is_cz:
+            for layer in _color_cz_block(nodes):
                 reordered.extend(layer)
+        else:
+            reordered.extend(nodes)
     _validate_cz_reordering(original, reordered)
     result = dag.copy_empty_like()
     for node in reordered:

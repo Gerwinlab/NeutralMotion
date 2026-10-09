@@ -23,7 +23,7 @@
     ],
     "fill_strategy": "Given",
     "alignment_conc": -1,
-    "T_reuse": 0,
+    "T_reuse": "Inf",
     "prefer_moving_ancillas": true,
-    "_side_ordering": "greedy"
+    "_side_ordering": "reuse"
 }

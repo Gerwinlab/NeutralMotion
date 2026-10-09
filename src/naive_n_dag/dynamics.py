@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import re
 import warnings
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
@@ -128,6 +128,7 @@ _MAX_EXACT_DISPLACEMENT_TOUR = 24
 def _held_karp_displacement_order(
     vectors: list[tuple[int, int]], config: dict,
     *, start_offset: tuple[int, int] = (0, 0),
+    layer_ids: list[int] | None = None,
 ) -> list[int]:
     """Return all vector indices in an exact minimum-cost displacement tour.
 
@@ -135,15 +136,18 @@ def _held_karp_displacement_order(
     The path starts at the current rigid-load offset and ends at home (0, 0),
     not at the starting offset of a reused load. Edge weights use the configured
     movement-time model, approximating targets without interaction-side routing.
-    Repeated displacements are expanded consecutively while retaining their
-    original relative index order.
+    Cities are (layer, displacement) pairs. Only same-layer and consecutive-
+    layer edges exist; crossing a layer costs more than an entire feasible
+    unpenalized tour. Entry is through the first layer, exit through the last.
+    Repeated displacements within a layer expand consecutively in input order.
     """
+    labels = _displacement_layer_labels(vectors, layer_ids)
     if not vectors:
         return []
 
-    indices_by_displacement: dict[tuple[int, int], list[int]] = {}
-    for index, vector in enumerate(vectors):
-        indices_by_displacement.setdefault(vector, []).append(index)
+    indices_by_displacement = {}
+    for index, (label, vector) in enumerate(zip(labels, vectors)):
+        indices_by_displacement.setdefault((label, vector), []).append(index)
     unique = list(indices_by_displacement)
     count = len(unique)
 
@@ -151,37 +155,59 @@ def _held_karp_displacement_order(
         return _step_seconds((end[0] - start[0], end[1] - start[1]), config)
 
     depot = (0, 0)
-    start_costs = [edge_cost(start_offset, vector) for vector in unique]
-    return_costs = [edge_cost(vector, depot) for vector in unique]
+    last_layer = max(labels)
+    feasible = [vector for _, vector in sorted(unique, key=lambda city: city[0])]
+    path = [start_offset, *feasible, depot]
+    bound = sum(edge_cost(a, b) for a, b in zip(path, path[1:]))
+    penalty = bound + max(bound, 1e-12)
+    start_costs = [edge_cost(start_offset, vector) if label == 0 else math.inf
+                   for label, vector in unique]
+    return_costs = [edge_cost(vector, depot) if label == last_layer else math.inf
+                    for label, vector in unique]
     costs = [
-        [edge_cost(start, end) for end in unique]
-        for start in unique
+        [edge_cost(start, end) + penalty * (a != b) if abs(a - b) <= 1 else math.inf
+         for b, end in unique]
+        for a, start in unique
     ]
+    earlier_masks = [sum(1 << i for i, (label, _) in enumerate(unique) if label < stage)
+                     for stage in range(last_layer + 1)]
+    later_masks = [sum(1 << i for i, (label, _) in enumerate(unique) if label > stage)
+                   for stage in range(last_layer + 1)]
 
     @lru_cache(maxsize=None)
     def solve(mask: int, last: int) -> tuple[float, int]:
         """Minimum start-to-``last`` path visiting exactly ``mask``."""
+        stage = unique[last][0]
+        # A split layer adds crossings whose penalty exceeds all possible
+        # movement savings. Such paths cannot be optimal; prune them without
+        # enumerating subsets spanning unfinished layers.
+        if (mask & earlier_masks[stage]) != earlier_masks[stage] or mask & later_masks[stage]:
+            return math.inf, -1
         last_bit = 1 << last
         if mask == last_bit:
             return start_costs[last], -1
         previous_mask = mask ^ last_bit
-        return min(
+        return min((
             (
                 solve(previous_mask, previous)[0] + costs[previous][last],
                 previous,
             )
             for previous in range(count)
             if previous_mask & (1 << previous)
-        )
+            and math.isfinite(costs[previous][last])
+            and math.isfinite(solve(previous_mask, previous)[0])
+        ), default=(math.inf, -1))
 
     full_mask = (1 << count) - 1
-    _, last = min(
+    optimum, last = min(
         (
             solve(full_mask, candidate)[0] + return_costs[candidate],
             candidate,
         )
         for candidate in range(count)
     )
+    if not math.isfinite(optimum):
+        raise ValueError("No displacement tour satisfies the layer graph.")
 
     reverse_unique_order = []
     mask = full_mask
@@ -193,33 +219,62 @@ def _held_karp_displacement_order(
     unique_order = reversed(reverse_unique_order)
     solve.cache_clear()
 
-    return [
+    result = [
         vector_index
         for unique_index in unique_order
         for vector_index in indices_by_displacement[unique[unique_index]]
     ]
+    if [labels[i] for i in result] != sorted(labels):
+        raise ValueError("Displacement tour violated layer ordering.")
+    return result
+
+
+def _displacement_layer_labels(vectors, layer_ids):
+    """Normalize chronological labels, allowing empty intervening DAG layers."""
+    if layer_ids is None:
+        return [0] * len(vectors)
+    if len(layer_ids) != len(vectors) or any(
+        not isinstance(label, int) or isinstance(label, bool) or label < 0 for label in layer_ids
+    ):
+        raise ValueError("Expected one nonnegative integer layer ID per displacement.")
+    ranks = {label: rank for rank, label in enumerate(sorted(set(layer_ids)))}
+    return [ranks[label] for label in layer_ids]
 
 
 def _order_group_displacements(
     vectors: list[tuple[int, int]], config: dict,
     *, start_offset: tuple[int, int] = (0, 0),
+    layer_ids: list[int] | None = None,
 ) -> list[int]:
-    """Order home-relative targets, preserving current-relative alignment."""
-    unique_count = len(set(vectors))
+    """Order targets without crossing layer boundaries, including in fallback."""
+    labels = _displacement_layer_labels(vectors, layer_ids)
+    unique_count = len(set(zip(labels, vectors)))
     if unique_count <= _MAX_EXACT_DISPLACEMENT_TOUR:
+        if layer_ids is not None:
+            return _held_karp_displacement_order(
+                vectors, config, start_offset=start_offset, layer_ids=layer_ids,
+            )
         return _held_karp_displacement_order(vectors, config, start_offset=start_offset)
 
     warnings.warn(
-        f"Group has {unique_count} unique displacements; exact Held-Karp "
+        f"Group has {unique_count} unique displacements (counted separately per layer); exact Held-Karp "
         f"ordering is limited to {_MAX_EXACT_DISPLACEMENT_TOUR}. Falling "
         "back to alignment ordering.",
         RuntimeWarning,
         stacklevel=2,
     )
-    return _sort_group_by_alignment([
-        (vector[0] - start_offset[0], vector[1] - start_offset[1])
-        for vector in vectors
-    ])
+    order = []
+    for label in sorted(set(labels)):
+        buckets = {}
+        for i, stage in enumerate(labels):
+            if stage == label:
+                buckets.setdefault(vectors[i], []).append(i)
+        unique = list(buckets)
+        local = _sort_group_by_alignment([
+            (vector[0] - start_offset[0], vector[1] - start_offset[1]) for vector in unique
+        ])
+        order.extend(i for index in local for i in buckets[unique[index]])
+    return order
 
 
 @lru_cache(maxsize=8192)
@@ -909,6 +964,115 @@ def _validate_barrier_order(events, reference_nodes):
                 raise ValueError("An operation crossed a QASM barrier.")
 
 
+def _optimize_retained_loads(events, layers, homes, config):
+    """Jointly route actual load-to-unload intervals without changing retention.
+
+    The ordinary planner has already selected legal loads under T_reuse. Here
+    only their internal routes change. Layer boundaries and intervening 1Q
+    contexts remain ordered, and no atom is added to or removed from a load.
+    """
+    occurrences = defaultdict(deque)
+    for stage, nodes in enumerate(layers):
+        for node in nodes:
+            occurrences[format_node_line(node)].append((stage, node))
+
+    def reroute(interval, ids):
+        visits, targets, labels, contexts = [], [], [], {}
+        pending = []
+        stage, last_layer = -1, None
+        original_layers = set()
+        loaded = set(ids)
+        for event in interval:
+            if event[0] != "gate":
+                continue
+            parts = list(_gate_parts(event[1]))
+            if all(len(pair) == 1 for _, _, pair in parts):
+                pending.append(event)
+                continue
+            for statement, _, pair in parts:
+                if len(pair) != 2 or not occurrences[statement]:
+                    raise ValueError("Retained-load planning lost a gate occurrence.")
+                layer, node = occurrences[statement].popleft()
+                if pending or layer != last_layer:
+                    stage += 1
+                    contexts[stage] = pending
+                    pending = []
+                    last_layer = layer
+                movers = set(pair) & loaded
+                if len(movers) != 1:
+                    raise ValueError("Retained interaction must have exactly one loaded operand.")
+                mover = next(iter(movers))
+                partner = pair[1] if pair[0] == mover else pair[0]
+                visits.append((node, mover, partner))
+                targets.append(_movement_vector(homes[mover], homes[partner]))
+                labels.append(stage)
+                original_layers.add(layer)
+        if len(original_layers) < 2:
+            return interval
+
+        order = _order_group_displacements(targets, config, layer_ids=labels)
+        if sorted(order) != list(range(len(visits))) or [labels[i] for i in order] != sorted(labels):
+            raise ValueError("Retained-load tour changed gate occurrences or layer order.")
+        plan = _Plan(dict(homes), list(ids), [])
+
+        def translate(step):
+            positions = [plan.positions[q] for q in ids]
+            _translate(ids, positions, step, plan.events, [])
+            plan.positions.update(zip(ids, positions))
+
+        greedy = config.get("_side_ordering") == "greedy"
+        if greedy:
+            positions = [homes[q] for q in ids]
+            _start_([targets[order[0]]] * len(ids), [], ids, positions, plan.events)
+            plan.positions.update(zip(ids, positions))
+        else:
+            tour = _optimize_visit_sides([targets[i] for i in order], config)
+            translate(tour.load_step)
+        previous_stage = None
+        for position, index in enumerate(order):
+            if labels[index] != previous_stage:
+                plan.events.extend(contexts[labels[index]])
+                previous_stage = labels[index]
+            node, mover, partner = visits[index]
+            if greedy:
+                _execute_group(plan, [node], [mover], homes, config, reuse=True)
+            else:
+                for step in tour.routes[position]:
+                    translate(step)
+                if sum(abs(v) for v in _movement_vector(plan.positions[mover], homes[partner])) != 1:
+                    raise ValueError("Retained-load visit is not adjacent to its partner.")
+                _append_gate(plan.events, node)
+        plan.events.extend(pending)
+        if greedy:
+            _return_plan(plan, homes, config)
+        else:
+            for step in tour.return_steps:
+                translate(step)
+            if plan.positions != homes:
+                raise ValueError("Retained-load tour did not restore original homes.")
+        return plan.events
+
+    result, interval, ids = [], [], []
+    for batch in _event_batches(events):
+        first = batch[0]
+        if first[0] == "move" and not _is_valid_aod_position(first[2]):
+            if ids:
+                raise ValueError("Cannot start a new load before unloading the previous load.")
+            ids = [event[1] for event in batch]
+            if any(start != homes[q] for _, q, start, _ in batch):
+                raise ValueError("A retained-load tour must start at the original homes.")
+        if ids:
+            interval.extend(batch)
+            if first[0] == "move" and not _is_valid_aod_position(first[3]):
+                result.extend(reroute(interval, ids))
+                interval, ids = [], []
+        else:
+            result.extend(batch)
+    if ids or any(occurrences.values()):
+        raise ValueError("Retained-load planning did not consume the complete circuit.")
+    return result
+
+
 def _layered_candidate(layers, singles, homes, config, allow_reuse):
     from .scheduling import single_qubit_layer_time
     next_uses = [{} for _ in layers]
@@ -937,6 +1101,7 @@ def _layered_candidate(layers, singles, homes, config, allow_reuse):
     )
     plan.events.extend(("gate", line) for line in lines)
     _return_plan(plan, homes, config)
+    plan.events = _optimize_retained_loads(plan.events, layers, homes, config)
     return plan
 
 
