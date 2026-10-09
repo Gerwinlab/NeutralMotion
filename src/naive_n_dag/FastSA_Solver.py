@@ -102,15 +102,19 @@ def compute_fastsa_cost(
             return (-x, -y)
         return (x, y)
 
+    gate_layers = [
+        [node for node in layer["graph"].op_nodes()
+         if len(node.qargs) == 2 and node.op.name != "barrier"]
+        for layer in two_qubit_layers.layers()
+    ]
+    gate_layers = [layer for layer in gate_layers if layer]
     total_cost = 0.0
-    normalize_by_layers = len(list(two_qubit_layers.layers()))
+    normalize_by_layers = max(len(gate_layers), 1)
     layer_stats_list: list[dict] = []
-    for layer_nodes in two_qubit_layers.layers():
+    for layer_nodes in gate_layers:
         vectors: list[tuple[int, int]] = []
         layer_cost = 0.0
-        for node in layer_nodes["graph"].op_nodes():
-            if len(node.qargs) != 2:
-                continue
+        for node in layer_nodes:
             q0 = extract_index_from_bit(node.qargs[0])
             q1 = extract_index_from_bit(node.qargs[1])
             if q0 not in positions or q1 not in positions:
@@ -400,7 +404,12 @@ def run_fastsa(
         temperature = _record_delta(delta_c, accepted=accepted)
 
     # Stage 2: apply greedy-parallel mutation on random layers.
-    stage2_layers = [layer["graph"].op_nodes() for layer in two_qubit_dag.layers()]
+    stage2_layers = [
+        [node for node in layer["graph"].op_nodes()
+         if len(node.qargs) == 2 and node.op.name != "barrier"]
+        for layer in two_qubit_dag.layers()
+    ]
+    stage2_layers = [layer for layer in stage2_layers if layer]
     dims = config["dimensions"]
     grid_shape = (2 * int(dims[0]) - 1, 2 * int(dims[1]) - 1)
     for _ in range(stage2_iterations):

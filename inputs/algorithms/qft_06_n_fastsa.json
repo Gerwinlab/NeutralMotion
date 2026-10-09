@@ -13,7 +13,6 @@
     "average_single_gate_time": "0.1 microseconds",
     "average_two_gate_time": "0.5 microseconds",
     "t_switch": "1.5 microseconds",
-    "jerk": "constant",
     "movement_shape": "trapezoidal",
     "max_dimension": [
         3,

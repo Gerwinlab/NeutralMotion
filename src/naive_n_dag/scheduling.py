@@ -36,12 +36,16 @@ def schedule_single_qubit_time_steps(single_qubit_layer: list[DAGOpNode]) -> tup
     timesteps: list[list[str]] = []
     pulse_sets: list[set[str]] = []
     next_step_for_qubit: dict[int, int] = {}
+    barrier_floor = 0
 
     for node in single_qubit_layer:
+        if node.op.name == "barrier":
+            barrier_floor = len(timesteps)
+            continue
         if len(node.qargs) != 1:
             continue
         qid = extract_index_from_bit(node.qargs[0])
-        step_idx = next_step_for_qubit.get(qid, 0)
+        step_idx = max(next_step_for_qubit.get(qid, 0), barrier_floor)
 
         while len(timesteps) <= step_idx:
             timesteps.append([])
@@ -60,12 +64,20 @@ def single_qubit_layer_time(
     single_qubit_layer: list[DAGOpNode],
     average_single_gate_time: Any,
     t_switch: Any,
+    measurement_time: Any | None = None,
 ) -> tuple[list[str], Any]:
-    """Compute scheduled single-qubit timesteps and total pulse time contribution."""
+    """Compute 1Q/measurement timesteps and their total time contribution."""
     timestep_lines, unique_pulse_counts = schedule_single_qubit_time_steps(single_qubit_layer)
     total_time = 0 * (average_single_gate_time + t_switch)
-    for count in unique_pulse_counts:
-        total_time += count * (average_single_gate_time + t_switch)
+    if measurement_time is None:
+        measurement_time = 0 * t_switch
+    for line, count in zip(timestep_lines, unique_pulse_counts):
+        has_measurement = any(
+            statement.strip().startswith("measure ") for statement in line.split(";")
+        )
+        total_time += (count - int(has_measurement)) * (average_single_gate_time + t_switch)
+        if has_measurement:
+            total_time += measurement_time + t_switch
     return timestep_lines, total_time
 
 

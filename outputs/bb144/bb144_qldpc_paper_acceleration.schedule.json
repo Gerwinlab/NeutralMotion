@@ -14,12 +14,12 @@
     "transfer_SLM_AOD": "15 microseconds",
     "max_acceleration": "20000 m/s^2",
     "max_velocity": "10 m/s",
-    "rydberg_radius": "5 micrometers",
+    "rydberg_radius": "8 micrometers",
     "average_single_gate_time": "0.1 microseconds",
     "average_two_gate_time": "0.27 microseconds",
     "t_switch": "1.5 microseconds",
     "jerk": "constant",
-    "movement_shape": "trapezoidal",
+    "movement_shape": "Cubic_Spline",
     "max_dimension": [
       24,
       12
@@ -34,16 +34,16 @@
   },
   "validation": "PASS: internal and serialized replay, exact operation multiset, original homes; commuting CZs reordered within X/Z phases",
   "timing": {
-    "motion_us": 1954.1261231118579,
+    "motion_us": 3027.319172480435,
     "transfer_us": 59.99999999999999,
     "gate_us": 47.28000000000002,
-    "total_us": 2061.406123111858,
-    "paper_eq3_same_segments_motion_us": 2393.3059473335766,
+    "total_us": 3134.5991724804353,
+    "paper_eq3_same_segments_motion_us": 3027.319172480435,
     "counts": {
       "1q_pulses": 3,
       "transfer_batches": 4,
-      "move_batches": 28,
-      "2q_pulses": 24
+      "2q_pulses": 24,
+      "move_batches": 28
     }
   },
   "phases": [
@@ -124,46 +124,79 @@
       ],
       "visits": [
         {
-          "group": 9,
+          "group": 0,
           "offset": [
-            -36,
-            -2
+            0,
+            2
           ],
           "aod_displacement": [
-            -36,
-            -1
+            0,
+            1
           ]
         },
         {
-          "group": 10,
+          "group": 1,
           "offset": [
-            -38,
+            0,
+            6
+          ],
+          "aod_displacement": [
+            1,
+            6
+          ]
+        },
+        {
+          "group": 3,
+          "offset": [
+            2,
+            12
+          ],
+          "aod_displacement": [
+            1,
+            12
+          ]
+        },
+        {
+          "group": 8,
+          "offset": [
+            0,
+            -22
+          ],
+          "aod_displacement": [
+            1,
+            -22
+          ]
+        },
+        {
+          "group": 7,
+          "offset": [
+            0,
+            -18
+          ],
+          "aod_displacement": [
+            1,
+            -18
+          ]
+        },
+        {
+          "group": 6,
+          "offset": [
+            2,
+            -12
+          ],
+          "aod_displacement": [
+            1,
+            -12
+          ]
+        },
+        {
+          "group": 4,
+          "offset": [
+            6,
             0
           ],
           "aod_displacement": [
-            -38,
-            -1
-          ]
-        },
-        {
-          "group": 11,
-          "offset": [
-            -42,
-            0
-          ],
-          "aod_displacement": [
-            -42,
-            -1
-          ]
-        },
-        {
-          "group": 2,
-          "offset": [
-            12,
-            -2
-          ],
-          "aod_displacement": [
-            12,
+            6,
             -1
           ]
         },
@@ -179,84 +212,51 @@
           ]
         },
         {
-          "group": 4,
+          "group": 2,
           "offset": [
-            6,
-            0
+            12,
+            -2
           ],
           "aod_displacement": [
-            6,
+            12,
             -1
           ]
         },
         {
-          "group": 6,
+          "group": 11,
           "offset": [
-            2,
-            -12
+            -42,
+            0
           ],
           "aod_displacement": [
-            1,
-            -12
+            -42,
+            -1
           ]
         },
         {
-          "group": 7,
+          "group": 10,
           "offset": [
-            0,
-            -18
+            -38,
+            0
           ],
           "aod_displacement": [
-            1,
-            -18
+            -38,
+            -1
           ]
         },
         {
-          "group": 8,
+          "group": 9,
           "offset": [
-            0,
-            -22
+            -36,
+            -2
           ],
           "aod_displacement": [
-            1,
-            -22
-          ]
-        },
-        {
-          "group": 3,
-          "offset": [
-            2,
-            12
-          ],
-          "aod_displacement": [
-            1,
-            12
-          ]
-        },
-        {
-          "group": 1,
-          "offset": [
-            0,
-            6
-          ],
-          "aod_displacement": [
-            1,
-            6
-          ]
-        },
-        {
-          "group": 0,
-          "offset": [
-            0,
-            2
-          ],
-          "aod_displacement": [
-            0,
-            1
+            -36,
+            -1
           ]
         }
       ],
-      "motion_us": 977.0630615559286,
+      "motion_us": 1513.6595862402173,
       "group_sizes": [
         60,
         48,
@@ -363,46 +363,79 @@
       ],
       "visits": [
         {
-          "group": 5,
+          "group": 6,
           "offset": [
-            36,
-            2
+            0,
+            -2
           ],
           "aod_displacement": [
-            36,
-            1
+            0,
+            -1
           ]
         },
         {
-          "group": 1,
+          "group": 7,
           "offset": [
-            38,
+            0,
+            -6
+          ],
+          "aod_displacement": [
+            -1,
+            -6
+          ]
+        },
+        {
+          "group": 8,
+          "offset": [
+            -2,
+            -12
+          ],
+          "aod_displacement": [
+            -1,
+            -12
+          ]
+        },
+        {
+          "group": 4,
+          "offset": [
+            0,
+            22
+          ],
+          "aod_displacement": [
+            -1,
+            22
+          ]
+        },
+        {
+          "group": 3,
+          "offset": [
+            0,
+            18
+          ],
+          "aod_displacement": [
+            -1,
+            18
+          ]
+        },
+        {
+          "group": 0,
+          "offset": [
+            -2,
+            12
+          ],
+          "aod_displacement": [
+            -1,
+            12
+          ]
+        },
+        {
+          "group": 9,
+          "offset": [
+            -6,
             0
           ],
           "aod_displacement": [
-            38,
-            1
-          ]
-        },
-        {
-          "group": 2,
-          "offset": [
-            42,
-            0
-          ],
-          "aod_displacement": [
-            42,
-            1
-          ]
-        },
-        {
-          "group": 11,
-          "offset": [
-            -12,
-            2
-          ],
-          "aod_displacement": [
-            -12,
+            -6,
             1
           ]
         },
@@ -418,84 +451,51 @@
           ]
         },
         {
-          "group": 9,
+          "group": 11,
           "offset": [
-            -6,
-            0
+            -12,
+            2
           ],
           "aod_displacement": [
-            -6,
+            -12,
             1
           ]
         },
         {
-          "group": 0,
+          "group": 2,
           "offset": [
-            -2,
-            12
+            42,
+            0
           ],
           "aod_displacement": [
-            -1,
-            12
+            42,
+            1
           ]
         },
         {
-          "group": 3,
+          "group": 1,
           "offset": [
-            0,
-            18
+            38,
+            0
           ],
           "aod_displacement": [
-            -1,
-            18
+            38,
+            1
           ]
         },
         {
-          "group": 4,
+          "group": 5,
           "offset": [
-            0,
-            22
+            36,
+            2
           ],
           "aod_displacement": [
-            -1,
-            22
-          ]
-        },
-        {
-          "group": 8,
-          "offset": [
-            -2,
-            -12
-          ],
-          "aod_displacement": [
-            -1,
-            -12
-          ]
-        },
-        {
-          "group": 7,
-          "offset": [
-            0,
-            -6
-          ],
-          "aod_displacement": [
-            -1,
-            -6
-          ]
-        },
-        {
-          "group": 6,
-          "offset": [
-            0,
-            -2
-          ],
-          "aod_displacement": [
-            0,
-            -1
+            36,
+            1
           ]
         }
       ],
-      "motion_us": 977.0630615559286,
+      "motion_us": 1513.6595862402173,
       "group_sizes": [
         36,
         12,
@@ -527,7 +527,7 @@
     }
   ],
   "candidate_us": {
-    "separate_check_loads": 2061.406123111858,
+    "separate_check_loads": 3134.5991724804358,
     "combined_check_load": null
   },
   "circuit_audit": {

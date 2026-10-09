@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from qiskit import QuantumCircuit
+from qiskit.circuit import Barrier
 from qiskit.circuit import Gate
 from qiskit.converters import circuit_to_dag
 from qiskit.dagcircuit import DAGCircuit
@@ -24,13 +25,16 @@ def load_qasm_to_dag(qasm_path: str | Path) -> DAGCircuit:
 
 
 def dag_with_gate_ops_only(dag: DAGCircuit) -> list[DAGOpNode]:
-    """Return topologically ordered op-nodes with SWAP operations removed."""
+    """Return source-ordered op nodes with SWAPs removed and global barriers."""
     gate_only = dag.copy_empty_like()
 
-    for node in dag.topological_op_nodes():
+    for node in sorted(dag.op_nodes(), key=lambda item: item._node_id):
         if isinstance(node.op, SwapGate):
             continue
-        gate_only.apply_operation_back(node.op, node.qargs, node.cargs)
+        if node.op.name == "barrier":
+            gate_only.apply_operation_back(Barrier(len(dag.qubits)), dag.qubits, [])
+        else:
+            gate_only.apply_operation_back(node.op, node.qargs, node.cargs)
 
     return gate_only.op_nodes()
 

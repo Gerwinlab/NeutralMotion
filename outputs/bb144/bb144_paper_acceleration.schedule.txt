@@ -1,7 +1,7 @@
 solver: paper_ordered (naive_n_dag rules)
 qasm_file: bb144_bivariate_bicycle_cz.qasm
-final_time: 2404.56386851739 microsecond
-lattice_spacing (rydberg_radius): 5.0 micrometer
+final_time: 3675.6629911334257 microsecond
+lattice_spacing (rydberg_radius): 8.0 micrometer
 random number seed: 0
 
 T=0

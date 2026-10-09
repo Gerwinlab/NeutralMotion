@@ -86,6 +86,7 @@ def main(
     """Run the naive scheduler pipeline and write a human-readable schedule file."""
     if config_path is not None:
         config = resolve_config_paths(config, config_path.parent)
+    config = dict(config)
 
     qasm_path = _resolve_qasm_file(config, qasm_file)
 
@@ -97,10 +98,13 @@ def main(
         print("naive Dag config loaded")
         print(f"dimensions={dims} num_NA={num_na} qasm_dir={qasm_dir}")
         print(f"qasm_file={qasm_path}")
-    if config["jerk"] != "constant":
-            raise ValueError(
-                f'Unsupported jerk profile "{config["jerk"]}". Only "constant" is allowed. You can implement none constant though.'
-            )
+    movement_shape = config.get("movement_shape", "trapezoidal")
+    if movement_shape not in {"trapezoidal", "Cubic_Spline"}:
+        raise ValueError(
+            "movement_shape must be either 'trapezoidal' or 'Cubic_Spline'."
+        )
+    if not isinstance(config.get("prefer_moving_ancillas", False), bool):
+        raise ValueError("prefer_moving_ancillas must be a boolean.")
 
     for key in [
         "transfer_SLM_AOD",
@@ -109,9 +113,11 @@ def main(
         "rydberg_radius",
         "average_single_gate_time",
         "average_two_gate_time",
+        "measurement_time",
         "t_switch",
     ]:
-        config[key] = parse_quantity(config[key], key)
+        value = config.get(key, "0 milliseconds") if key == "measurement_time" else config[key]
+        config[key] = parse_quantity(value, key)
     
     config["transfer_SLM_AOD"] = config["transfer_SLM_AOD"].to("seconds")
     config["max_acceleration"] = config["max_acceleration"].to("meter/second^2")
@@ -119,6 +125,7 @@ def main(
     config["rydberg_radius"] = config["rydberg_radius"].to("meter")
     config["average_single_gate_time"] = config["average_single_gate_time"].to("seconds")
     config["average_two_gate_time"] = config["average_two_gate_time"].to("seconds")
+    config["measurement_time"] = config["measurement_time"].to("seconds")
     config["t_switch"] = config["t_switch"].to("seconds")
     qc = load_qasm_to_gate_dag(qasm_path)
     grid = generate_grid(dims,config["rydberg_radius"])

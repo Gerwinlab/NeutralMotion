@@ -15,7 +15,6 @@
     "average_single_gate_time": "0.1 microseconds",
     "average_two_gate_time": "0.27 microseconds",
     "t_switch": "1.5 microseconds",
-    "jerk": "constant",
     "movement_shape": "trapezoidal",
     "max_dimension": [
         24,
@@ -23,5 +22,6 @@
     ],
     "fill_strategy": "Given",
     "alignment_conc": -1,
-    "T_reuse": 0
+    "T_reuse": 0,
+    "_side_ordering": "greedy"
 }

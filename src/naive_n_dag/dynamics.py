@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import re
+import warnings
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
@@ -17,6 +18,10 @@ from .grid import Qubit
 MoveEvent = tuple[str, int, tuple[int, int], tuple[int, int]]
 GateEvent = tuple[str, str]
 ScheduleEvent = MoveEvent | GateEvent
+
+
+def _is_two_qubit_operation(node):
+    return len(node.qargs) == 2 and node.op.name not in {"swap", "barrier"}
 
 
 def _max_grid_spans(max_dimension: list[int]) -> tuple[int, int]:
@@ -117,6 +122,106 @@ def _sort_group_by_alignment(vectors: list[tuple[int, int]]) -> list[int]:
     return order
 
 
+_MAX_EXACT_DISPLACEMENT_TOUR = 24
+
+
+def _held_karp_displacement_order(
+    vectors: list[tuple[int, int]], config: dict,
+    *, start_offset: tuple[int, int] = (0, 0),
+) -> list[int]:
+    """Return all vector indices in an exact minimum-cost displacement tour.
+
+    Cities are partner positions relative to each mover's immutable home.
+    The path starts at the current rigid-load offset and ends at home (0, 0),
+    not at the starting offset of a reused load. Edge weights use the configured
+    movement-time model, approximating targets without interaction-side routing.
+    Repeated displacements are expanded consecutively while retaining their
+    original relative index order.
+    """
+    if not vectors:
+        return []
+
+    indices_by_displacement: dict[tuple[int, int], list[int]] = {}
+    for index, vector in enumerate(vectors):
+        indices_by_displacement.setdefault(vector, []).append(index)
+    unique = list(indices_by_displacement)
+    count = len(unique)
+
+    def edge_cost(start: tuple[int, int], end: tuple[int, int]) -> float:
+        return _step_seconds((end[0] - start[0], end[1] - start[1]), config)
+
+    depot = (0, 0)
+    start_costs = [edge_cost(start_offset, vector) for vector in unique]
+    return_costs = [edge_cost(vector, depot) for vector in unique]
+    costs = [
+        [edge_cost(start, end) for end in unique]
+        for start in unique
+    ]
+
+    @lru_cache(maxsize=None)
+    def solve(mask: int, last: int) -> tuple[float, int]:
+        """Minimum start-to-``last`` path visiting exactly ``mask``."""
+        last_bit = 1 << last
+        if mask == last_bit:
+            return start_costs[last], -1
+        previous_mask = mask ^ last_bit
+        return min(
+            (
+                solve(previous_mask, previous)[0] + costs[previous][last],
+                previous,
+            )
+            for previous in range(count)
+            if previous_mask & (1 << previous)
+        )
+
+    full_mask = (1 << count) - 1
+    _, last = min(
+        (
+            solve(full_mask, candidate)[0] + return_costs[candidate],
+            candidate,
+        )
+        for candidate in range(count)
+    )
+
+    reverse_unique_order = []
+    mask = full_mask
+    while last != -1:
+        reverse_unique_order.append(last)
+        _, previous = solve(mask, last)
+        mask ^= 1 << last
+        last = previous
+    unique_order = reversed(reverse_unique_order)
+    solve.cache_clear()
+
+    return [
+        vector_index
+        for unique_index in unique_order
+        for vector_index in indices_by_displacement[unique[unique_index]]
+    ]
+
+
+def _order_group_displacements(
+    vectors: list[tuple[int, int]], config: dict,
+    *, start_offset: tuple[int, int] = (0, 0),
+) -> list[int]:
+    """Order home-relative targets, preserving current-relative alignment."""
+    unique_count = len(set(vectors))
+    if unique_count <= _MAX_EXACT_DISPLACEMENT_TOUR:
+        return _held_karp_displacement_order(vectors, config, start_offset=start_offset)
+
+    warnings.warn(
+        f"Group has {unique_count} unique displacements; exact Held-Karp "
+        f"ordering is limited to {_MAX_EXACT_DISPLACEMENT_TOUR}. Falling "
+        "back to alignment ordering.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+    return _sort_group_by_alignment([
+        (vector[0] - start_offset[0], vector[1] - start_offset[1])
+        for vector in vectors
+    ])
+
+
 @lru_cache(maxsize=8192)
 def _profile_seconds(distance: float, velocity: float, acceleration: float) -> float:
     if distance == 0:
@@ -129,7 +234,14 @@ def _profile_seconds(distance: float, velocity: float, acceleration: float) -> f
 
 def _step_seconds(step, config):
     spacing, velocity, acceleration = config.get("_motion_parameters") or _motion_parameters(config)
-    return _profile_seconds(math.hypot(*step) * spacing, velocity, acceleration)
+    dr = abs(step[0]) * spacing
+    dc = abs(step[1]) * spacing
+    movement_shape = config.get("movement_shape", "trapezoidal")
+    if movement_shape == "Cubic_Spline":
+        return math.sqrt(6 * dr / acceleration) + math.sqrt(6 * dc / acceleration)
+    if movement_shape == "trapezoidal":
+        return _profile_seconds(math.hypot(dr, dc), velocity, acceleration)
+    raise ValueError(f"Unsupported movement_shape: {movement_shape!r}.")
 
 
 def _motion_parameters(config):
@@ -198,6 +310,78 @@ def parity_route_moves(start, end, config=None):
 
 
 _CARDINAL = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+
+@dataclass(frozen=True)
+class _SideTour:
+    load_step: tuple[int, int]
+    visit_offsets: tuple[tuple[int, int], ...]
+    routes: tuple[tuple[tuple[int, int], ...], ...]
+    return_steps: tuple[tuple[int, int], ...]
+    motion_seconds: float
+
+
+def _optimize_visit_sides(vectors, config, *, start_offset=None):
+    """Minimum parity-routed motion for a FIXED sequence of home-relative targets.
+
+    Keep four endpoint states per visit; compare 4 x 4 transitions between
+    adjacent visits, plus four loading/unloading directions at the boundaries.
+    This is O(16*n) routing comparisons and O(n) storage, not a new subset TSP.
+    All homes are even-even, so routing the shared offset has the same parity
+    geometry as routing any loaded atom. Transfers are one cardinal step.
+    A non-None start_offset means the load is already in the AOD: start there
+    without another transfer, but still price the eventual return to home.
+    """
+    if not vectors:
+        return _SideTour((0, 0), (), (), (), 0.0)
+    if any(r % 2 or c % 2 for r, c in vectors):
+        raise ValueError("Side optimization requires even-even home-relative targets.")
+    if start_offset is not None and not _is_valid_aod_position(start_offset):
+        raise ValueError("A reused load must start at an AOD offset.")
+    points = [tuple((r + dr, c + dc) for dr, dc in _CARDINAL) for r, c in vectors]
+
+    @lru_cache(maxsize=None)
+    def edge(start, end):
+        route = tuple(parity_route_moves(start, end, config))
+        return sum(_step_seconds(step, config) for step in route), route
+
+    transfer_costs = [_step_seconds(step, config) for step in _CARDINAL]
+    costs, starts = [], []
+    for end in points[0]:
+        if start_offset is None:
+            cost, start = min((transfer_costs[s] + edge(offset, end)[0], s)
+                              for s, offset in enumerate(_CARDINAL))
+        else:
+            cost, start = edge(start_offset, end)[0], None
+        costs.append(cost)
+        starts.append(start)
+    parents = []
+    for previous, current in zip(points, points[1:]):
+        next_costs, predecessors = [], []
+        for end in current:
+            cost, predecessor = min((costs[s] + edge(start, end)[0], s)
+                                    for s, start in enumerate(previous))
+            next_costs.append(cost)
+            predecessors.append(predecessor)
+        parents.append(predecessors)
+        costs = next_costs
+    total, last, exit_side = min(
+        (costs[s] + edge(start, end)[0] + transfer_costs[e], s, e)
+        for s, start in enumerate(points[-1]) for e, end in enumerate(_CARDINAL)
+    )
+    chosen = [last]
+    for predecessors in reversed(parents):
+        chosen.append(predecessors[chosen[-1]])
+    chosen.reverse()
+    load_step = _CARDINAL[starts[chosen[0]]] if start_offset is None else (0, 0)
+    initial = load_step if start_offset is None else start_offset
+    offsets = tuple(options[side] for options, side in zip(points, chosen))
+    routes = tuple(edge(start, end)[1] for start, end in zip((initial, *offsets[:-1]), offsets))
+    unload_offset = _CARDINAL[exit_side]
+    return_steps = edge(offsets[-1], unload_offset)[1] + (tuple(-v for v in unload_offset),)
+    result = _SideTour(load_step, offsets, routes, return_steps, total)
+    edge.cache_clear()
+    return result
 
 
 def _translate(ids, positions, step, events, moves):
@@ -340,13 +524,15 @@ def schedule_duration(events, config):
     """One common duration model for optimized, reset, and baseline schedules."""
     seconds = 0.0
     transfers = 0
-    one_pulses = two_pulses = 0
+    one_pulses = two_pulses = measurement_batches = 0
     for batch in _event_batches(events):
         first = batch[0]
         if first[0] == "gate":
             pulses = {(pulse, len(ids)) for _, pulse, ids in _gate_parts(first[1])}
-            for _, arity in pulses:
-                if arity == 1:
+            for pulse, arity in pulses:
+                if pulse == "measure":
+                    measurement_batches += 1
+                elif arity == 1:
                     one_pulses += 1
                 elif arity == 2:
                     two_pulses += 1
@@ -362,6 +548,9 @@ def schedule_duration(events, config):
         + transfers * config["transfer_SLM_AOD"]
         + one_pulses * (config["average_single_gate_time"] + config["t_switch"])
         + two_pulses * (config["average_two_gate_time"] + config["t_switch"])
+        + measurement_batches * (
+            config.get("measurement_time", 0 * config["t_switch"]) + config["t_switch"]
+        )
     )
 
 
@@ -399,7 +588,16 @@ def _reuse_group_allowed(previous_ids, current_ids, horizon, stage_index, next_u
     )
 
 
-def _reuse_movers(nodes, previous_ids):
+def _preferred_mover(pair, config):
+    """Return the ancilla operand when exactly one operand is an ancilla."""
+    if not config.get("prefer_moving_ancillas", False):
+        return None
+    ancillas = config.get("_ancilla_qubits", frozenset())
+    preferred = [q for q in pair if q in ancillas]
+    return preferred[0] if len(preferred) == 1 else None
+
+
+def _reuse_movers(nodes, previous_ids, config):
     """Single legality predicate used for both reuse selection and execution."""
     previous = set(previous_ids)
     movers = []
@@ -408,7 +606,11 @@ def _reuse_movers(nodes, previous_ids):
         loaded = operands & previous
         if len(operands) != 2 or len(loaded) != 1:
             return None
-        movers.append(next(iter(loaded)))
+        mover = next(iter(loaded))
+        preferred = _preferred_mover(operands, config)
+        if preferred is not None and mover != preferred:
+            return None
+        movers.append(mover)
     return movers
 
 
@@ -421,6 +623,9 @@ def _build_groups(nodes, positions, config):
         if len(pair) != 2:
             raise ValueError("A two-qubit layer must contain only two-qubit gates.")
         choices = [(q, _movement_vector(positions[q], positions[pair[1 - i]])) for i, q in enumerate(pair)]
+        preferred = _preferred_mover(pair, config)
+        if preferred is not None:
+            choices = [choice for choice in choices if choice[0] == preferred]
         placed = False
         if config.get("parallel", False):
             for group, movers, vectors in groups:
@@ -439,29 +644,75 @@ def _build_groups(nodes, positions, config):
         if not placed:
             q, vector = choices[0]
             groups.append(([node], [q], [vector]))
+
+    #now we order the movers based on displacement
+    for group, movers, vectors in groups:
+        ordered = sorted(
+            zip(group, movers, vectors),
+            key=lambda item: (item[2][0], item[2][1], item[1]),
+        )
+        group[:] = [item[0] for item in ordered]
+        movers[:] = [item[1] for item in ordered]
+        vectors[:] = [item[2] for item in ordered]
+
     return [(group, movers) for group, movers, _ in groups]
 
 
-def _execute_group(plan, nodes, movers, config, reuse=False):
+def _execute_group(plan, nodes, movers, homes, config, reuse=False):
     if reuse:
-        if _reuse_movers(nodes, plan.ids) != movers:
+        if _reuse_movers(nodes, plan.ids, config) != movers:
             raise ValueError("Cannot reuse an AOD load containing both interacting operands.")
     elif plan.ids:
         raise ValueError("A new group requires the preceding load to be returned.")
+    offsets = {
+        _movement_vector(homes[q], plan.positions[q])
+        for q in set(movers) | set(plan.ids)
+    }
+    if len(offsets) != 1:
+        raise ValueError("Group movers must share one rigid displacement from home.")
+    start_offset = offsets.pop()
     vectors = []
+    home_targets = []
     for node, mover in zip(nodes, movers):
         pair = op_node_signature(node)[2]
         partner = pair[1] if pair[0] == mover else pair[0]
         vectors.append(_movement_vector(plan.positions[mover], plan.positions[partner]))
-    order = _sort_group_by_alignment(vectors)
+        home_targets.append(_movement_vector(homes[mover], plan.positions[partner]))
+    # Here we use Held-Karp when there are 24 or fewer unique displacements.
+    # Optimize home-relative targets, but shuttle with current-relative vectors.
+    order = _order_group_displacements(home_targets, config, start_offset=start_offset)
+
     nodes = [nodes[i] for i in order]
     ids = [movers[i] for i in order]
     vectors = [vectors[i] for i in order]
     ids.extend(q for q in plan.ids if q not in ids)
     positions = [plan.positions[q] for q in ids]
     moves = []
-    vectors = _start_(vectors, moves, ids, positions, plan.events)
-    _shuttle_(vectors, moves, ids, positions, nodes, plan.events, config)
+    if config.get("_side_ordering") == "greedy":
+        vectors = _start_(vectors, moves, ids, positions, plan.events)
+        _shuttle_(vectors, moves, ids, positions, nodes, plan.events, config)
+    else:
+        # Independent gates may be routed in any order, regardless of gate type
+        # or CZ preprocessing. Shared-wire order remains fixed by the layers.
+        tour = _optimize_visit_sides(
+            [home_targets[i] for i in order], config,
+            start_offset=start_offset if reuse else None,
+        )
+        _translate(ids, positions, tour.load_step, plan.events, moves)
+        loaded = set(ids)
+        for i, (node, steps) in enumerate(zip(nodes, tour.routes)):
+            for step in steps:
+                _translate(ids, positions, step, plan.events, moves)
+            pair = op_node_signature(node)[2]
+            if set(pair) & loaded != {ids[i]}:
+                raise ValueError("Each interaction must have exactly one loaded operand.")
+            partner = pair[1] if pair[0] == ids[i] else pair[0]
+            target = plan.positions[partner]
+            if _is_valid_aod_position(target) or sum(abs(v) for v in _movement_vector(positions[i], target)) != 1:
+                raise ValueError("Side-planned interaction must be adjacent to an SLM partner.")
+            _append_gate(plan.events, node)
+        # The return is a cost-to-go estimate. Keep the load active so the next
+        # layer can reuse it; _return_plan executes the return when needed.
     plan.positions.update(zip(ids, positions))
     plan.ids = ids
     plan.reused_groups += int(reuse)
@@ -474,7 +725,7 @@ def _reset_layer(plan, nodes, homes, config):
     # All grouping decisions now see the state after the proposed return.
     for group, movers in _build_groups(nodes, plan.positions, config):
         _return_plan(plan, homes, config)
-        _execute_group(plan, group, movers, config)
+        _execute_group(plan, group, movers, homes, config)
 
 
 def _closed_cost(plan, homes, config):
@@ -490,16 +741,16 @@ def _plan_layer(nodes, initial, homes, config, stage, next_use, allow_reuse=True
         return reset
     # Gates in a DAG layer are disjoint. Only gates with one loaded operand
     # can precede a reset; AOD-AOD gates remain in the reset portion.
-    eligible = [n for n in nodes if _reuse_movers([n], initial.ids) is not None]
+    eligible = [n for n in nodes if _reuse_movers([n], initial.ids, config) is not None]
     if not config.get("parallel", False):
         eligible = eligible[:1]
-    movers = _reuse_movers(eligible, initial.ids)
+    movers = _reuse_movers(eligible, initial.ids, config)
     if not movers or not _reuse_group_allowed(
         initial.ids, movers, config.get("T_reuse", 0), stage, next_use
     ):
         return reset
     reuse = initial.copy()
-    _execute_group(reuse, eligible, movers, config, reuse=True)
+    _execute_group(reuse, eligible, movers, homes, config, reuse=True)
     selected = {id(n) for n in eligible}
     _reset_layer(reuse, [n for n in nodes if id(n) not in selected], homes, config)
     # Compare equal endpoints (all atoms at home). The closure is a cost-to-go
@@ -571,6 +822,9 @@ def validate_schedule(events, homes, config, reference_nodes=None, require_home=
                 if len(ids) == 2:
                     if len(set(ids) & active) != 1:
                         raise ValueError("A two-qubit gate requires one AOD and one SLM atom.")
+                    preferred = _preferred_mover(ids, config)
+                    if preferred is not None and preferred not in active:
+                        raise ValueError("A data-ancilla gate must move its ancilla operand.")
                     if sum(abs(v) for v in _movement_vector(positions[ids[0]], positions[ids[1]])) != 1:
                         raise ValueError("Two-qubit gate separation is not one grid step.")
                 elif len(ids) != 1:
@@ -616,8 +870,11 @@ def validate_schedule(events, homes, config, reference_nodes=None, require_home=
     if require_home and (active or positions != homes):
         raise ValueError("The completed circuit must return every atom to its home.")
     if reference_nodes is not None:
+        _validate_barrier_order(events, reference_nodes)
         expected = defaultdict(list)
         for node in reference_nodes:
+            if node.op.name in {"swap", "barrier"}:
+                continue
             if len(node.qargs) not in (1, 2):
                 continue
             line = format_node_line(node)
@@ -626,6 +883,30 @@ def validate_schedule(events, homes, config, reference_nodes=None, require_home=
         if dict(traces) != dict(expected):
             raise ValueError("Gate identities, multiplicities, or per-qubit order changed.")
     return positions
+
+
+def _validate_barrier_order(events, reference_nodes):
+    """Require every emitted operation to remain in its QASM barrier epoch."""
+    epochs = [defaultdict(int)]
+    for node in reference_nodes:
+        if node.op.name == "swap":
+            continue
+        if node.op.name == "barrier":
+            epochs.append(defaultdict(int))
+        elif len(node.qargs) in (1, 2):
+            epochs[-1][format_node_line(node)] += 1
+
+    epoch = 0
+    for event in events:
+        if event[0] != "gate":
+            continue
+        for statement, _, _ in _gate_parts(event[1]):
+            while epoch < len(epochs) - 1 and not any(epochs[epoch].values()):
+                epoch += 1
+            if epochs[epoch].get(statement, 0):
+                epochs[epoch][statement] -= 1
+            elif any(later.get(statement, 0) for later in epochs[epoch + 1:]):
+                raise ValueError("An operation crossed a QASM barrier.")
 
 
 def _layered_candidate(layers, singles, homes, config, allow_reuse):
@@ -639,7 +920,8 @@ def _layered_candidate(layers, singles, homes, config, allow_reuse):
     plan = _Plan(dict(homes), [], [])
     for i, nodes in enumerate(layers):
         lines, _ = single_qubit_layer_time(
-            singles[i], config["average_single_gate_time"], config["t_switch"]
+            singles[i], config["average_single_gate_time"], config["t_switch"],
+            config.get("measurement_time"),
         )
         plan.events.extend(("gate", line) for line in lines)
         layer_plan = _plan_layer(
@@ -650,7 +932,8 @@ def _layered_candidate(layers, singles, homes, config, allow_reuse):
         plan.positions, plan.ids = layer_plan.positions, layer_plan.ids
         plan.reused_groups += layer_plan.reused_groups
     lines, _ = single_qubit_layer_time(
-        singles[-1], config["average_single_gate_time"], config["t_switch"]
+        singles[-1], config["average_single_gate_time"], config["t_switch"],
+        config.get("measurement_time"),
     )
     plan.events.extend(("gate", line) for line in lines)
     _return_plan(plan, homes, config)
@@ -661,30 +944,37 @@ def _sequential_candidate(ops, homes, config):
     """Home-return baseline with naive_dag's next-2Q-gate mover lookahead."""
     from .scheduling import single_qubit_layer_time
     plan = _Plan(dict(homes), [], [])
-    two_indices = [i for i, n in enumerate(ops) if len(n.qargs) == 2]
+    two_indices = [i for i, n in enumerate(ops) if _is_two_qubit_operation(n)]
     next_pairs = {}
     for a, b in zip(two_indices, two_indices[1:]):
         next_pairs[a] = set(op_node_signature(ops[b])[2])
     i = 0
     while i < len(ops):
         node = ops[i]
-        if len(node.qargs) != 2:
+        if not _is_two_qubit_operation(node):
             block = []
-            while i < len(ops) and len(ops[i].qargs) != 2:
+            while i < len(ops) and not _is_two_qubit_operation(ops[i]):
                 block.append(ops[i])
                 i += 1
             lines, _ = single_qubit_layer_time(
-                block, config["average_single_gate_time"], config["t_switch"]
+                block, config["average_single_gate_time"], config["t_switch"],
+                config.get("measurement_time"),
             )
             plan.events.extend(("gate", line) for line in lines)
             continue
         pair = op_node_signature(node)[2]
-        if plan.ids and plan.ids[0] not in pair:
+        preferred = _preferred_mover(pair, config)
+        if plan.ids and (plan.ids[0] not in pair or
+                         (preferred is not None and plan.ids[0] != preferred)):
             _return_plan(plan, homes, config)
         following = next_pairs.get(i, set())
-        mover = plan.ids[0] if plan.ids else (pair[1] if pair[1] in following else pair[0])
-        _execute_group(plan, [node], [mover], config, reuse=bool(plan.ids))
-        if mover not in following:
+        mover = plan.ids[0] if plan.ids else (
+            preferred if preferred is not None else
+            (pair[1] if pair[1] in following else pair[0])
+        )
+        _execute_group(plan, [node], [mover], homes, config, reuse=bool(plan.ids))
+        following_preferred = _preferred_mover(following, config)
+        if mover not in following or (following_preferred is not None and following_preferred != mover):
             _return_plan(plan, homes, config)
         i += 1
     _return_plan(plan, homes, config)
@@ -708,7 +998,7 @@ def _legacy_baseline(ops, homes, config):
     reused_groups = 0
     i = 0
     while i < len(ops):
-        if len(ops[i].qargs) == 2:
+        if _is_two_qubit_operation(ops[i]):
             pair = op_node_signature(ops[i])[2]
             reused_groups += int(any(
                 q.id in pair and _is_valid_aod_position(q.grid_position()) for q in qubits
@@ -723,11 +1013,12 @@ def _legacy_baseline(ops, homes, config):
             i += 1
         else:
             block = []
-            while i < len(ops) and len(ops[i].qargs) != 2:
+            while i < len(ops) and not _is_two_qubit_operation(ops[i]):
                 block.append(ops[i])
                 i += 1
             lines, _ = single_qubit_layer_time(
-                block, config["average_single_gate_time"], config["t_switch"]
+                block, config["average_single_gate_time"], config["t_switch"],
+                config.get("measurement_time"),
             )
             events.extend(("gate", line) for line in lines)
     positions = dict(homes)
@@ -764,10 +1055,11 @@ class CircuitSchedule:
 
 
 def schedule_circuit(layers, singles, qubits, config, reference_nodes=None):
-    """Select a validated complete schedule with common homes and timing.
+    """Build and validate one complete schedule using the configured policy.
 
-    Always include a reset-only plan and a safe sequential baseline. Include
-    the actual naive_dag trajectory when it satisfies the same rules.
+    Held-Karp and side DP apply to ordinary groups regardless of CZ reordering.
+    Only an explicit greedy side policy disables side DP. T_reuse controls load
+    retention; failures propagate instead of silently switching scheduling policy.
     """
     config = dict(config, _motion_parameters=_motion_parameters(config))
     layers = [list(nodes) for nodes in layers]
@@ -781,26 +1073,14 @@ def schedule_circuit(layers, singles, qubits, config, reference_nodes=None):
             node for i, layer in enumerate(layers) for node in list(singles[i]) + layer
         ] + list(singles[-1])
     reference_nodes = list(reference_nodes)
-    factories = {
-        "reset_only": lambda: _layered_candidate(layers, singles, homes, config, False),
-        "reuse": lambda: _layered_candidate(layers, singles, homes, config, True),
-        "sequential_home": lambda: _sequential_candidate(reference_nodes, homes, config),
-        "naive_dag": lambda: _legacy_baseline(reference_nodes, homes, config),
-    }
-    candidates = {}
-    rejected = {}
-    for name, build in factories.items():
-        try:
-            plan = build()
-            validate_schedule(plan.events, homes, config, reference_nodes)
-            candidates[name] = (schedule_duration(plan.events, config), plan)
-        except (ValueError, RuntimeError, IndexError) as exc:
-            rejected[name] = str(exc)
-    if "sequential_home" not in candidates:
-        raise ValueError(f"Sequential home baseline failed validation: {rejected.get('sequential_home')}")
-    selected = min(candidates, key=lambda name: candidates[name][0])
-    duration, plan = candidates[selected]
+    config["_ancilla_qubits"] = frozenset(
+        q for node in reference_nodes if node.op.name == "reset"
+        for q in op_node_signature(node)[2]
+    )
+    selected = "greedy_reuse" if config.get("_side_ordering") == "greedy" else "reuse"
+    plan = _layered_candidate(layers, singles, homes, config, True)
+    validate_schedule(plan.events, homes, config, reference_nodes)
+    duration = schedule_duration(plan.events, config)
     return CircuitSchedule(
-        plan.events, duration, selected,
-        {name: time for name, (time, _) in candidates.items()}, rejected, plan.reused_groups,
+        plan.events, duration, selected, {selected: duration}, {}, plan.reused_groups,
     )

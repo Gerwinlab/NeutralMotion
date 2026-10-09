@@ -11,6 +11,8 @@ from naive_n_dag.dag_helper import (
     load_qasm_to_two_qubit_dag_with_single_qubit_context,
 )
 from naive_n_dag.dynamics import schedule_circuit
+from naive_n_dag.precompile import precompile_displacement_layers
+from naive_n_dag.phase_schedule import schedule_phase_tours
 from naive_n_dag.scheduling import (
     count_emitted_timesteps,
     write_timed_schedule,
@@ -37,6 +39,7 @@ def parse_quantity(value: Any, key: str):
 
 def _coerce_unit_config(config: dict[str, Any]) -> None:
     """Parse and normalize all unit-bearing config fields in place."""
+    config.setdefault("measurement_time", "0 milliseconds")
     for key in [
         "transfer_SLM_AOD",
         "max_acceleration",
@@ -44,6 +47,7 @@ def _coerce_unit_config(config: dict[str, Any]) -> None:
         "rydberg_radius",
         "average_single_gate_time",
         "average_two_gate_time",
+        "measurement_time",
         "t_switch",
     ]:
         config[key] = parse_quantity(config[key], key)
@@ -54,6 +58,7 @@ def _coerce_unit_config(config: dict[str, Any]) -> None:
     config["rydberg_radius"] = config["rydberg_radius"].to("meter")
     config["average_single_gate_time"] = config["average_single_gate_time"].to("seconds")
     config["average_two_gate_time"] = config["average_two_gate_time"].to("seconds")
+    config["measurement_time"] = config["measurement_time"].to("seconds")
     config["t_switch"] = config["t_switch"].to("seconds")
 
 
@@ -101,8 +106,14 @@ def _validate_required_config(config: Mapping[str, Any]) -> None:
     """Validate required scheduler config keys and core value constraints."""
     if not isinstance(config.get("reorder_cz", False), bool):
         raise ValueError("reorder_cz must be a boolean.")
+    if not isinstance(config.get("reorder_cz_by_displacement", config.get("reorder_cz", False)), bool):
+        raise ValueError("reorder_cz_by_displacement must be a boolean.")
+    if not isinstance(config.get("prefer_moving_ancillas", False), bool):
+        raise ValueError("prefer_moving_ancillas must be a boolean.")
     if config.get("reorder_cz", False) and config.get("step_order") is not None:
         raise ValueError("reorder_cz requires QASM input with full gate context, not step_order.")
+    if config.get("reorder_cz_by_displacement", config.get("reorder_cz", False)) and config.get("step_order") is not None:
+        raise ValueError("reorder_cz_by_displacement requires QASM input with full gate context, not step_order.")
     required_keys = [
         "dimensions",
         "num_NA",
@@ -113,7 +124,6 @@ def _validate_required_config(config: Mapping[str, Any]) -> None:
         "average_single_gate_time",
         "average_two_gate_time",
         "t_switch",
-        "jerk",
         "movement_shape",
         "max_dimension",
         "fill_strategy",
@@ -134,9 +144,10 @@ def _validate_required_config(config: Mapping[str, Any]) -> None:
     if fill_strategy not in {"random", "heuristic_fill", "fastsa", "Given"}:
         raise ValueError("fill_strategy must be either 'random', 'heuristic_fill', or 'fastsa'.")
 
-    if config["jerk"] != "constant":
+    movement_shape = config["movement_shape"]
+    if movement_shape not in {"trapezoidal", "Cubic_Spline"}:
         raise ValueError(
-            f'Unsupported jerk profile "{config["jerk"]}". Only "constant" is allowed at this stage.'
+            "movement_shape must be either 'trapezoidal' or 'Cubic_Spline'."
         )
 
     if "alignment_conc" in config:
@@ -233,7 +244,11 @@ def main(
             print(f"reorder_cz={config.get('reorder_cz', False)}")
     else:
         two_qubit_dag, single_layers = dag_from_txt_auto(source_path)
-    two_qubit_layers = list(two_qubit_dag.layers())
+    reduced_layers = list(two_qubit_dag.layers())
+    two_qubit_layers = [
+        [node for node in layer["graph"].op_nodes() if node.op.name != "barrier"]
+        for layer in reduced_layers
+    ]
     qubits = None
     fastsa_result: Any | None = None
     fill_seed = seed if seed is not None else 0
@@ -279,14 +294,50 @@ def main(
     if qubits is None:
         raise RuntimeError("Qubit placement is required before scheduling two-qubit layers.")
 
+    # Placement-aware preprocessing keeps explicit layer boundaries so shared
+    # displacement bundles survive all the way to grouping and shuttling.
+    prepared = None
+    if config.get("reorder_cz_by_displacement", config.get("reorder_cz", False)):
+        prepared = precompile_displacement_layers(
+            reference_nodes, {q.id: q.grid_position() for q in qubits}, config,
+        )
+
     # Dynamics owns candidate construction, common timing, validation, and
     # the mandatory final return. Placement objects remain at their home sites.
     # The loader checked allowed CZ permutations against the source. Replay
     # strictly preserves the resulting full circuit, including 1Q context.
     schedule = schedule_circuit(
-        [list(layer["graph"].op_nodes()) for layer in two_qubit_layers],
+        two_qubit_layers,
         single_layers, qubits, config, reference_nodes,
     )
+    if prepared is not None:
+        source_reference = reference_nodes
+        packed_layers, packed_singles, packed_reference = prepared
+        packed = schedule_circuit(packed_layers, packed_singles, qubits, config, packed_reference)
+        candidate_times = dict(schedule.candidate_times)
+        candidate_times.update({f"displacement_{name}": time for name, time in packed.candidate_times.items()})
+        rejected = dict(schedule.rejected_candidates)
+        rejected.update({f"displacement_{name}": reason for name, reason in packed.rejected_candidates.items()})
+        if not quiet:
+            print(f"displacement_precompile_layers={sum(bool(layer) for layer in packed_layers)}")
+            print(f"original_two_qubit_layers={sum(bool(layer) for layer in two_qubit_layers)}")
+        if packed.duration < schedule.duration:
+            schedule = packed
+            schedule.selected = f"displacement_{schedule.selected}"
+            two_qubit_layers, single_layers, reference_nodes = prepared
+        schedule.candidate_times = candidate_times
+        schedule.rejected_candidates = rejected
+        try:
+            phase, phase_prepared = schedule_phase_tours(source_reference, qubits, config)
+        except (ValueError, RuntimeError, IndexError) as exc:
+            schedule.rejected_candidates["phase_tour"] = str(exc)
+        else:
+            candidate_times["phase_tour"] = phase.duration
+            if phase.duration < schedule.duration:
+                schedule = phase
+                two_qubit_layers, single_layers, reference_nodes = phase_prepared
+            schedule.candidate_times = candidate_times
+            schedule.rejected_candidates = rejected
     event_log = schedule.events
     time = schedule.duration
     emitted_timesteps = count_emitted_timesteps(event_log)
@@ -301,7 +352,7 @@ def main(
     final_time_us = time.to("microseconds")
 
     if not quiet:
-        print(f"two_qubit_layers={len(two_qubit_layers)}")
+        print(f"two_qubit_layers={sum(bool(layer) for layer in two_qubit_layers)}")
         print(f"scheduled_timesteps={emitted_timesteps}")
         print(f"estimated_time={final_time_us}")
 

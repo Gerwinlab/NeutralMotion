@@ -162,7 +162,10 @@ def emit_combined(nodes, homes, config):
             if wire_nodes[q][cursor[q]] is node:
                 ready.append(node)
                 mark_done(node)
-        lines, _ = single_qubit_layer_time(ready, config["average_single_gate_time"], config["t_switch"])
+        lines, _ = single_qubit_layer_time(
+            ready, config["average_single_gate_time"], config["t_switch"],
+            config.get("measurement_time"),
+        )
         events.extend(("gate", line) for line in lines)
 
     flush_singles()
@@ -228,10 +231,14 @@ def timing_breakdown(events, config):
         e = batch[0]
         if e[0] == "gate":
             kinds = {(p, len(ids)) for _, p, ids in _gate_parts(e[1])}
-            for _, arity in kinds:
-                duration = config["average_single_gate_time" if arity == 1 else "average_two_gate_time"]
+            for pulse, arity in kinds:
+                if pulse == "measure":
+                    duration = config.get("measurement_time", 0 * config["t_switch"])
+                    counts["measurement_batches"] += 1
+                else:
+                    duration = config["average_single_gate_time" if arity == 1 else "average_two_gate_time"]
+                    counts[f"{arity}q_pulses"] += 1
                 pulses += (duration + config["t_switch"]).to("microsecond").magnitude
-                counts[f"{arity}q_pulses"] += 1
         else:
             step = tuple(e[3][k] - e[2][k] for k in range(2))
             motion += _step_seconds(step, config) * 1e6
@@ -344,7 +351,10 @@ def main():
                 blocked.update(ids)
         ready_ids = {id(n) for n in ready}
         remaining[:] = [n for n in remaining if id(n) not in ready_ids]
-        lines, _ = single_qubit_layer_time(ready, config["average_single_gate_time"], config["t_switch"])
+        lines, _ = single_qubit_layer_time(
+            ready, config["average_single_gate_time"], config["t_switch"],
+            config.get("measurement_time"),
+        )
         events.extend(("gate", line) for line in lines)
 
     singles_ready()

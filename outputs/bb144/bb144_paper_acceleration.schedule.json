@@ -14,12 +14,12 @@
     "transfer_SLM_AOD": "15 microseconds",
     "max_acceleration": "20000 m/s^2",
     "max_velocity": "10 m/s",
-    "rydberg_radius": "5 micrometers",
+    "rydberg_radius": "8 micrometers",
     "average_single_gate_time": "0.1 microseconds",
     "average_two_gate_time": "0.27 microseconds",
     "t_switch": "1.5 microseconds",
     "jerk": "constant",
-    "movement_shape": "trapezoidal",
+    "movement_shape": "Cubic_Spline",
     "max_dimension": [
       24,
       12
@@ -35,11 +35,11 @@
   },
   "validation": "PASS: internal and serialized replay, full per-qubit operation order, original homes",
   "timing": {
-    "motion_us": 2314.483868517389,
+    "motion_us": 3585.5829911334245,
     "transfer_us": 29.999999999999996,
     "gate_us": 60.08000000000004,
-    "total_us": 2404.563868517389,
-    "paper_eq3_same_segments_motion_us": 2834.6522478852376,
+    "total_us": 3675.6629911334244,
+    "paper_eq3_same_segments_motion_us": 3585.5829911334254,
     "counts": {
       "1q_pulses": 11,
       "transfer_batches": 2,
@@ -461,7 +461,7 @@
           ]
         }
       ],
-      "motion_us": 2314.483868517389,
+      "motion_us": 3585.5829911334254,
       "group_sizes": [
         18,
         54,
@@ -517,8 +517,8 @@
     }
   ],
   "candidate_us": {
-    "separate_check_loads": 2985.8430476799995,
-    "combined_check_load": 2404.56386851739
+    "separate_check_loads": 4565.851988527508,
+    "combined_check_load": 3675.6629911334257
   },
   "circuit_audit": {
     "measurement_count": 0,

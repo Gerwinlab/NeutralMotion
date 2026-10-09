@@ -10,7 +10,11 @@ from qiskit.dagcircuit.dagnode import DAGOpNode
 
 from .dag_helper import op_node_signature
 from .grid import GridNode, Qubit, generate_grid, move_qubit, place_qubit
-from .scheduling import _format_node_line, collect_single_qubit_gate_block
+from .scheduling import (
+    _format_node_line,
+    collect_single_qubit_gate_block,
+    single_qubit_block_time,
+)
 
 MoveEvent = tuple[str, int, tuple[int, int], tuple[int, int]]
 GateEvent = tuple[str, str]
@@ -40,6 +44,7 @@ def _parameters(config):
         config['max_velocity'].to('meter/second').magnitude,
         config['max_acceleration'].to('meter/second^2').magnitude,
         config['transfer_SLM_AOD'].to('seconds').magnitude,
+        config.get('movement_shape', 'trapezoidal'),
     )
 
 
@@ -54,13 +59,19 @@ def _motion_seconds(distance, velocity, acceleration):
 
 
 def _path_seconds(points, parameters):
-    spacing, velocity, acceleration, transfer = parameters
+    spacing, velocity, acceleration, transfer, movement_shape = parameters
     total = 0.0
     for a, b in zip(points, points[1:]):
         if a == b:
             continue
-        total += _motion_seconds(math.hypot(b[0] - a[0], b[1] - a[1]) * spacing,
-                                 velocity, acceleration)
+        dr = abs(b[0] - a[0]) * spacing
+        dc = abs(b[1] - a[1]) * spacing
+        if movement_shape == 'Cubic_Spline':
+            total += math.sqrt(6 * dr / acceleration) + math.sqrt(6 * dc / acceleration)
+        elif movement_shape == 'trapezoidal':
+            total += _motion_seconds(math.hypot(dr, dc), velocity, acceleration)
+        else:
+            raise ValueError(f'Unsupported movement_shape: {movement_shape!r}.')
         if _slm(a) or _slm(b):
             total += transfer
     return total
@@ -147,7 +158,7 @@ def gate_qubit_ids(ops: list[DAGOpNode], gate_index: int) -> list[int]:
 
 def gate_qubits(ops, gate_index, qubits):
     ids = gate_qubit_ids(ops, gate_index)
-    if len(ids) != 2 or ops[gate_index].op.name == 'swap':
+    if len(ids) != 2 or ops[gate_index].op.name in ('swap', 'barrier'):
         return [None, None]
     mapping = {q.id: q for q in qubits}
     return [mapping[q] for q in ids]
@@ -155,7 +166,8 @@ def gate_qubits(ops, gate_index, qubits):
 
 def find_next_two_qubit_gate(ops, start_index):
     return next((i for i in range(start_index + 1, len(ops))
-                 if len(ops[i].qargs) == 2 and ops[i].op.name != 'swap'), None)
+                 if len(ops[i].qargs) == 2
+                 and ops[i].op.name not in ('swap', 'barrier')), None)
 
 
 def _future_pairs(ops, gate_index, mover, config):
@@ -166,7 +178,7 @@ def _future_pairs(ops, gate_index, mover, config):
         raise ValueError('Relocation lookahead limits must be positive.')
     pairs, uses = [], 0
     for node in ops[gate_index + 1:]:
-        if len(node.qargs) != 2 or node.op.name == 'swap':
+        if len(node.qargs) != 2 or node.op.name in ('swap', 'barrier'):
             continue
         pair = tuple(op_node_signature(node)[2])
         pairs.append(pair)
@@ -176,16 +188,37 @@ def _future_pairs(ops, gate_index, mover, config):
     return pairs
 
 
-def _choose_mover(pair, following, positions):
+def _preferred_mover(pair, config):
+    """Return the ancilla operand when exactly one operand is an ancilla."""
+    if not config.get('prefer_moving_ancillas', False):
+        return None
+    ancillas = config.get('_ancilla_qubits', frozenset())
+    preferred = [q for q in pair if q in ancillas]
+    return preferred[0] if len(preferred) == 1 else None
+
+
+def _should_retain(mover, following, config):
+    if mover not in following:
+        return False
+    preferred = _preferred_mover(following, config)
+    return preferred is None or preferred == mover
+
+
+def _choose_mover(pair, following, positions, config):
     loaded = [q for q, p in positions.items() if not _slm(p)]
     if len(loaded) > 1 or loaded and loaded[0] not in pair:
         raise ValueError('Return the existing AOD atom before loading a different mover.')
+    preferred = _preferred_mover(pair, config)
     if loaded:
+        if preferred is not None and loaded[0] != preferred:
+            raise ValueError('A loaded data qubit must return before its ancilla partner moves.')
         return loaded[0]
+    if preferred is not None:
+        return preferred
     return pair[1] if pair[1] in following else pair[0]
 
 
-def _rollout_cost(positions, pairs, parameters):
+def _rollout_cost(positions, pairs, parameters, config):
     """Simulate intervening gates on private state with previous-home returns.
 
     A hypothetical closing unload gives all options an unloaded terminal state.
@@ -196,12 +229,12 @@ def _rollout_cost(positions, pairs, parameters):
     total = 0.0
     for i, pair in enumerate(pairs):
         following = pairs[i + 1] if i + 1 < len(pairs) else ()
-        mover = _choose_mover(pair, following, positions)
+        mover = _choose_mover(pair, following, positions, config)
         partner = pair[1] if mover == pair[0] else pair[0]
         route = _interaction_route(positions[mover], positions[partner], parameters)
         total += _path_seconds(route, parameters)
         positions[mover] = route[-1]
-        if mover not in following:
+        if not _should_retain(mover, following, config):
             route = _unload_route(positions[mover], homes[mover], parameters)
             total += _path_seconds(route, parameters)
             positions[mover] = route[-1]
@@ -241,7 +274,7 @@ def _choose_unload(mover, positions, previous_home, grid, pairs, parameters, con
         future_positions = dict(positions)
         future_positions[mover] = p
         return (_path_seconds(routes[p], parameters)
-                + _rollout_cost(future_positions, pairs, parameters))
+                + _rollout_cost(future_positions, pairs, parameters, config))
 
     selected, best = previous_home, cost(previous_home)
     for p in candidates[1:]:
@@ -278,7 +311,7 @@ def best_path_for_gate(ops, gate_index, qubits, grid, config, T):
     pair = tuple(gate_qubit_ids(ops, gate_index))
     next_index = find_next_two_qubit_gate(ops, gate_index)
     following = tuple(gate_qubit_ids(ops, next_index)) if next_index is not None else ()
-    mover = _choose_mover(pair, following, positions)
+    mover = _choose_mover(pair, following, positions, config)
     partner = pair[1] if mover == pair[0] else pair[0]
     atom = mapping[mover]
     if _slm(positions[mover]):
@@ -295,7 +328,7 @@ def best_path_for_gate(ops, gate_index, qubits, grid, config, T):
     lines, _, pulse_counts = collect_single_qubit_gate_block(ops, gate_index + 1)
     events.extend(('gate', line) for line in lines)
     seconds = _path_seconds(route, parameters)
-    if mover not in following:
+    if not _should_retain(mover, following, config):
         pairs = _future_pairs(ops, gate_index, mover, config)
         returning = _choose_unload(mover, positions, atom._naive_home, grid,
                                    pairs, parameters, config)
@@ -306,7 +339,10 @@ def best_path_for_gate(ops, gate_index, qubits, grid, config, T):
     _set_position(atom, positions[mover], grid, config)
     duration = (seconds * config['t_switch'].to('seconds').units
                 + config['average_two_gate_time'] + config['t_switch']
-                + sum(pulse_counts) * (config['average_single_gate_time'] + config['t_switch']))
+                + single_qubit_block_time(
+                    lines, pulse_counts, config['average_single_gate_time'],
+                    config['t_switch'], config.get('measurement_time'),
+                ))
     return duration, T + len(events), events
 
 
@@ -347,6 +383,9 @@ def validate_schedule(events, initial, config, reference_nodes):
                 if len(ids) == 2:
                     if active not in ids or sum(abs(a-b) for a,b in zip(positions[ids[0]], positions[ids[1]])) != 1:
                         raise ValueError('A 2Q gate needs one AOD atom adjacent to its SLM partner.')
+                    preferred = _preferred_mover(ids, config)
+                    if preferred is not None and active != preferred:
+                        raise ValueError('A data-ancilla gate must move its ancilla operand.')
                 elif len(ids) != 1:
                     raise ValueError('Only one- and two-qubit gates are supported.')
                 for q in ids:
@@ -369,7 +408,8 @@ def validate_schedule(events, initial, config, reference_nodes):
         if _slm(b):
             if not (0 <= b[0] < 2 * rows - 1 and 0 <= b[1] < 2 * cols - 1):
                 raise ValueError('Unload outside the SLM grid.')
-            if q in next_pairs[index]:
+            preferred = _preferred_mover(next_pairs[index], config)
+            if q in next_pairs[index] and (preferred is None or preferred == q):
                 raise ValueError('An atom needed by the next 2Q gate must remain loaded.')
             active = None
         if any(other != q and p == b for other,p in positions.items()):
@@ -377,6 +417,7 @@ def validate_schedule(events, initial, config, reference_nodes):
         positions[q] = b
     if active is not None:
         raise ValueError('The completed schedule must unload its remaining AOD atom.')
+    _validate_barrier_order(events, reference_nodes)
     expected = defaultdict(list)
     for node in reference_nodes:
         if node.op.name in ('swap', 'barrier'):
@@ -388,6 +429,34 @@ def validate_schedule(events, initial, config, reference_nodes):
     if dict(traces) != dict(expected):
         raise ValueError('Gate identities, measurement destinations, or per-qubit order changed.')
     return positions
+
+
+def _validate_barrier_order(events, reference_nodes):
+    """Require every emitted operation to remain in its QASM barrier epoch."""
+    epochs = [defaultdict(int)]
+    for node in reference_nodes:
+        if node.op.name == 'swap':
+            continue
+        if node.op.name == 'barrier':
+            epochs.append(defaultdict(int))
+        elif len(node.qargs) in (1, 2):
+            epochs[-1][_format_node_line(node)] += 1
+
+    epoch = 0
+    for event in events:
+        if event[0] != 'gate':
+            continue
+        for statement in event[1].split(';'):
+            statement = statement.strip()
+            if not statement:
+                continue
+            line = statement + ';'
+            while epoch < len(epochs) - 1 and not any(epochs[epoch].values()):
+                epoch += 1
+            if epochs[epoch].get(line, 0):
+                epochs[epoch][line] -= 1
+            elif any(later.get(line, 0) for later in epochs[epoch + 1:]):
+                raise ValueError('An operation crossed a QASM barrier.')
 
 
 @dataclass
@@ -405,7 +474,12 @@ def schedule_circuit(ops, qubits, config):
     Both candidates retain immediate reuse. They differ only in whether a
     required unload returns to the previous home or uses relocation lookahead.
     """
-    ops = [n for n in ops if n.op.name not in ('swap', 'barrier')]
+    config = dict(config)
+    ops = [n for n in ops if n.op.name != 'swap']
+    config['_ancilla_qubits'] = frozenset(
+        q for node in ops if node.op.name == 'reset'
+        for q in op_node_signature(node)[2]
+    )
     initial = {q.id: q.grid_position() for q in qubits}
     plans = {}
     modes = [('previous_home', False)]
@@ -417,7 +491,10 @@ def schedule_circuit(ops, qubits, config):
         cfg = dict(config, relocation_enabled=enabled)
         lines, first, counts = collect_single_qubit_gate_block(ops, 0)
         events = [('gate', line) for line in lines]
-        duration = sum(counts) * (config['average_single_gate_time'] + config['t_switch'])
+        duration = single_qubit_block_time(
+            lines, counts, config['average_single_gate_time'], config['t_switch'],
+            config.get('measurement_time'),
+        )
         i = first
         while i < len(ops):
             delta, _, emitted = best_path_for_gate(ops, i, placed, grid, cfg, len(events))

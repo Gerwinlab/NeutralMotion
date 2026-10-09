@@ -81,10 +81,15 @@ def collect_single_qubit_gate_block(ops: list[DAGOpNode], start_index: int) -> t
     layers: list[list[str]] = []
     layer_qubits: list[set[int]] = []
     layer_pulses: list[set[tuple]] = []
+    barrier_floor = 0
     i = start_index
     while i < len(ops):
         gate_name, gate_params, qubit_ids = op_node_signature(ops[i])
-        if gate_name in {"swap", "barrier"}:
+        if gate_name == "swap":
+            i += 1
+            continue
+        if gate_name == "barrier":
+            barrier_floor = len(layers)
             i += 1
             continue
         if len(qubit_ids) == 2:
@@ -94,7 +99,8 @@ def collect_single_qubit_gate_block(ops: list[DAGOpNode], start_index: int) -> t
             gate_line = _format_node_line(ops[i])
             pulse = (gate_name, tuple(gate_params))
             placed = False
-            for layer_idx, used_qubits in enumerate(layer_qubits):
+            for layer_idx in range(barrier_floor, len(layer_qubits)):
+                used_qubits = layer_qubits[layer_idx]
                 if qid not in used_qubits:
                     layers[layer_idx].append(gate_line)
                     used_qubits.add(qid)
@@ -107,6 +113,27 @@ def collect_single_qubit_gate_block(ops: list[DAGOpNode], start_index: int) -> t
                 layer_pulses.append({pulse})
         i += 1
     return [" ".join(layer) for layer in layers], i, [len(pulses) for pulses in layer_pulses]
+
+
+def single_qubit_block_time(
+    lines: list[str],
+    pulse_counts: list[int],
+    average_single_gate_time,
+    t_switch,
+    measurement_time=None,
+):
+    """Time packed 1Q/measurement layers, charging measurements once per layer."""
+    if measurement_time is None:
+        measurement_time = 0 * t_switch
+    total = 0 * (average_single_gate_time + t_switch)
+    for line, count in zip(lines, pulse_counts):
+        has_measurement = any(
+            statement.strip().startswith("measure ") for statement in line.split(";")
+        )
+        total += (count - int(has_measurement)) * (average_single_gate_time + t_switch)
+        if has_measurement:
+            total += measurement_time + t_switch
+    return total
 
 
 def _format_initialization_line(qubits: Iterable[Qubit]) -> str:

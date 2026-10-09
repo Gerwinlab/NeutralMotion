@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 
 from qiskit import QuantumCircuit
+from qiskit.circuit import Barrier
 from qiskit.converters import circuit_to_dag
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.dagcircuit.dagnode import DAGOpNode
@@ -24,6 +25,17 @@ def load_qasm_to_dag(qasm_path: str | Path) -> DAGCircuit:
     """Load a QASM file and convert it to a DAGCircuit."""
     circuit = load_qasm_to_circuit(qasm_path)
     return circuit_to_dag(circuit)
+
+
+def _with_global_barriers(dag: DAGCircuit) -> DAGCircuit:
+    """Return a DAG where every source barrier spans every quantum wire."""
+    result = dag.copy_empty_like()
+    for node in sorted(dag.op_nodes(), key=lambda item: item._node_id):
+        if node.op.name == "barrier":
+            result.apply_operation_back(Barrier(len(dag.qubits)), dag.qubits, [])
+        else:
+            result.apply_operation_back(node.op, node.qargs, node.cargs)
+    return result
 
 
 def op_node_signature(node: DAGOpNode) -> tuple[str, list[float], list[int]]:
@@ -121,12 +133,14 @@ def build_two_qubit_only_dag_with_single_qubit_context(
     """Return a 2Q-only DAG and non-2Q ops grouped by preceding 2Q layer boundary.
 
     The returned tuple is:
-    - `two_qubit_dag`: DAG containing only 2Q operations.
+    - `two_qubit_dag`: DAG containing 2Q operations and barrier separators.
     - `single_layers`: list whose length is `len(list(two_qubit_dag.layers())) + 1`.
       `single_layers[i]` holds lines to run before two-qubit layer `i`, and the
       last entry holds lines to run after the final two-qubit layer.
 
-    Measurements are included in `single_layers`.
+    Measurements are included in `single_layers`. Barriers are retained in the
+    reduced DAG as full-width separator layers and are not returned as physical
+    operations. This makes every barrier a global scheduling boundary.
     """
     two_qubit_dag = dag.copy_empty_like()
     # For each qubit, track the next 2Q layer index after the latest 2Q op touching it.
@@ -134,8 +148,22 @@ def build_two_qubit_only_dag_with_single_qubit_context(
     num_twoq_layers = 0
     single_layers: list[list[DAGOpNode]] = [[]]
 
-    for node in dag.topological_op_nodes():
+    for node in sorted(dag.op_nodes(), key=lambda item: item._node_id):
         if isinstance(node.op, SwapGate):
+            continue
+
+        if node.op.name == "barrier":
+            boundary = max(qubit_twoq_progress.values(), default=num_twoq_layers)
+            two_qubit_dag.apply_operation_back(
+                Barrier(len(two_qubit_dag.qubits)), two_qubit_dag.qubits, []
+            )
+            next_layer = boundary + 1
+            qubit_twoq_progress = {
+                extract_index_from_bit(qubit): next_layer for qubit in dag.qubits
+            }
+            num_twoq_layers = max(num_twoq_layers, next_layer)
+            while len(single_layers) <= next_layer:
+                single_layers.append([])
             continue
 
         num_qargs = len(node.qargs)
@@ -311,6 +339,7 @@ def reorder_commuting_cz_blocks(dag: DAGCircuit) -> DAGCircuit:
     executing another non-CZ operation. Color that block and repeat. This is
     conservative across block boundaries and requires no BB-specific labels.
     """
+    dag = _with_global_barriers(dag)
     original = list(dag.topological_op_nodes())
     if any(getattr(n.op, "condition", None) is not None or
            getattr(n.op, "blocks", ()) for n in original):
@@ -373,13 +402,19 @@ def load_qasm_to_two_qubit_dag_with_single_qubit_context(
     Keep the original full DAG and context if the proposed ordering increases
     extracted two-qubit depth. Equal-depth proposals are accepted.
     """
-    dag = load_qasm_to_dag(qasm_path)
+    dag = _with_global_barriers(load_qasm_to_dag(qasm_path))
     result = build_two_qubit_only_dag_with_single_qubit_context(dag)
     if reorder_cz:
         proposed_dag = reorder_commuting_cz_blocks(dag)
         proposed_result = build_two_qubit_only_dag_with_single_qubit_context(proposed_dag)
-        original_depth = sum(1 for _ in result[0].layers())
-        proposed_depth = sum(1 for _ in proposed_result[0].layers())
+        original_depth = sum(
+            any(node.op.name != "barrier" for node in layer["graph"].op_nodes())
+            for layer in result[0].layers()
+        )
+        proposed_depth = sum(
+            any(node.op.name != "barrier" for node in layer["graph"].op_nodes())
+            for layer in proposed_result[0].layers()
+        )
         if proposed_depth <= original_depth:
             dag, result = proposed_dag, proposed_result
     if return_reference_nodes:
