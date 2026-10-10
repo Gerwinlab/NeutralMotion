@@ -25,5 +25,5 @@
     "alignment_conc": -1,
     "T_reuse": "Inf",
     "prefer_moving_ancillas": true,
-    "_side_ordering": "reuse"
+    "_side_ordering": "greedy"
 }

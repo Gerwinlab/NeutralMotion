@@ -10,7 +10,7 @@ from typing import Any
 
 from qiskit.dagcircuit.dagnode import DAGOpNode
 
-from .dag_helper import format_node_line, op_node_signature
+from .dag_helper import _is_reorderable_cz, format_node_line, op_node_signature
 from .grid import Qubit
 
 #TODO: Make sure to separate two-qubit pulse based on rydberg radius so there is no conflicts.
@@ -125,10 +125,219 @@ def _sort_group_by_alignment(vectors: list[tuple[int, int]]) -> list[int]:
 _MAX_EXACT_DISPLACEMENT_TOUR = 24
 
 
+@dataclass(frozen=True)
+class _LayeredTourGraph:
+    """Symmetric TSP instance for one AOD load that stays loaded across layers.
+
+    Node 0 is the load terminal at the current rigid offset; the last node is
+    the unload terminal at home (0, 0). Nodes in between are the distinct
+    ``cities`` in order, each a (layer, displacement) pair. Terminals count as
+    layers -1 and ``layer_count``, closing a ring of layers with one free
+    unload-to-load edge. Only edges within a layer or between consecutive
+    layers exist; every layer crossing pays ``penalty``. Missing edges are
+    ``math.inf`` (an integer solver such as Concorde needs a finite stand-in).
+    """
+
+    cities: tuple[tuple[int, tuple[int, int]], ...]
+    node_layers: tuple[int, ...]
+    weights: tuple[tuple[float, ...], ...]
+    penalty: float
+
+
+def _layered_tour_graph(cities, config, start_offset, *, sides=False):
+    """Build the penalized layer-ring graph for labelled (layer, displacement) cities.
+
+    A Hamiltonian cycle crosses every cut an even number of times. With the
+    unload-to-load edge, each of the layer_count + 1 boundaries is crossed at
+    least once; without it, at least twice. Any tour that splits a layer or
+    returns to an earlier one therefore pays two or more extra penalties. The
+    penalty exceeds a complete feasible tour's movement, so such tours always
+    lose: an exact solver returns a layer-ordered tour, and the movement cost
+    is the tour cost minus (layer_count + 1) penalties.
+
+    Edges are priced between target centers, or with ``sides`` by
+    ``_side_movement``. Either way there is one node per city and the matrix
+    stays symmetric.
+    """
+    layer_count = max(layer for layer, _ in cities) + 1
+    nodes = [(-1, start_offset), *cities, (layer_count, (0, 0))]
+    end = len(nodes) - 1
+    movement = (_side_movement if sides else _center_movement)(nodes, config)
+
+    ordered = [0, *sorted(range(1, end), key=lambda node: nodes[node][0]), end]
+    bound = sum(movement(a, b) for a, b in zip(ordered, ordered[1:]))
+    penalty = bound + max(bound, 1e-12)
+    weights = tuple(
+        tuple(
+            0.0 if i == j or {i, j} == {0, end}
+            else math.inf if abs(a - b) > 1
+            else movement(i, j) + penalty * (a != b)
+            for j, (b, _) in enumerate(nodes)
+        )
+        for i, (a, _) in enumerate(nodes)
+    )
+    return _LayeredTourGraph(
+        tuple(cities), tuple(layer for layer, _ in nodes), weights, penalty,
+    )
+
+
+def _center_movement(nodes, config):
+    """Motion between the target centers of two graph nodes."""
+    def movement(i, j):
+        (_, start), (_, end) = nodes[i], nodes[j]
+        return _step_seconds((end[0] - start[0], end[1] - start[1]), config)
+    return movement
+
+
+def _side_movement(nodes, config):
+    """Cheapest parity-routed motion between any interaction sides of two nodes.
+
+    A city is visited from one of four cardinal sites around its even-even
+    target. The load terminal starts at its offset, or at home with any
+    transfer direction when that offset is (0, 0); the unload terminal is
+    reached by routing to any home-adjacent site and transferring down. The
+    minimum is symmetric because route costs are, so the graph keeps one node
+    per city. Leaving and arriving sides may differ, so this prices order
+    only; ``_optimize_visit_sides`` then chooses consistent sides exactly.
+    """
+    end = len(nodes) - 1
+    transfers = [(_step_seconds(step, config), step) for step in _CARDINAL]
+    start = nodes[0][1]
+    entries = transfers if start == (0, 0) else [(0.0, start)]
+    sites = [[(0.0, (r + dr, c + dc)) for dr, dc in _CARDINAL] for _, (r, c) in nodes]
+
+    def route(a, b):
+        return _route(a, b, config)[0]
+
+    @lru_cache(maxsize=None)
+    def movement(i, j):
+        if i > j:
+            return movement(j, i)
+        first = entries if i == 0 else sites[i]
+        second = transfers if j == end else sites[j]
+        return min(a + route(p, q) + b for a, p in first for b, q in second)
+    return movement
+
+
+def _route(start, end, config):
+    """Parity-routed (motion seconds, steps) from ``start`` to ``end``, cached.
+
+    Highways depend only on coordinate parity, so a route is fixed by the
+    start's parity class and the displacement; translating both endpoints by
+    an even vector leaves it unchanged. The cache is shared across groups.
+    """
+    return _route_steps(
+        (start[0] % 2, start[1] % 2), (end[0] - start[0], end[1] - start[1]),
+        config.get("_motion_parameters") or _motion_parameters(config),
+        config.get("movement_shape", "trapezoidal"),
+    )
+
+
+@lru_cache(maxsize=1 << 16)
+def _route_steps(parity, delta, motion_parameters, movement_shape):
+    config = {"_motion_parameters": motion_parameters, "movement_shape": movement_shape}
+    steps = tuple(parity_route_moves(parity, (parity[0] + delta[0], parity[1] + delta[1]), config))
+    return sum(_step_seconds(step, config) for step in steps), steps
+
+
+def _held_karp_tour(weights, node_layers=None):
+    """Exact minimum Hamiltonian cycle through node 0 of a symmetric matrix.
+
+    Missing edges are ``math.inf`` and are never traversed. Without
+    ``node_layers`` this is plain Held-Karp over all subsets. With the labels of
+    a ``_layered_tour_graph``, only paths that finish a layer before entering
+    the next are expanded; the penalty already makes every other tour more
+    expensive, so the optimum is unchanged while the subsets shrink to layer
+    prefixes.
+    """
+    count = len(weights)
+    if count == 1:
+        return [0]
+    full_mask = (1 << count) - 1
+    layer_masks = defaultdict(int)
+    for node, layer in enumerate(node_layers or ()):
+        layer_masks[layer] |= 1 << node
+
+    # Costs within float noise of each other (summation order, penalty
+    # offsets) tie; ties prefer the lower predecessor index, deterministically.
+    tolerance = 1e-12 * max(1.0, sum(
+        max((w for w in row if math.isfinite(w)), default=0.0) for row in weights
+    ))
+    # (mask, last) -> (cost of a node-0-to-last path visiting mask, previous node)
+    best = {(1, 0): (0.0, -1)}
+    frontier = [(1, 0)]
+    for _ in range(count - 1):
+        expanded = {}
+        for mask, last in frontier:
+            cost = best[mask, last][0]
+            if node_layers is None:
+                candidates = full_mask & ~mask
+            else:
+                layer = node_layers[last]
+                candidates = layer_masks[layer] & ~mask or layer_masks.get(layer + 1, 0)
+            while candidates:
+                bit = candidates & -candidates
+                candidates ^= bit
+                node = bit.bit_length() - 1
+                step = weights[last][node]
+                if not math.isfinite(step):
+                    continue
+                key = (mask | bit, node)
+                total = cost + step
+                previous = expanded.get(key)
+                if previous is None or total < previous[0] - tolerance or (
+                    total <= previous[0] + tolerance and last < previous[1]
+                ):
+                    expanded[key] = (total, last)
+        best.update(expanded)
+        frontier = list(expanded)
+
+    optimum, last = math.inf, -1
+    for mask, node in frontier:
+        if mask == full_mask:
+            total = best[full_mask, node][0] + weights[node][0]
+            if last == -1 or total < optimum - tolerance or (
+                total <= optimum + tolerance and node < last
+            ):
+                optimum, last = total, node
+    if not math.isfinite(optimum):
+        raise ValueError("No Hamiltonian tour exists in the displacement graph.")
+    tour, mask = [], full_mask
+    while last != -1:
+        tour.append(last)
+        last, mask = best[mask, last][1], mask ^ (1 << last)
+    return tour[::-1]
+
+
+def _validated_layer_order(tour, graph):
+    """Return city indices of a solver's tour after checking it is faithful.
+
+    Exact solvers cannot violate the layer ring, but approximate ones can. The
+    tour must be a Hamiltonian cycle over existing edges that closes through
+    the unload-to-load edge and, oriented from loading, never revisits a layer.
+    """
+    tour = list(tour)
+    count = len(graph.weights)
+    end = count - 1
+    if len(tour) != count or set(tour) != set(range(count)):
+        raise ValueError("TSP solver did not return a Hamiltonian tour.")
+    if any(not math.isfinite(graph.weights[a][b]) for a, b in zip(tour, tour[1:] + tour[:1])):
+        raise ValueError("TSP solver tour uses an edge absent from the layer graph.")
+    start = tour.index(0)
+    cycle = tour[start:] + tour[:start]
+    if cycle[1] == end:
+        cycle = [0, *reversed(cycle[1:])]
+    layers = [graph.node_layers[node] for node in cycle]
+    if cycle[-1] != end or layers != sorted(layers):
+        raise ValueError("Displacement tour violated layer order.")
+    return [node - 1 for node in cycle[1:-1]]
+
+
 def _held_karp_displacement_order(
     vectors: list[tuple[int, int]], config: dict,
     *, start_offset: tuple[int, int] = (0, 0),
     layer_ids: list[int] | None = None,
+    tour_solver=None,
 ) -> list[int]:
     """Return all vector indices in an exact minimum-cost displacement tour.
 
@@ -136,97 +345,54 @@ def _held_karp_displacement_order(
     The path starts at the current rigid-load offset and ends at home (0, 0),
     not at the starting offset of a reused load. Edge weights use the configured
     movement-time model, approximating targets without interaction-side routing.
-    Cities are (layer, displacement) pairs. Only same-layer and consecutive-
-    layer edges exist; crossing a layer costs more than an entire feasible
-    unpenalized tour. Entry is through the first layer, exit through the last.
+    Cities are (layer, displacement) pairs on the symmetric penalized graph of
+    ``_layered_tour_graph``; without ``layer_ids`` there is a single layer.
     Repeated displacements within a layer expand consecutively in input order.
+
+    Edges are priced between target centers. Physical targets (partner homes)
+    are even-even, so the graph is also solved with cheapest-side pricing
+    (``_side_movement``); both orders are scored by the exact fixed-order side
+    DP and the cheaper is kept, center order on ties (greedy side ordering
+    uses center order only). Neither pricing alone is the side-aware optimum,
+    but under the side DP the result is never worse than center pricing.
+
+    ``tour_solver`` maps the weight matrix to a Hamiltonian cycle (for example
+    a Concorde wrapper); it defaults to exact Held-Karp. Every returned tour is
+    validated before use.
     """
     labels = _displacement_layer_labels(vectors, layer_ids)
     if not vectors:
         return []
 
-    indices_by_displacement = {}
-    for index, (label, vector) in enumerate(zip(labels, vectors)):
-        indices_by_displacement.setdefault((label, vector), []).append(index)
-    unique = list(indices_by_displacement)
-    count = len(unique)
+    indices_by_city = {}
+    for index, city in enumerate(zip(labels, vectors)):
+        indices_by_city.setdefault(city, []).append(index)
+    cities = list(indices_by_city)
 
-    def edge_cost(start: tuple[int, int], end: tuple[int, int]) -> float:
-        return _step_seconds((end[0] - start[0], end[1] - start[1]), config)
+    def solve(sides):
+        graph = _layered_tour_graph(cities, config, start_offset, sides=sides)
+        if tour_solver is None:
+            tour = _held_karp_tour(graph.weights, graph.node_layers)
+        else:
+            tour = tour_solver(graph.weights)
+        return [cities[city] for city in _validated_layer_order(tour, graph)]
 
-    depot = (0, 0)
-    last_layer = max(labels)
-    feasible = [vector for _, vector in sorted(unique, key=lambda city: city[0])]
-    path = [start_offset, *feasible, depot]
-    bound = sum(edge_cost(a, b) for a, b in zip(path, path[1:]))
-    penalty = bound + max(bound, 1e-12)
-    start_costs = [edge_cost(start_offset, vector) if label == 0 else math.inf
-                   for label, vector in unique]
-    return_costs = [edge_cost(vector, depot) if label == last_layer else math.inf
-                    for label, vector in unique]
-    costs = [
-        [edge_cost(start, end) + penalty * (a != b) if abs(a - b) <= 1 else math.inf
-         for b, end in unique]
-        for a, start in unique
-    ]
-    earlier_masks = [sum(1 << i for i, (label, _) in enumerate(unique) if label < stage)
-                     for stage in range(last_layer + 1)]
-    later_masks = [sum(1 << i for i, (label, _) in enumerate(unique) if label > stage)
-                   for stage in range(last_layer + 1)]
+    def side_motion(order):
+        return _optimize_visit_sides(
+            [vector for _, vector in order], config,
+            start_offset=None if start_offset == (0, 0) else start_offset,
+        ).motion_seconds
 
-    @lru_cache(maxsize=None)
-    def solve(mask: int, last: int) -> tuple[float, int]:
-        """Minimum start-to-``last`` path visiting exactly ``mask``."""
-        stage = unique[last][0]
-        # A split layer adds crossings whose penalty exceeds all possible
-        # movement savings. Such paths cannot be optimal; prune them without
-        # enumerating subsets spanning unfinished layers.
-        if (mask & earlier_masks[stage]) != earlier_masks[stage] or mask & later_masks[stage]:
-            return math.inf, -1
-        last_bit = 1 << last
-        if mask == last_bit:
-            return start_costs[last], -1
-        previous_mask = mask ^ last_bit
-        return min((
-            (
-                solve(previous_mask, previous)[0] + costs[previous][last],
-                previous,
-            )
-            for previous in range(count)
-            if previous_mask & (1 << previous)
-            and math.isfinite(costs[previous][last])
-            and math.isfinite(solve(previous_mask, previous)[0])
-        ), default=(math.inf, -1))
-
-    full_mask = (1 << count) - 1
-    optimum, last = min(
-        (
-            solve(full_mask, candidate)[0] + return_costs[candidate],
-            candidate,
-        )
-        for candidate in range(count)
-    )
-    if not math.isfinite(optimum):
-        raise ValueError("No displacement tour satisfies the layer graph.")
-
-    reverse_unique_order = []
-    mask = full_mask
-    while last != -1:
-        reverse_unique_order.append(last)
-        _, previous = solve(mask, last)
-        mask ^= 1 << last
-        last = previous
-    unique_order = reversed(reverse_unique_order)
-    solve.cache_clear()
-
-    result = [
-        vector_index
-        for unique_index in unique_order
-        for vector_index in indices_by_displacement[unique[unique_index]]
-    ]
-    if [labels[i] for i in result] != sorted(labels):
-        raise ValueError("Displacement tour violated layer ordering.")
-    return result
+    order = solve(False)
+    # Greedy side ordering never consults the side DP, so it keeps center order.
+    # Sides need even-even targets and a load start at home or an AOD site.
+    if (config.get("_side_ordering") != "greedy"
+            and all(r % 2 == 0 and c % 2 == 0 for r, c in vectors)
+            and (start_offset == (0, 0) or _is_valid_aod_position(start_offset))):
+        side_order = solve(True)
+        if side_order != order and side_motion(side_order) < side_motion(order):
+            order = side_order
+    return [vector_index for city in order for vector_index in indices_by_city[city]]
 
 
 def _displacement_layer_labels(vectors, layer_ids):
@@ -395,10 +561,8 @@ def _optimize_visit_sides(vectors, config, *, start_offset=None):
         raise ValueError("A reused load must start at an AOD offset.")
     points = [tuple((r + dr, c + dc) for dr, dc in _CARDINAL) for r, c in vectors]
 
-    @lru_cache(maxsize=None)
     def edge(start, end):
-        route = tuple(parity_route_moves(start, end, config))
-        return sum(_step_seconds(step, config) for step in route), route
+        return _route(start, end, config)
 
     transfer_costs = [_step_seconds(step, config) for step in _CARDINAL]
     costs, starts = [], []
@@ -435,7 +599,6 @@ def _optimize_visit_sides(vectors, config, *, start_offset=None):
     unload_offset = _CARDINAL[exit_side]
     return_steps = edge(offsets[-1], unload_offset)[1] + (tuple(-v for v in unload_offset),)
     result = _SideTour(load_step, offsets, routes, return_steps, total)
-    edge.cache_clear()
     return result
 
 
@@ -562,12 +725,12 @@ def _event_batches(events):
         first = event_list[i]
         i += 1
         batch = [first]
-        if first[0] == "move":
+        if first[0] != "gate":
             key = _move_batch_key(first)
             used = {first[1]}
             while i < len(event_list):
                 nxt = event_list[i]
-                if nxt[0] != "move" or _move_batch_key(nxt) != key or nxt[1] in used:
+                if nxt[0] == "gate" or _move_batch_key(nxt) != key or nxt[1] in used:
                     break
                 batch.append(nxt)
                 used.add(nxt[1])
@@ -595,9 +758,11 @@ def schedule_duration(events, config):
                     raise ValueError("Only one- and two-qubit pulses are supported.")
         else:
             seconds += max(_step_seconds(_movement_vector(e[2], e[3]), config) for e in batch)
-            transfers += int(
-                not _is_valid_aod_position(first[2]) or not _is_valid_aod_position(first[3])
-            )
+            # A step whose atoms are all held changes no traps.
+            transfers += int(any(
+                e[0] != "hold" and not (_is_valid_aod_position(e[2]) and _is_valid_aod_position(e[3]))
+                for e in batch
+            ))
     return (
         seconds * config["t_switch"].to("seconds").units
         + transfers * config["transfer_SLM_AOD"]
@@ -888,13 +1053,22 @@ def validate_schedule(events, homes, config, reference_nodes=None, require_home=
                     traces[q].append(statement)
             continue
         moved = {e[1] for e in batch}
+        # Held atoms stay in the AOD while a transfer step carries them over
+        # their SLM home; only the other atoms of the step change traps.
+        held = {e[1] for e in batch if e[0] == "hold"}
+        if any(e[0] not in {"move", "hold"} for e in batch):
+            raise ValueError("Unknown movement event kind.")
         first = batch[0]
         loading = not _is_valid_aod_position(first[2])
         unloading = not _is_valid_aod_position(first[3])
         if loading and unloading:
             raise ValueError("Direct SLM-to-SLM movement is forbidden.")
+        if held and not (loading or unloading):
+            raise ValueError("Held atoms may only ride a load or unload step.")
+        if not held <= active:
+            raise ValueError("Only atoms already in the AOD can be held.")
         if loading:
-            if active:
+            if active != held:
                 raise ValueError("Load attempted before returning the existing AOD load.")
             span_positions = [e[2] for e in batch]
             if not all(_fits_same_aod(span_positions[:i], p, *_max_grid_spans(config["max_dimension"]))
@@ -903,13 +1077,13 @@ def validate_schedule(events, homes, config, reference_nodes=None, require_home=
             active = moved.copy()
         elif moved != active:
             raise ValueError("The entire AOD load must move or unload together.")
-        for _, q, start, end in batch:
+        for kind, q, start, end in batch:
             if q not in positions or positions[q] != start:
                 raise ValueError("Movement continuity violation.")
             if loading or unloading:
                 if sum(abs(v) for v in _movement_vector(start, end)) != 1:
                     raise ValueError("Transfers must be one cardinal grid step.")
-                if loading and (q in positions and _is_valid_aod_position(start)):
+                if loading and _is_valid_aod_position(start):
                     raise ValueError("Load must start in an SLM trap.")
                 if unloading and _is_valid_aod_position(end):
                     raise ValueError("Unload must end in an SLM trap.")
@@ -921,23 +1095,53 @@ def validate_schedule(events, homes, config, reference_nodes=None, require_home=
         if len(set(positions.values())) != len(positions):
             raise ValueError("Atom position collision.")
         if unloading:
-            active = set()
+            active = held
     if require_home and (active or positions != homes):
         raise ValueError("The completed circuit must return every atom to its home.")
     if reference_nodes is not None:
         _validate_barrier_order(events, reference_nodes)
         expected = defaultdict(list)
+        commuting, fixed = set(), set()
         for node in reference_nodes:
             if node.op.name in {"swap", "barrier"}:
                 continue
             if len(node.qargs) not in (1, 2):
                 continue
             line = format_node_line(node)
+            (commuting if _is_reorderable_cz(node) else fixed).add(line)
             for q in op_node_signature(node)[2]:
                 expected[q].append(line)
-        if dict(traces) != dict(expected):
+        if not _cz_commutation_enabled(config):
+            commuting = set()
+        commuting -= fixed
+        if _cz_run_traces(traces, commuting) != _cz_run_traces(expected, commuting):
             raise ValueError("Gate identities, multiplicities, or per-qubit order changed.")
     return positions
+
+
+def _cz_commutation_enabled(config):
+    """CZ preprocessing opts in to reordering commuting unconditional CZs."""
+    return bool(config.get("reorder_cz", False) or config.get("reorder_cz_by_displacement", False))
+
+
+def _cz_run_traces(traces, commuting):
+    """Per-wire traces where each maximal run of ``commuting`` CZs is a multiset.
+
+    Unconditional CZs are diagonal and commute; any other operation on the
+    wire ends a run, as in ``dag_helper._validate_cz_reordering``.
+    """
+    result = {}
+    for q, trace in traces.items():
+        canonical, run = [], []
+        for statement in trace:
+            if statement in commuting:
+                run.append(statement)
+            else:
+                canonical.extend((tuple(sorted(run)), statement))
+                run = []
+        canonical.append(tuple(sorted(run)))
+        result[q] = canonical
+    return result
 
 
 def _validate_barrier_order(events, reference_nodes):
@@ -964,13 +1168,24 @@ def _validate_barrier_order(events, reference_nodes):
                 raise ValueError("An operation crossed a QASM barrier.")
 
 
-def _optimize_retained_loads(events, layers, homes, config):
+def _optimize_retained_loads(events, layers, homes, config, singles=None):
     """Jointly route actual load-to-unload intervals without changing retention.
 
     The ordinary planner has already selected legal loads under T_reuse. Here
     only their internal routes change. Layer boundaries and intervening 1Q
     contexts remain ordered, and no atom is added to or removed from a load.
+    With CZ preprocessing enabled, consecutive CZ-only layers with nothing
+    between them (``singles`` empty, no barrier-emptied layer) commute and form
+    one routing stage, so their gates may be visited in any order.
     """
+    merge = singles is not None and _cz_commutation_enabled(config)
+    cz_layers = [bool(nodes) and all(map(_is_reorderable_cz, nodes)) for nodes in layers]
+
+    def same_stage(previous, layer):
+        return merge and previous is not None and previous < layer and cz_layers[previous] and all(
+            cz_layers[k] and not singles[k] for k in range(previous + 1, layer + 1)
+        )
+
     occurrences = defaultdict(deque)
     for stage, nodes in enumerate(layers):
         for node in nodes:
@@ -993,11 +1208,11 @@ def _optimize_retained_loads(events, layers, homes, config):
                 if len(pair) != 2 or not occurrences[statement]:
                     raise ValueError("Retained-load planning lost a gate occurrence.")
                 layer, node = occurrences[statement].popleft()
-                if pending or layer != last_layer:
+                if pending or (layer != last_layer and not same_stage(last_layer, layer)):
                     stage += 1
                     contexts[stage] = pending
                     pending = []
-                    last_layer = layer
+                last_layer = layer
                 movers = set(pair) & loaded
                 if len(movers) != 1:
                     raise ValueError("Retained interaction must have exactly one loaded operand.")
@@ -1073,6 +1288,37 @@ def _optimize_retained_loads(events, layers, homes, config):
     return result
 
 
+def _hold_reloaded_atoms(events):
+    """Keep atoms in the AOD through an unload that is followed by their reload.
+
+    The planner releases a whole load before picking up the next one. An atom
+    unloaded at home and loaded again by the very next transfer need not
+    leave the AOD: it rides both rigid transfer steps as a "hold", passing
+    over its home site, and only atoms that actually change traps are loaded
+    or unloaded. Atoms measured or reset in between are released as before.
+    """
+    batches = [list(batch) for batch in _event_batches(events)]
+
+    def transfer(batch, index):
+        return batch[0][0] != "gate" and not _is_valid_aod_position(batch[0][index])
+
+    for i, unload in enumerate(batches):
+        if not transfer(unload, 3):
+            continue
+        j = next((k for k in range(i + 1, len(batches)) if batches[k][0][0] != "gate"), None)
+        if j is None or not transfer(batches[j], 2):
+            continue
+        released = {
+            q for batch in batches[i + 1:j]
+            for _, pulse, ids in _gate_parts(batch[0][1])
+            if pulse.startswith(("measure", "reset")) for q in ids
+        }
+        kept = ({e[1] for e in unload} & {e[1] for e in batches[j]}) - released
+        for batch in (unload, batches[j]):
+            batch[:] = [("hold", *e[1:]) if e[1] in kept else e for e in batch]
+    return [event for batch in batches for event in batch]
+
+
 def _layered_candidate(layers, singles, homes, config, allow_reuse):
     from .scheduling import single_qubit_layer_time
     next_uses = [{} for _ in layers]
@@ -1101,7 +1347,8 @@ def _layered_candidate(layers, singles, homes, config, allow_reuse):
     )
     plan.events.extend(("gate", line) for line in lines)
     _return_plan(plan, homes, config)
-    plan.events = _optimize_retained_loads(plan.events, layers, homes, config)
+    plan.events = _optimize_retained_loads(plan.events, layers, homes, config, singles)
+    plan.events = _hold_reloaded_atoms(plan.events)
     return plan
 
 

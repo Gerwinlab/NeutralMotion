@@ -150,7 +150,9 @@ later interactions need them, preserving the input sequence. Independent
 operations can interleave, but gates on the same wire cannot be exchanged.
 
 Internally, movements are all tuples labeled `"move"`, including transfers.
-The shared writer determines `load`, `move`, or `unload` from endpoint parity.
+The shared writer determines `load`, `move`, or `unload` from endpoint parity,
+except that an atom held in the AOD through a transfer step is written as `move`
+even when it passes over its SLM home; `parse_serialized` reads that back as a hold.
 A rigid movement contains one tuple per loaded atom; batching makes it one
 simultaneous physical movement rather than charging its duration per atom.
 

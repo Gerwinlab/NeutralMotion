@@ -212,8 +212,11 @@ def parse_serialized(path):
                 q, r, c, rr, cc = map(int, numbers)
                 expected = "load" if r % 2 == c % 2 == 0 else (
                     "unload" if rr % 2 == cc % 2 == 0 else "move")
-                assert kind == expected
-                batch.append(("move", q, (r, c), (rr, cc)))
+                # A "move" across an SLM site is an atom held in the AOD
+                # while the rest of its step loads or unloads.
+                held = kind == "move" and expected != "move"
+                assert kind == expected or held
+                batch.append(("hold" if held else "move", q, (r, c), (rr, cc)))
             events.extend(batch)
             lines.append(batch)
         elif "q[" in line:
@@ -244,7 +247,8 @@ def timing_breakdown(events, config):
             motion += _step_seconds(step, config) * 1e6
             spacing = config["rydberg_radius"].to("micrometer").magnitude / 2
             paper_motion += sum((6 * abs(d) * spacing / .02) ** .5 for d in step)
-            is_transfer = any(p[0] % 2 == p[1] % 2 == 0 for p in e[2:])
+            is_transfer = any(f[0] != "hold" and any(p[0] % 2 == p[1] % 2 == 0 for p in f[2:])
+                              for f in batch)
             if is_transfer:
                 transfer += config["transfer_SLM_AOD"].to("microsecond").magnitude
             counts["transfer_batches" if is_transfer else "move_batches"] += 1
@@ -268,7 +272,7 @@ def write_timeline(path, events, config, homes):
             detail = timing_breakdown(batch, config)
             solver_time += detail["total_us"]
             paper_time += detail["paper_eq3_same_segments_motion_us"] + detail["transfer_us"] + detail["gate_us"]
-            if e[0] == "move":
+            if e[0] != "gate":
                 action = "load" if all(v % 2 == 0 for v in e[2]) else (
                     "unload" if all(v % 2 == 0 for v in e[3]) else "move")
                 step = tuple(e[3][k] - e[2][k] for k in range(2))

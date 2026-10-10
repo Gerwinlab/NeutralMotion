@@ -207,9 +207,18 @@ This differs intentionally from standalone `naive_dag`, which may finish at a ch
 
 `naive_n_dag` may move one atom or a group of atoms in the AOD.
 
-- A new load may begin only when there is no existing active load.
+- A new load may begin only when there is no existing active load, except
+  for held atoms (below).
+- Held atoms: when an unload step is followed by a load step and an atom is
+  in both, it stays in the AOD. It rides the unload step onto its own home
+  site and the load step off again, without a transfer, and is written as
+  `move q[i] (r,c) : (r',c')` inside that step's line. Only atoms that
+  actually change traps are written as `load`/`unload`. An atom measured or
+  reset between the two steps is released and reloaded as before. A step in
+  which every atom is held charges motion but no `transfer_SLM_AOD`.
 - Every atom in an active load moves together with the same displacement.
-- The entire active load must move or unload together. A subset may not move or unload independently.
+- The entire active load must move together. A subset may not move independently; in an
+  unload step every loaded atom either unloads or is held (below).
 - Loaded atoms retain a common displacement relative to their homes so that a rigid return is possible.
 - A load must fit within the configured `max_dimension` AOD span.
 - Atom coordinates remain unique after every movement batch.
@@ -238,15 +247,31 @@ This differs intentionally from standalone `naive_dag`, which may finish at a ch
 
 - After the ordinary planner chooses load/reuse boundaries, continuous loads
   spanning multiple DAG layers are jointly rerouted in `dynamics.py`.
-  Each graph city is a `(layer, displacement)` pair. Same-layer and adjacent-
-  layer target edges have symmetric costs; nonconsecutive edges are absent
-  (infinite cost and excluded from transitions). Entry is restricted to the
-  first layer and exit to the last, orienting the home-to-home cycle forward.
-- Every layer-crossing edge adds a penalty greater than the movement cost of
-  a known feasible unpenalized tour. Additional crossings cannot pay for
-  themselves through movement savings. The exact recurrence exploits this
-  bound to prune paths that leave a layer unfinished or return to an earlier
-  layer. The penalty is an optimization device, never emitted schedule time.
+  Each graph city is a `(layer, displacement)` pair. A load terminal (the
+  current rigid offset) and an unload terminal (home) act as layers before the
+  first and after the last. Same-layer and adjacent-layer edges have symmetric
+  costs; nonconsecutive edges are absent (infinite cost, never traversed). The
+  unload-to-load edge is free and closes the cycle, so the matrix is a
+  symmetric TSP instance usable by external solvers such as Concorde.
+- Every layer-crossing edge, including load and unload, adds a penalty greater
+  than the movement cost of a known feasible tour. A Hamiltonian cycle crosses
+  each cut an even number of times, so a tour that splits or revisits a layer,
+  or avoids the closing edge, pays at least two extra penalties and cannot be
+  optimal. Exact Held-Karp expands only layer-prefix subsets, which this bound
+  makes equivalent to the full search. Every solver's tour is validated:
+  Hamiltonian, existing edges only, closing edge used, layers in order. The
+  penalty is an optimization device, never emitted schedule time.
+- Edges are priced between target centers and, as a second candidate, at
+  the cheapest parity-routed pair of interaction sides (load/unload with their
+  best transfer direction). Both matrices are symmetric with one node per
+  stop. The exact fixed-order side DP scores both orders; the cheaper is used,
+  center order on ties. Greedy side ordering uses center order only.
+- With `reorder_cz` or `reorder_cz_by_displacement` enabled, consecutive
+  CZ-only layers in one retained load with no 1Q context or barrier-emptied
+  layer between them form one graph stage: unconditional CZs commute, so
+  their stops may be visited in any order. Replay validation then compares
+  per-wire traces up to permutations of maximal unconditional CZ runs, as in
+  CZ preprocessing; otherwise exact per-wire order is still required.
 - Empty layers are skipped when numbering graph stages. Intervening 1Q contexts
   fence stages and remain in their original logical order. Repeated targets in
   different stages are separate cities. Gates with identical targets within a

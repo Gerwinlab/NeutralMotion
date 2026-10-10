@@ -94,11 +94,18 @@ def _format_initialization_line(qubits: Iterable[Qubit]) -> str:
 
 
 def _format_move_action(event: MoveEvent) -> str | None:
-    _, qubit_id, start_pos, end_pos = event
+    """Render one atom's step; parity decides load/unload/move.
+
+    A "hold" event is an atom that stays in the AOD while a transfer step
+    carries it over its SLM home; it is written as a plain move.
+    """
+    kind, qubit_id, start_pos, end_pos = event
     if start_pos == end_pos:
         return None
     x1, y1 = start_pos
     x2, y2 = end_pos
+    if kind == "hold":
+        return f"move q[{qubit_id}] ({x1},{y1}) : ({x2},{y2})"
     if _is_even_even(start_pos):
         return f"load q[{qubit_id}] -> ({x1},{y1}) : ({x2},{y2})"
     if _is_even_even(end_pos):
@@ -107,6 +114,7 @@ def _format_move_action(event: MoveEvent) -> str | None:
 
 
 def _move_kind(event: MoveEvent) -> str:
+    """Parity kind; a hold shares its transfer step's kind so they batch together."""
     _, _, start_pos, end_pos = event
     if _is_even_even(start_pos):
         return "load"
@@ -141,7 +149,7 @@ def _compress_linear_moves(events: list[ScheduleEvent]) -> list[ScheduleEvent]:
             idx += 1
             continue
 
-        _, qid, start_pos, end_pos = event
+        event_kind, qid, start_pos, end_pos = event
         if start_pos == end_pos:
             idx += 1
             continue
@@ -153,7 +161,7 @@ def _compress_linear_moves(events: list[ScheduleEvent]) -> list[ScheduleEvent]:
         idx += 1
 
         # Only collapse pure highway moves; keep load/unload boundaries explicit.
-        if cur_kind == "move":
+        if cur_kind == "move" and event_kind == "move":
             while idx < len(events):
                 nxt = events[idx]
                 if nxt[0] == "gate":
@@ -166,7 +174,7 @@ def _compress_linear_moves(events: list[ScheduleEvent]) -> list[ScheduleEvent]:
                 if nstart == nend:
                     idx += 1
                     continue
-                if _move_kind(nxt) != "move":
+                if nxt[0] != "move" or _move_kind(nxt) != "move":
                     break
                 ndx, ndy = _delta(nxt)
                 if not _same_axis_direction((cur_dx, cur_dy), (ndx, ndy)):
@@ -175,7 +183,7 @@ def _compress_linear_moves(events: list[ScheduleEvent]) -> list[ScheduleEvent]:
                 cur_dx, cur_dy = cur_end[0] - cur_start[0], cur_end[1] - cur_start[1]
                 idx += 1
 
-        compressed.append(("move", qid, cur_start, cur_end))
+        compressed.append((event_kind, qid, cur_start, cur_end))
 
     return compressed
 

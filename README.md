@@ -37,6 +37,9 @@ At a high level, `naive_dag` / `naive_n_dag`:
 - Place qubits on valid trap sites.
 - Schedule movement + gate application over timesteps.
 - Emit a readable schedule (`T=...`, `initialize`, `load/move/unload`, gate lines).
+  An atom unloaded and then reloaded by the next transfer step stays in the
+  AOD instead: only atoms that change traps get `load`/`unload`, and the kept
+  atom appears as a `move` in the same step (it passes over its own home site).
 
 QASM barriers are treated as hard global scheduling boundaries. They are not
 printed as physical actions, but no gate or measurement may be moved from one
@@ -86,10 +89,27 @@ alignment ordering is used only when the exact displacement-tour limit is exceed
 Planning or replay errors are reported instead of switching policies.
 
 Once those load/reuse decisions are made, `dynamics.py` jointly reroutes each
-continuous load that spans multiple layers. Held-Karp uses `(layer, displacement)`
-cities: only same-layer and consecutive-layer edges exist, with a dominant
-penalty on layer crossings. Entry is through the first layer and return home
-through the last. Duplicate targets in different layers stay distinct; duplicates
+continuous load that spans multiple layers. The tour is a symmetric TSP graph
+(`_layered_tour_graph`) of `(layer, displacement)` cities plus a load terminal
+(the current AOD offset) and an unload terminal (home). Terminals act as the
+layers before the first and after the last. Only same-layer and consecutive-layer
+edges exist; every layer crossing, including load and unload, pays a penalty
+larger than a complete feasible tour, and the unload-to-load closing edge is free.
+Any tour that splits or revisits a layer pays at least two extra penalties, so an
+exact solver always visits layers in order. The default solver is Held-Karp
+(`_held_karp_tour`); `tour_solver` accepts any symmetric solver, such as a
+Concorde wrapper, and every returned tour is validated (Hamiltonian, existing
+edges, closing edge, layer order) before use. Ordinary single-layer groups use
+the same graph with one layer. Edges are priced between target centers and,
+separately, at each pair of stops' cheapest parity-routed interaction sides
+(best load/unload transfer included). Both pricings keep one node per stop and
+a symmetric matrix; both tours are scored by the exact fixed-order side DP and
+the cheaper order is kept (center order on ties, and always under greedy sides).
+With `reorder_cz` or `reorder_cz_by_displacement` enabled, consecutive CZ-only
+layers inside one retained load, with no 1Q context or barrier between them,
+commute and form a single graph layer, so their stops can be visited in any
+order. Replay validation then accepts per-wire order up to permutations of
+these unconditional CZ runs. Duplicate targets in different layers stay distinct; duplicates
 within a layer stay consecutive. The 24-city limit counts these labelled cities;
 above it, alignment ordering runs separately within each layer with a warning.
 The side DP then plans the complete retained-load route with one final return.
