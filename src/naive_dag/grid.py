@@ -13,7 +13,7 @@ class GridNode:
 """
 grid.py
 
-Utilities for generating and managing a neutral atom grid with spacing defined by a rydberg radius.
+Utilities for generating and managing a neutral atom grid with spacing defined by the lattice spacing.
 
 Each grid node stores:
     -Physical coordinates (x,y), starting at (0,0)
@@ -50,7 +50,7 @@ class Qubit:
         """Return integer grid coordinates ``(row, col)`` for this qubit."""
         return self.node.row,self.node.col
     
-def generate_grid(dimensions: List[int],rydberg_radius) -> List[List[GridNode]]:
+def generate_grid(dimensions: List[int],lattice_spacing) -> List[List[GridNode]]:
     """Construct a 2D lattice where adjacent logical trap points are 2 indices apart."""
     rows,cols=dimensions
     grid = []
@@ -58,8 +58,8 @@ def generate_grid(dimensions: List[int],rydberg_radius) -> List[List[GridNode]]:
     for row in range(2*rows-1):
         row_nodes = []
         for col in range(2*cols-1):
-            x = col * rydberg_radius/2
-            y = row * rydberg_radius/2
+            x = col * lattice_spacing/2
+            y = row * lattice_spacing/2
             node = GridNode(x=x,y=y,row=row,col=col,qubit=None)
             row_nodes.append(node)
         grid.append(row_nodes)

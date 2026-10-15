@@ -1,0 +1,24 @@
+{
+    "dimensions": [
+        6,
+        5
+    ],
+    "num_NA": 29,
+    "initial_layout": "../qasm_files/qft_n29_coords.json",
+    "qasm_base_dir": "../qasm_files",
+    "transfer_SLM_AOD": "15 microseconds",
+    "max_acceleration": "2750 m/s^2",
+    "max_velocity": "0.55 m/s",
+    "lattice_spacing": "15 micrometers",
+    "average_single_gate_time": "1 microseconds",
+    "average_two_gate_time": "0.27 microseconds",
+    "t_switch": "1.5 microseconds",
+    "movement_shape": "trapezoidal",
+    "max_dimension": [
+        6,
+        5
+    ],
+    "fill_strategy": "Given",
+    "alignment_conc": -1,
+    "T_reuse": 3
+}

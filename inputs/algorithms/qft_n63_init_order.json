@@ -9,7 +9,7 @@
     "transfer_SLM_AOD": "60 microseconds",
     "max_acceleration": "2500 m/s^2",
     "max_velocity": "0.13 m/s",
-    "rydberg_radius": "5 micrometers",
+    "lattice_spacing": "5 micrometers",
     "average_single_gate_time": "0.1 microseconds",
     "average_two_gate_time": "0.5 microseconds",
     "t_switch": "1.5 microseconds",
@@ -29,6 +29,5 @@
         "stage3_max_iterations": 10,
         "stage3_section_size": 3
     },
-    "parallel": true,
     "T_reuse": 2
 }

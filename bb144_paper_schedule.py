@@ -20,10 +20,10 @@ import sys
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from naive_n_dag.dag_helper import load_qasm_to_dag, format_node_line, op_node_signature
+from naive_n_dag.dag_helper import load_qasm_to_dag, op_node_signature
 from naive_n_dag.dynamics import (
-    _CARDINAL, _event_batches, _gate_parts, _motion_parameters, _step_seconds,
-    parity_route_moves, schedule_duration, validate_schedule,
+    RYDBERG_RADIUS, _CARDINAL, _append_gate, _event_batches, _gate_parts, _motion_parameters,
+    _step_seconds, parity_route_moves, schedule_duration, validate_schedule,
 )
 from naive_n_dag.grid import generate_grid, initial_layout_fill
 from naive_n_dag.main import _coerce_unit_config
@@ -108,6 +108,19 @@ def optimize_tour(offsets, predecessors, config):
     return steps, visits, transfer_motion + solve(0, start)
 
 
+def emit_pulse(events, group, check_ids, homes, displacement, config):
+    """Emit one rigid-offset CZ group, split into Rydberg-radius-safe timesteps."""
+    moved = set(check_ids)
+
+    def position(q):
+        home = homes[q]
+        return (home[0] + displacement[0], home[1] + displacement[1]) if q in moved else home
+
+    floor = len(events)
+    for node in group:
+        _append_gate(events, node, position, config, floor)
+
+
 def emit_phase(nodes, check_ids, homes, config, preserve_wire_order=True):
     offsets, groups, predecessors = groups_and_precedence(nodes, homes, check_ids)
     if not preserve_wire_order:
@@ -120,7 +133,7 @@ def emit_phase(nodes, check_ids, homes, config, preserve_wire_order=True):
     displacement = (0, 0)
     for step, group in steps:
         if group is not None:
-            events.append(("gate", " ".join(format_node_line(n) for n in groups[group])))
+            emit_pulse(events, groups[group], check_ids, homes, displacement, config)
         else:
             for q in check_ids:
                 start = tuple(homes[q][k] + displacement[k] for k in range(2))
@@ -175,7 +188,7 @@ def emit_combined(nodes, homes, config):
             flush_singles()
             for node in groups[group]:
                 mark_done(node)
-            events.append(("gate", " ".join(format_node_line(n) for n in groups[group])))
+            emit_pulse(events, groups[group], check_ids, homes, displacement, config)
         else:
             for q in check_ids:
                 start = tuple(homes[q][k] + displacement[k] for k in range(2))
@@ -245,7 +258,7 @@ def timing_breakdown(events, config):
         else:
             step = tuple(e[3][k] - e[2][k] for k in range(2))
             motion += _step_seconds(step, config) * 1e6
-            spacing = config["rydberg_radius"].to("micrometer").magnitude / 2
+            spacing = config["lattice_spacing"].to("micrometer").magnitude / 2
             paper_motion += sum((6 * abs(d) * spacing / .02) ** .5 for d in step)
             is_transfer = any(f[0] != "hold" and any(p[0] % 2 == p[1] % 2 == 0 for p in f[2:])
                               for f in batch)
@@ -328,7 +341,7 @@ def main():
     _coerce_unit_config(config)
     config["_motion_parameters"] = _motion_parameters(config)
     coords = json.loads(args.coords.read_text())
-    qubits = initial_layout_fill(generate_grid(config["dimensions"], config["rydberg_radius"]), 288, coords)
+    qubits = initial_layout_fill(generate_grid(config["dimensions"], config["lattice_spacing"]), 288, coords)
     homes = {q.id: q.grid_position() for q in qubits}
     raw_nodes = list(load_qasm_to_dag(args.qasm).topological_op_nodes())
     # The paper scheduler models the unitary interaction block only.  Allow it
@@ -386,7 +399,8 @@ def main():
     args.output.parent.mkdir(parents=True, exist_ok=True)
     write_timed_schedule(args.output, solver="paper_ordered (naive_n_dag rules)",
                          qasm_filename=args.qasm.name, final_time=str(duration.to("microsecond")),
-                         lattice_spacing=str(config["rydberg_radius"].to("micrometer")),
+                         lattice_spacing=str(config["lattice_spacing"].to("micrometer")),
+                         rydberg_radius=f"{RYDBERG_RADIUS * 1e6:g} micrometer",
                          fill_seed=0, events=events, initial_qubits=qubits)
     read_homes, read_events = parse_serialized(args.output)
     assert read_homes == homes

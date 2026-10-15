@@ -105,12 +105,18 @@ def main(
         )
     if not isinstance(config.get("prefer_moving_ancillas", False), bool):
         raise ValueError("prefer_moving_ancillas must be a boolean.")
+    if "rydberg_radius" in config:
+        raise ValueError(
+            "Config key 'rydberg_radius' was renamed to 'lattice_spacing' (the SLM trap pitch). "
+            "The Rydberg radius is now the constant RYDBERG_RADIUS = 15 micrometers in "
+            "naive_n_dag.dynamics."
+        )
 
     for key in [
         "transfer_SLM_AOD",
         "max_acceleration",
         "max_velocity",
-        "rydberg_radius",
+        "lattice_spacing",
         "average_single_gate_time",
         "average_two_gate_time",
         "measurement_time",
@@ -122,13 +128,13 @@ def main(
     config["transfer_SLM_AOD"] = config["transfer_SLM_AOD"].to("seconds")
     config["max_acceleration"] = config["max_acceleration"].to("meter/second^2")
     config["max_velocity"] = config["max_velocity"].to("meter/second")
-    config["rydberg_radius"] = config["rydberg_radius"].to("meter")
+    config["lattice_spacing"] = config["lattice_spacing"].to("meter")
     config["average_single_gate_time"] = config["average_single_gate_time"].to("seconds")
     config["average_two_gate_time"] = config["average_two_gate_time"].to("seconds")
     config["measurement_time"] = config["measurement_time"].to("seconds")
     config["t_switch"] = config["t_switch"].to("seconds")
     qc = load_qasm_to_gate_dag(qasm_path)
-    grid = generate_grid(dims,config["rydberg_radius"])
+    grid = generate_grid(dims,config["lattice_spacing"])
     fill_seed = seed if seed is not None else 0
     qubits = naive_fill(grid,num_na,fill_seed,True)
     # Candidates use independent placement objects, preserving the true initialization.
@@ -156,7 +162,7 @@ def main(
         schedule_output,
         qasm_filename=qasm_path.name,
         final_time=str(final_time_us),
-        lattice_spacing=str(config["rydberg_radius"].to("micrometers")),
+        lattice_spacing=str(config["lattice_spacing"].to("micrometers")),
         T=0,
         fill_seed= fill_seed,
         events=event_log,

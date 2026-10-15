@@ -14,6 +14,14 @@ requires-python = ">=3.9"
 dependencies = [
     "pint>=0.24",
     "qiskit>=1.0",
+    "fast-tsp>=0.1.5",
+]
+
+[project.optional-dependencies]
+# Concorde (exact TSP) is not on PyPI; installing it compiles Concorde and QSOpt.
+# Without it, displacement tours use fast-tsp with a warning.
+concorde = [
+    "pyconcorde @ git+https://github.com/jvkersch/pyconcorde@a573c1b73244f0dc7cf88ddd18ccfa4c65919974",
 ]
 
 [project.scripts]

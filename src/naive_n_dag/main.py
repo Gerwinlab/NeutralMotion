@@ -11,13 +11,14 @@ from naive_n_dag.dag_helper import (
     load_qasm_to_two_qubit_dag_with_single_qubit_context,
     reorder_cz_layers_by_displacement,
 )
-from naive_n_dag.dynamics import schedule_circuit
+from naive_n_dag.dynamics import (
+    _PARALLEL_REMOVED, _SIDE_ORDERING_REMOVED, RYDBERG_RADIUS, schedule_circuit,
+)
 from naive_n_dag.scheduling import (
     count_emitted_timesteps,
     write_timed_schedule,
 )
 import pint
-#TODO: Add a additional parameter that actually has rydberg radius and the current metric turns to lattice spacing. The code should make sure gates that are within the same radius should not happen at the same time, different time steps with a switching time addon for each timestep.
 #TODO: Update the version, AI Usage for this version, and the readme to reflect the new changes. Make sure all examples work properly.
 #TODO: Make a new function or runable command that reads movements and the unload/load to calculate to measure of fidelity and loss.
 PathLike = str | pathlib.Path
@@ -36,14 +37,33 @@ def parse_quantity(value: Any, key: str):
     return q
 
 
+_RETIRED_KEYS = {
+    "rydberg_radius": (
+        "Config key 'rydberg_radius' was renamed to 'lattice_spacing' (the SLM trap pitch). "
+        "The Rydberg radius is now the constant RYDBERG_RADIUS = 15 micrometers in "
+        "naive_n_dag.dynamics."
+    ),
+    "_side_ordering": _SIDE_ORDERING_REMOVED,
+    "parallel": _PARALLEL_REMOVED,
+}
+
+
+def _reject_renamed_keys(config: Mapping[str, Any]) -> None:
+    """Fail loudly on renamed or removed keys instead of silently aliasing them."""
+    for key, message in _RETIRED_KEYS.items():
+        if key in config:
+            raise ValueError(message)
+
+
 def _coerce_unit_config(config: dict[str, Any]) -> None:
     """Parse and normalize all unit-bearing config fields in place."""
+    _reject_renamed_keys(config)
     config.setdefault("measurement_time", "0 milliseconds")
     for key in [
         "transfer_SLM_AOD",
         "max_acceleration",
         "max_velocity",
-        "rydberg_radius",
+        "lattice_spacing",
         "average_single_gate_time",
         "average_two_gate_time",
         "measurement_time",
@@ -54,7 +74,7 @@ def _coerce_unit_config(config: dict[str, Any]) -> None:
     config["transfer_SLM_AOD"] = config["transfer_SLM_AOD"].to("seconds")
     config["max_acceleration"] = config["max_acceleration"].to("meter/second^2")
     config["max_velocity"] = config["max_velocity"].to("meter/second")
-    config["rydberg_radius"] = config["rydberg_radius"].to("meter")
+    config["lattice_spacing"] = config["lattice_spacing"].to("meter")
     config["average_single_gate_time"] = config["average_single_gate_time"].to("seconds")
     config["average_two_gate_time"] = config["average_two_gate_time"].to("seconds")
     config["measurement_time"] = config["measurement_time"].to("seconds")
@@ -103,6 +123,7 @@ def _resolve_qasm_file(config: Mapping[str, Any], qasm_file: PathLike) -> pathli
 
 def _validate_required_config(config: Mapping[str, Any]) -> None:
     """Validate required scheduler config keys and core value constraints."""
+    _reject_renamed_keys(config)
     if not isinstance(config.get("reorder_cz", False), bool):
         raise ValueError("reorder_cz must be a boolean.")
     if not isinstance(config.get("reorder_cz_by_displacement", config.get("reorder_cz", False)), bool):
@@ -119,7 +140,7 @@ def _validate_required_config(config: Mapping[str, Any]) -> None:
         "transfer_SLM_AOD",
         "max_acceleration",
         "max_velocity",
-        "rydberg_radius",
+        "lattice_spacing",
         "average_single_gate_time",
         "average_two_gate_time",
         "t_switch",
@@ -155,6 +176,11 @@ def _validate_required_config(config: Mapping[str, Any]) -> None:
             raise ValueError("alignment_conc must be a number in [-1, 1].")
         if alignment_conc < -1 or alignment_conc > 1:
             raise ValueError("alignment_conc must be in [-1, 1].")
+
+    if "tsp_time_limit" in config:
+        limit = config["tsp_time_limit"]
+        if not isinstance(limit, (int, float)) or isinstance(limit, bool) or limit <= 0:
+            raise ValueError("tsp_time_limit must be a positive number of seconds.")
 
     if "T_reuse" in config:
         reuse_horizon = config["T_reuse"]
@@ -230,7 +256,7 @@ def main(
 
     dims = config["dimensions"]
     num_na = config["num_NA"]
-    grid = generate_grid(dims, config["rydberg_radius"])
+    grid = generate_grid(dims, config["lattice_spacing"])
     reference_nodes = None
     if step_order_file is None:
         if qasm_path is None:
@@ -355,7 +381,8 @@ def main(
         solver="naive_n_dag",
         qasm_filename=source_path.name,
         final_time=str(final_time_us),
-        lattice_spacing=str(config["rydberg_radius"].to("micrometers")),
+        lattice_spacing=str(config["lattice_spacing"].to("micrometers")),
+        rydberg_radius=f"{RYDBERG_RADIUS * 1e6:g} micrometer",
         fill_seed=fill_seed,
         events=event_log,
         initial_qubits=qubits,

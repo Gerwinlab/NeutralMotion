@@ -385,7 +385,7 @@ def reorder_cz_layers_by_displacement(reference_nodes, homes, config):
     Return explicit disjoint 2Q layers, their 1Q contexts, and the checked
     reference order. Keep these together: ASAP re-extraction could split the
     equal-displacement bundles. Only geometry and ancilla preference are used;
-    Held-Karp, side selection, grouping, reuse and shuttling belong to dynamics.
+    TSP tours, side selection, grouping, reuse and shuttling belong to dynamics.
     """
     if reference_nodes is None:
         raise ValueError("Displacement reordering requires full circuit context.")

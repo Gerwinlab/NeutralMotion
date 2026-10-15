@@ -240,6 +240,7 @@ def write_timed_schedule(
     fill_seed: int,
     events: Iterable[ScheduleEvent],
     initial_qubits: Iterable[Qubit] | None = None,
+    rydberg_radius: str | None = None,
 ) -> None:
     """Write a gate-only textual schedule with optional initialization section."""
     out_path = Path(output_path)
@@ -247,10 +248,11 @@ def write_timed_schedule(
         f"solver: {solver}",
         f"qasm_file: {qasm_filename}",
         f"final_time: {final_time}",
-        f"lattice_spacing (rydberg_radius): {lattice_spacing}",
-        f"random number seed: {fill_seed}",
-        "",
+        f"lattice_spacing: {lattice_spacing}",
     ]
+    if rydberg_radius is not None:
+        lines.append(f"rydberg_radius: {rydberg_radius}")
+    lines += [f"random number seed: {fill_seed}", ""]
 
     init_line = _format_initialization_line(initial_qubits or [])
     if init_line:

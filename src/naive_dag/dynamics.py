@@ -40,7 +40,7 @@ def _highway_segment(start, end):
 
 def _parameters(config):
     return (
-        config['rydberg_radius'].to('meter').magnitude / 2,
+        config['lattice_spacing'].to('meter').magnitude / 2,
         config['max_velocity'].to('meter/second').magnitude,
         config['max_acceleration'].to('meter/second^2').magnitude,
         config['transfer_SLM_AOD'].to('seconds').magnitude,
@@ -292,7 +292,7 @@ def _set_position(qubit, position, grid, config):
         node = grid[r][c]
     else:
         r, c = position
-        spacing = config['rydberg_radius'] / 2
+        spacing = config['lattice_spacing'] / 2
         node = GridNode(x=c * spacing, y=r * spacing, row=r, col=c)
     move_qubit(qubit, node)
 
@@ -486,7 +486,7 @@ def schedule_circuit(ops, qubits, config):
     if config.get('relocation_enabled', True):
         modes.append(('relocation', True))
     for name, enabled in modes:
-        grid = generate_grid(config['dimensions'], config['rydberg_radius'])
+        grid = generate_grid(config['dimensions'], config['lattice_spacing'])
         placed = [place_qubit(grid, *initial[q], q) for q in sorted(initial)]
         cfg = dict(config, relocation_enabled=enabled)
         lines, first, counts = collect_single_qubit_gate_block(ops, 0)

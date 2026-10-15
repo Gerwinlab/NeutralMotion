@@ -6,7 +6,7 @@ import random
 """
 grid.py
 
-Utilities for generating and managing a neutral atom grid with spacing defined by a rydberg radius.
+Utilities for generating and managing a neutral atom grid with spacing defined by the lattice spacing.
 
 Each grid node stores:
     -Physical coordinates (x,y), starting at (0,0)
@@ -43,14 +43,14 @@ class Qubit:
         """Returns row and col"""
         return self.node.row,self.node.col
     
-def generate_grid(dimensions: List[int],rydberg_radius:float) -> List[List[GridNode]]:
+def generate_grid(dimensions: List[int],lattice_spacing:float) -> List[List[GridNode]]:
     """
-    Construct a 2D grid of Nodes spaced according to the given Rydberg radius.
+    Construct a 2D grid of Nodes; adjacent SLM traps are lattice_spacing apart.
 
     Parameters
     ----------
     dimension : List[int] - given by initializing json file.
-    rydberg_radius : float - given by initializing json file.
+    lattice_spacing : float - SLM trap pitch, given by initializing json file.
 
     Returns
     -------
@@ -62,8 +62,8 @@ def generate_grid(dimensions: List[int],rydberg_radius:float) -> List[List[GridN
     for row in range(2*rows-1):
         row_nodes = []
         for col in range(2*cols-1):
-            x = col * rydberg_radius/2
-            y = row * rydberg_radius/2
+            x = col * lattice_spacing/2
+            y = row * lattice_spacing/2
             node = GridNode(x=x,y=y,row=row,col=col,qubit=None)
             row_nodes.append(node)
         grid.append(row_nodes)

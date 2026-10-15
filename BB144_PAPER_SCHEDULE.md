@@ -41,11 +41,11 @@ implementation.
 
 ## How it differs from the normal planner
 
-The normal `schedule_circuit` evaluates four complete candidates:
-`reset_only`, `reuse`, `sequential_home`, and the adapted `naive_dag` baseline.
-Its layered candidates group gates using movement-vector alignment and AOD
-span, then make local reuse-versus-reset decisions. It selects the fastest
-valid complete candidate under the shared timer.
+The normal `schedule_circuit` evaluates two complete layered candidates:
+`reuse` with the configured AOD size and `individual` with a one-atom AOD.
+They group gates using movement-vector alignment and AOD span, then make local
+reuse-versus-reset decisions. It selects the faster valid candidate under the
+shared timer.
 
 The paper script bypasses those candidate builders. It exploits the regular
 BB144 placement: many check/data interactions have exactly the same relative
@@ -77,7 +77,7 @@ as a DAG. A topological ordering preserves dependencies while allowing
 independent operations to change their textual order.
 
 The shared placement function multiplies each JSON coordinate by two to put
-atoms on even-even SLM sites. A solver grid step is half `rydberg_radius`, so
+atoms on even-even SLM sites. A solver grid step is half `lattice_spacing`, so
 this preserves the intended physical spacing. These initial positions become
 the immutable `homes` used for routing and final restoration.
 
@@ -141,7 +141,10 @@ minimum circuit completion time.
 ### 4. Convert the tour into events: `emit_phase` and `emit_combined`
 
 `emit_phase` emits a movement for every atom in one check array whenever the
-tour moves, and a CZ batch whenever it reaches an interaction stop.
+tour moves, and the CZ group whenever it reaches an interaction stop.
+`emit_pulse` splits each group into consecutive timesteps so no two
+simultaneous CZs have atoms strictly inside `RYDBERG_RADIUS` (15 micrometers)
+of each other, using the same packing as the normal scheduler.
 
 `emit_combined` does the same for all 144 checks. It additionally keeps a cursor
 into each qubit's original operation sequence. `mark_done` checks that a gate
@@ -191,15 +194,14 @@ construction. It reports those issues without modifying the input circuit.
 
 ## Which configuration options actually affect this script?
 
-Timing quantities, `dimensions`, `rydberg_radius`, and `max_dimension` affect
+Timing quantities, `dimensions`, `lattice_spacing`, and `max_dimension` affect
 its calculations or shared validation. However, the script does not run the
 normal scheduler's full configuration-processing and placement-selection path.
 
-In particular, **`parallel`, `alignment_conc`, and `T_reuse` do not control its
-tour search or collective loading**. It deliberately builds parallel,
-whole-array candidates. Setting `parallel=false` or changing the reuse horizon
-in its JSON will not turn it into the corresponding ordinary scheduler mode.
-The tests here use `parallel=true` and `T_reuse="Inf"`.
+In particular, **`alignment_conc` and `T_reuse` do not control its tour search
+or collective loading**. It deliberately builds parallel, whole-array
+candidates. Changing the reuse horizon in its JSON will not turn it into the
+corresponding ordinary scheduler mode. The tests here use `T_reuse="Inf"`.
 
 Likewise, placement comes from `--coords`, not from the JSON's `fill_strategy`
 or `initial_layout`. It does not run FastSA. The QASM comes from `--qasm`;

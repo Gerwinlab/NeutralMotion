@@ -10,6 +10,16 @@ From the repository root:
 python3 -m pip install -e .
 ```
 
+To also install the exact Concorde TSP solver (built from source; it is not on
+PyPI), use the `concorde` extra:
+
+```bash
+python3 -m pip install -e ".[concorde]"
+```
+
+Without it, `naive_n_dag` warns once and solves displacement tours with
+`fast-tsp`, which is always installed.
+
 This installs the package in editable mode and exposes these CLI commands:
 
 - `naive_dag`
@@ -33,7 +43,7 @@ This writes:
 At a high level, `naive_dag` / `naive_n_dag`:
 
 - Load QASM and convert to DAG-style gate ordering.
-- Build a neutral-atom lattice from config dimensions and Rydberg spacing.
+- Build a neutral-atom lattice from config dimensions and `lattice_spacing`.
 - Place qubits on valid trap sites.
 - Schedule movement + gate application over timesteps.
 - Emit a readable schedule (`T=...`, `initialize`, `load/move/unload`, gate lines).
@@ -55,7 +65,14 @@ Common required timing keys in JSON configs:
 - `transfer_SLM_AOD`
 - `max_acceleration`
 - `max_velocity`
-- `rydberg_radius`
+- `lattice_spacing` (SLM trap pitch; one grid step is half of it)
+
+`lattice_spacing` replaces the old `rydberg_radius` key, which is now rejected
+with an error. The Rydberg radius itself is the constant `RYDBERG_RADIUS = 15
+micrometers` in `src/naive_n_dag/dynamics.py`: `naive_n_dag` splits two-qubit
+gates whose atoms lie strictly inside that radius of each other into separate
+timesteps, each charged `average_two_gate_time + t_switch` (see
+`SCHEDULE_RULES.md` Section 5.1).
 
 `measurement_time` is optional and defaults to `0 milliseconds`. All
 measurements emitted in the same timestep share one measurement-time charge,
@@ -71,22 +88,34 @@ Scheduling behavior flags:
   two-qubit gate with exactly one reset-identified ancilla always moves that
   ancilla instead of its data-qubit partner. If neither or both operands are
   identified as ancillas, the normal mover heuristic is used.
-- `parallel`: set to `true` to allow grouped/parallel movement scheduling in `naive_n_dag` (recommended for most benchmark-style runs).
+- `max_dimension`: the AOD size `[rows, cols]` in atoms. `naive_n_dag` always
+  moves several atoms in one AOD load when this size (and `alignment_conc`)
+  allow; set it to `[1, 1]` to move one atom at a time. The old `parallel` key
+  was removed, and a config that still sets it is rejected with an error.
 
-`naive_n_dag` defaults to Held-Karp displacement ordering and fixed-order
-side optimization for its ordinary legal 2Q groups, including CX and other
-supported gates, with either value of the CZ reordering flags. Held-Karp uses
-at most 24 unique targets (warn and fall back to alignment above that); the side
-DP still applies after the fallback. Fresh groups optimize loading direction;
+`naive_n_dag` orders the targets of every ordinary legal 2Q group, including CX
+and other supported gates and with either value of the CZ reordering flags, by
+a side-priced TSP tour, then fixes interaction sides with a fixed-order side
+DP. The tour is solved by Concorde (`pyconcorde`); if pyconcorde is missing a
+warning is issued and `fast_tsp` is used instead. Graphs with 4 or fewer nodes,
+which Concorde cannot solve, always go to `fast_tsp`, whose local search is
+bounded by `tsp_time_limit` (seconds per solve, default `0.05`). There is no
+size limit. If Concorde fails (an error, or a tour that fails validation),
+`fast_tsp` is tried next, with a warning. Only if no solver yields a valid tour
+does `_sort_group_by_alignment` order the group instead, with a warning; the two methods are never both run and compared. Fresh groups optimize loading direction;
 reused groups start at their actual AOD offset without reloading. Home return
 is included in the cost estimate but deferred to allow reuse. Only disjoint
 gates within a group are reordered; noncommuting wire dependencies remain fixed.
-Each `schedule_circuit` call builds one configured schedule, without benchmarking
-other policies. Set `_side_ordering` to `"greedy"` to use greedy interaction sides;
-otherwise the side DP is used. `T_reuse` controls load retention, including
-identical-load continuation at zero. There is no group-ordering configuration:
-alignment ordering is used only when the exact displacement-tour limit is exceeded.
-Planning or replay errors are reported instead of switching policies.
+Each `schedule_circuit` call builds the configured layered schedule (`reuse`)
+and its one-atom-AOD counterpart (`individual`, the same run with
+`max_dimension` `[1, 1]`, built unless the AOD is already `[1, 1]`). Both are
+validated and timed with the same model and the cheaper is returned, so a run
+is never slower than moving one atom at a time. The layered planner moves
+the operand needed again soonest (mover look-ahead) so loads can be retained.
+The greedy side ordering was removed; a config that still sets `_side_ordering`
+is rejected with an error. `T_reuse` controls load retention, including
+identical-load continuation at zero. There is no group-ordering configuration.
+Planning or replay errors propagate instead of silently dropping a candidate.
 
 Once those load/reuse decisions are made, `dynamics.py` jointly reroutes each
 continuous load that spans multiple layers. The tour is a symmetric TSP graph
@@ -96,24 +125,23 @@ layers before the first and after the last. Only same-layer and consecutive-laye
 edges exist; every layer crossing, including load and unload, pays a penalty
 larger than a complete feasible tour, and the unload-to-load closing edge is free.
 Any tour that splits or revisits a layer pays at least two extra penalties, so an
-exact solver always visits layers in order. The default solver is Held-Karp
-(`_held_karp_tour`); `tour_solver` accepts any symmetric solver, such as a
-Concorde wrapper, and every returned tour is validated (Hamiltonian, existing
-edges, closing edge, layer order) before use. Ordinary single-layer groups use
-the same graph with one layer. Edges are priced between target centers and,
-separately, at each pair of stops' cheapest parity-routed interaction sides
-(best load/unload transfer included). Both pricings keep one node per stop and
-a symmetric matrix; both tours are scored by the exact fixed-order side DP and
-the cheaper order is kept (center order on ties, and always under greedy sides).
+exact solver always visits layers in order. The default solver is `_solve_tour`
+(Concorde, else `fast_tsp`); `tour_solver` accepts any symmetric solver, and
+every returned tour is validated (Hamiltonian, existing edges, closing edge,
+layer order) before use. Ordinary single-layer groups use the same graph with
+one layer. Edges are priced at each pair of stops' cheapest parity-routed
+interaction sides (best load/unload transfer included), which keeps one node
+per stop and a symmetric matrix. Solvers need integer weights, so weights are
+scaled to integers and absent edges get a large finite weight.
 With `reorder_cz` or `reorder_cz_by_displacement` enabled, consecutive CZ-only
 layers inside one retained load, with no 1Q context or barrier between them,
 commute and form a single graph layer, so their stops can be visited in any
 order. Replay validation then accepts per-wire order up to permutations of
 these unconditional CZ runs. Duplicate targets in different layers stay distinct; duplicates
-within a layer stay consecutive. The 24-city limit counts these labelled cities;
-above it, alignment ordering runs separately within each layer with a warning.
+within a layer stay consecutive. If the tour fails, alignment ordering runs
+separately within each layer with a warning.
 The side DP then plans the complete retained-load route with one final return.
-Greedy sides remain opt-in. Load membership, retention decisions, gate dependencies,
+Load membership, retention decisions, gate dependencies,
 and intervening single-qubit contexts are preserved and the result is replayed.
 This improves routes for existing loads; it does not search for better load
 partitions or prove globally minimum physical duration.
@@ -139,9 +167,9 @@ logical depth. Parallelism is subject to subsequent AOD grouping constraints;
 neither globally minimum pulse count nor minimum duration is guaranteed.
 
 Only the reordered layers are scheduled, once, by the ordinary `dynamics.py`
-grouping and shuttling code. `parallel`, `alignment_conc`, AOD span, `T_reuse`,
-and the configured side policy continue to control physical execution.
-Disabling CZ reordering does not disable group-level Held-Karp or side DP.
+grouping and shuttling code. `alignment_conc`, AOD span (`max_dimension`), `T_reuse`,
+continue to control physical execution.
+Disabling CZ reordering does not disable the group-level TSP tour or side DP.
 
 `inputs/algorithms/bb144_n_init_qldpc.json` enables `reorder_cz`. Run it with:
 
