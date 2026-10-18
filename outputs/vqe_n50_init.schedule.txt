@@ -1,7 +1,7 @@
 solver: naive_n_dag
 qasm_file: vqe_n50.qasm
-final_time: 19321.306951486065 microsecond
-lattice_spacing: 14.999999999999998 micrometer
+final_time: 6260.5725674087635 microsecond
+lattice_spacing: 8.0 micrometer
 rydberg_radius: 15 micrometer
 random number seed: 0
 

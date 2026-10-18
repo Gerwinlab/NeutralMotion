@@ -1,7 +1,7 @@
 solver: naive_n_dag
 qasm_file: bv_n70.qasm
-final_time: 12168.2380018012 microsecond
-lattice_spacing: 14.999999999999998 micrometer
+final_time: 3573.159564092279 microsecond
+lattice_spacing: 8.0 micrometer
 rydberg_radius: 15 micrometer
 random number seed: 0
 
@@ -328,21 +328,21 @@ rz(pi/2) q[54];
 T=160
 move q[69] (8,7) : (5,7)
 T=161
-move q[69] (5,7) : (5,10)
+move q[69] (5,7) : (5,9)
 T=162
-cx q[55],q[69];
+move q[69] (5,9) : (4,9)
 T=163
-rz(pi/2) q[55];
+cx q[55],q[69];
 T=164
-sx q[55];
-T=165
 rz(pi/2) q[55];
+T=165
+sx q[55];
 T=166
-move q[69] (5,10) : (5,3)
+rz(pi/2) q[55];
 T=167
-move q[69] (5,3) : (7,3)
+move q[69] (4,9) : (7,9)
 T=168
-move q[69] (7,3) : (7,2)
+move q[69] (7,9) : (7,2)
 T=169
 cx q[56],q[69];
 T=170

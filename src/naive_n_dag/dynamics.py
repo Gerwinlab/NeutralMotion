@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import math
+import multiprocessing
 import os
 import re
 import sys
@@ -10,12 +11,14 @@ import warnings
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from functools import lru_cache
+from itertools import permutations, product
 from typing import Any
 
 from qiskit.dagcircuit.dagnode import DAGOpNode
 
 from .dag_helper import _is_reorderable_cz, format_node_line, op_node_signature
 from .grid import Qubit
+from .tsp_gadget import GadgetError, build_gadget, decode_gadget_tour
 
 # Rydberg blockade radius in meters (15 micrometers). Lattice geometry comes from
 # the configured lattice_spacing; this radius only decides which two-qubit
@@ -127,7 +130,12 @@ def _sort_group_by_alignment(vectors: list[tuple[int, int]]) -> list[int]:
 
 # Per-solve time budget (seconds) for fast_tsp's local search; config key tsp_time_limit.
 _DEFAULT_TSP_TIME_LIMIT = 0.05
-# Concorde returns no tour for instances smaller than this; they go to fast_tsp.
+# Per-solve time budget (seconds) for Concorde; config key concorde_time_limit.
+_DEFAULT_CONCORDE_TIME_LIMIT = 1.0
+# Groups with at most this many layer-respecting visit orders are solved
+# exactly by enumeration instead of the gadget.
+_EXACT_ENUMERATION_LIMIT = 24
+# Concorde returns no tour for instances smaller than this, so it never backs them up.
 _CONCORDE_MIN_NODES = 5
 # Fixed Concorde seed: 0 would seed from the clock and break ties differently per run.
 _CONCORDE_SEED = 1
@@ -137,6 +145,25 @@ _SIDE_ORDERING_REMOVED = (
     "Config key '_side_ordering' was removed: the greedy side ordering no longer exists, and "
     "every group uses the side-priced TSP tour (Concorde, else fast_tsp). Delete the key."
 )
+
+_TSP_GADGET_REPLACED = (
+    "Config key 'tsp_gadget' was replaced by 'tour_ordering': use \"tsp_gadget\" for true, "
+    "\"tsp\" for false, or \"alignment\" to skip the TSP entirely. Delete the key."
+)
+
+# How each AOD load orders its gate visits; the side DP picks sites either way.
+#   "tsp":        relaxed side-priced TSP (Concorde first) vs. alignment, faster wins.
+#   "tsp_gadget": as "tsp" (fast_tsp first) plus the exact tour (enumeration or gadget).
+#   "alignment":  the alignment heuristic only; no TSP graph or solver.
+TOUR_ORDERINGS = ("tsp", "tsp_gadget", "alignment")
+_DEFAULT_TOUR_ORDERING = "tsp_gadget"
+
+
+def _tour_ordering(config):
+    ordering = config.get("tour_ordering", _DEFAULT_TOUR_ORDERING)
+    if ordering not in TOUR_ORDERINGS:
+        raise ValueError(f"tour_ordering must be one of {', '.join(map(repr, TOUR_ORDERINGS))}.")
+    return ordering
 
 _PARALLEL_REMOVED = (
     "Config key 'parallel' was removed: gates always share AOD loads when the AOD "
@@ -159,12 +186,15 @@ class _LayeredTourGraph:
     unload-to-load edge. Only edges within a layer or between consecutive
     layers exist; every layer crossing pays ``penalty``. Missing edges are
     ``math.inf`` (an integer solver such as Concorde needs a finite stand-in).
+    ``tour_bound`` is the weight of one feasible (layer-ordered) tour, which
+    integer scaling uses to size absent edges without an n-squared factor.
     """
 
     cities: tuple[tuple[int, tuple[int, int]], ...]
     node_layers: tuple[int, ...]
     weights: tuple[tuple[float, ...], ...]
     penalty: float
+    tour_bound: float = math.inf
 
 
 def _layered_tour_graph(cities, config, start_offset):
@@ -206,8 +236,10 @@ def _layered_tour_graph(cities, config, start_offset):
         )
         for i, (a, _) in enumerate(nodes)
     )
+    # The layer-ordered path crosses each of the layer_count + 1 boundaries once.
     return _LayeredTourGraph(
         tuple(cities), tuple(layer for layer, _ in nodes), weights, penalty,
+        bound + (layer_count + 1) * penalty,
     )
 
 
@@ -269,6 +301,28 @@ def _integer_weights(weights, finite_max, missing):
     return [[round(w * scale) if math.isfinite(w) else missing for w in row] for row in weights]
 
 
+# Largest Concorde edge weight. Concorde keeps tour lengths in doubles, but
+# Lin-Kernighan sums move gains (at most KICK_MAXDEPTH = 50 deep) in an int.
+_CONCORDE_EDGE_CAP = (2**31 - 1) // 256  # tsp_gadget.EDGE_CAP matches
+
+
+def _bounded_integer_weights(weights, tour_bound, cap):
+    """Integer weights up to ``cap`` sized by one feasible tour of weight ``tour_bound``.
+
+    Absent edges outweigh that tour even after rounding (n edges move by at
+    most n/2), so an optimal tour never uses one, and no n-squared factor
+    eats the resolution of large instances.
+    """
+    n = len(weights)
+    top = max((w for row in weights for w in row if math.isfinite(w)), default=0.0)
+    units = cap - n - 1
+    if units < n:
+        raise _TourSolverError(f"{n} nodes leave too little integer resolution under {cap}.")
+    scale = units / max(tour_bound, top, 1e-300)
+    missing = round(tour_bound * scale) + n + 1
+    return [[round(w * scale) if math.isfinite(w) else missing for w in row] for row in weights]
+
+
 @contextlib.contextmanager
 def _silenced_output():
     """Discard output on file descriptors 1 and 2, including from C code.
@@ -301,7 +355,8 @@ def _tsp_backends():
     except ImportError as exc:
         concorde = None
         warnings.warn(
-            f"pyconcorde (Concorde) is unavailable ({exc}); displacement tours use fast_tsp instead.",
+            f"pyconcorde (Concorde) is unavailable ({exc}); relaxed displacement tours use fast_tsp "
+            "only and the exact gadget is skipped.",
             RuntimeWarning, stacklevel=2,
         )
     try:
@@ -309,21 +364,73 @@ def _tsp_backends():
     except ImportError as exc:
         fast_tsp = None
         warnings.warn(
-            f"fast_tsp is unavailable ({exc}); tours it would solve fall back to alignment ordering.",
+            f"fast_tsp is unavailable ({exc}); relaxed displacement tours use Concorde instead.",
             RuntimeWarning, stacklevel=2,
         )
     return concorde, fast_tsp
 
 
-def _concorde_tour(weights, problem_type, solver_type):
-    """Exact tour from Concorde; integer weights keep any absent edge above every feasible tour.
+def _concorde_tour(weights, problem_type, solver_type, time_bound=-1, tour_bound=None):
+    """Concorde tour; integer weights keep any absent edge above every feasible tour.
 
-    Concorde writes branch-and-bound restart files (``*.res``) into the working
-    directory, so the solve runs inside a temporary directory that is removed.
+    With ``tour_bound`` (the weight of a known feasible tour) weights are
+    sized by it; without, every tour of n edges must fit in int32, which
+    leaves little resolution beyond a few hundred nodes.
     """
     n = len(weights)
-    finite_max = max(1, min(10**6, (2**31 - 1) // (n * n + n)))
-    matrix = _integer_weights(weights, finite_max, n * finite_max + 1)
+    if tour_bound is not None:
+        matrix = _bounded_integer_weights(weights, tour_bound, _CONCORDE_EDGE_CAP)
+    else:
+        finite_max = max(1, min(10**6, (2**31 - 1) // (n * n + n)))
+        matrix = _integer_weights(weights, finite_max, n * finite_max + 1)
+    return _concorde_integer_tour(matrix, problem_type, solver_type, time_bound)
+
+
+def _in_child_process(function, *args):
+    """Return ``function(*args)`` computed in a forked child process.
+
+    Concorde aborts the whole process on some internal errors (for example
+    "OVERFLOW in CCbigguy_addmult"); in a child that only loses this result,
+    reported as ``_TourSolverError``, instead of the scheduler.
+    """
+    context = multiprocessing.get_context("fork")
+    receiver, sender = context.Pipe(duplex=False)
+
+    def run():
+        try:
+            sender.send(("ok", function(*args)))
+        except BaseException as exc:
+            sender.send(("error", f"{type(exc).__name__}: {exc}"))
+
+    with warnings.catch_warnings():
+        # Forking a multi-threaded interpreter warns; the child only runs Concorde.
+        warnings.simplefilter("ignore", DeprecationWarning)
+        process = context.Process(target=run, daemon=True)
+        process.start()
+    sender.close()
+    try:
+        status, value = receiver.recv()
+    except EOFError:
+        status, value = "crash", None
+    finally:
+        receiver.close()
+        process.join()
+    if status == "ok":
+        return value
+    if status == "crash":
+        raise _TourSolverError(f"Concorde process died (exit code {process.exitcode}).")
+    raise _TourSolverError(value)
+
+
+def _concorde_integer_tour(matrix, problem_type, solver_type, time_bound=-1):
+    """Concorde tour of an integer matrix; a positive ``time_bound`` (seconds) caps the solve.
+
+    A capped solve returns Concorde's best tour so far, which need not be
+    optimal. Concorde writes branch-and-bound restart files (``*.res``) into
+    the working directory, so the solve runs inside a temporary directory
+    that is removed.
+    """
+    matrix = [list(row) for row in matrix]
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "tour.tsp")
         problem_type.from_matrix(matrix).to_tsp(path)
@@ -331,7 +438,9 @@ def _concorde_tour(weights, problem_type, solver_type):
         os.chdir(tmp)
         try:
             with _silenced_output():
-                solution = solver_type.from_tspfile(path).solve(verbose=False, random_seed=_CONCORDE_SEED)
+                solution = solver_type.from_tspfile(path).solve(
+                    time_bound=time_bound, verbose=False, random_seed=_CONCORDE_SEED,
+                )
         finally:
             os.chdir(cwd)
     if not solution.found_tour:
@@ -339,35 +448,59 @@ def _concorde_tour(weights, problem_type, solver_type):
     return [int(node) for node in solution.tour]
 
 
-def _fast_tsp_tour(weights, fast_tsp, time_limit):
+def _fast_tsp_tour(weights, fast_tsp, time_limit, tour_bound=None):
     """Local-search tour from fast_tsp, which takes integer weights up to 65535."""
     n = len(weights)
-    matrix = _integer_weights(weights, max(1, 65534 // n), 65535)
+    if tour_bound is not None:
+        matrix = _bounded_integer_weights(weights, tour_bound, 65535)
+    else:
+        matrix = _integer_weights(weights, max(1, 65534 // n), 65535)
     return [int(node) for node in fast_tsp.find_tour(matrix, time_limit)]
 
 
-def _tour_solvers(node_count, config):
-    """Solvers to try, in order: Concorde (installed, large enough), then fast_tsp."""
+def _concorde_time_limit(config):
+    return config.get("concorde_time_limit", _DEFAULT_CONCORDE_TIME_LIMIT)
+
+
+def _tour_solvers(node_count, config, tour_bound=None):
+    """Relaxed-tour solvers to try, in order.
+
+    Under ``tour_ordering: "tsp_gadget"`` Concorde is busy with the exact
+    tour, so the relaxed tour uses fast_tsp first; under ``"tsp"`` Concorde
+    solves the relaxed tour first (best tour within ``concorde_time_limit``). Either
+    way the other solver backs it up. Concorde needs at least
+    ``_CONCORDE_MIN_NODES`` nodes. ``tour_bound`` sizes integer weights.
+    """
     concorde, fast_tsp = _tsp_backends()
     solvers = []
-    if concorde is not None and node_count >= _CONCORDE_MIN_NODES:
-        solvers.append(("Concorde", lambda weights: _concorde_tour(weights, *concorde)))
     if fast_tsp is not None:
-        limit = config.get("tsp_time_limit", _DEFAULT_TSP_TIME_LIMIT)
-        solvers.append(("fast_tsp", lambda weights: _fast_tsp_tour(weights, fast_tsp, limit)))
+        fast_limit = config.get("tsp_time_limit", _DEFAULT_TSP_TIME_LIMIT)
+        solvers.append(("fast_tsp", lambda weights: _fast_tsp_tour(
+            weights, fast_tsp, fast_limit, tour_bound,
+        )))
+    if concorde is not None and node_count >= _CONCORDE_MIN_NODES:
+        concorde_limit = _concorde_time_limit(config)
+        concorde_solver = ("Concorde", lambda weights: _concorde_tour(
+            weights, *concorde, concorde_limit, tour_bound,
+        ))
+        if _tour_ordering(config) == "tsp_gadget":
+            solvers.append(concorde_solver)
+        else:
+            solvers.insert(0, concorde_solver)
     return solvers
 
 
-def _solve_tour(weights, config, accept=lambda tour: tour):
+def _solve_tour(weights, config, accept=lambda tour: tour, tour_bound=None):
     """First accepted Hamiltonian cycle of a symmetric matrix from the solver chain.
 
-    Concorde is tried first; fast_tsp is used when pyconcorde is missing, the
-    graph is too small for Concorde, or Concorde fails. ``accept`` validates a
-    tour (and may convert it); a solver error or a rejected tour moves on to the
-    next solver. Absent edges (``math.inf``) become large finite weights.
+    Solvers run in ``_tour_solvers`` order; a missing solver, an error, or a
+    tour ``accept`` rejects moves on to the next. ``accept`` validates a
+    tour (and may convert it). Absent edges (``math.inf``) become large
+    finite weights, sized by ``tour_bound`` (a feasible tour's weight) when
+    given.
     """
     failures = []
-    for name, solve in _tour_solvers(len(weights), config):
+    for name, solve in _tour_solvers(len(weights), config, tour_bound):
         try:
             result = accept(solve(weights))
         except Exception as exc:
@@ -433,26 +566,130 @@ def _alignment_order(vectors, labels, start_offset):
     return order
 
 
+@dataclass
+class TourStats:
+    """Counters for displacement-tour solves, including discarded trial plans.
+
+    ``solves`` counts groups with at least two distinct cities. Each such
+    solve prices the relaxed and alignment orders and, under ``tour_ordering:
+    "tsp_gadget"``, an exact one (``enumerated`` for tiny groups, else ``gadget``).
+    ``exact_wins`` / ``alignment_wins`` count groups where that order was
+    strictly fastest, saving ``seconds_saved`` of motion against the relaxed
+    order in total; ``exact_failures`` counts exact attempts that failed.
+    """
+
+    solves: int = 0
+    enumerated: int = 0
+    gadget: int = 0
+    exact_wins: int = 0
+    alignment_wins: int = 0
+    exact_failures: int = 0
+    seconds_saved: float = 0.0
+
+
+def _city_order_seconds(targets, config, start_offset):
+    """Exact parity-routed motion of a visit order, with the best sides for it."""
+    reused = None if start_offset == (0, 0) else start_offset
+    return _optimize_visit_sides(targets, config, start_offset=reused).motion_seconds
+
+
+def _layer_orders(cities):
+    """Every visit order of ``cities`` that keeps their layers in order."""
+    by_layer = defaultdict(list)
+    for index, (layer, _) in enumerate(cities):
+        by_layer[layer].append(index)
+    for parts in product(*(permutations(by_layer[layer]) for layer in sorted(by_layer))):
+        yield [city for part in parts for city in part]
+
+
+def _layer_order_count(cities):
+    counts = defaultdict(int)
+    for layer, _ in cities:
+        counts[layer] += 1
+    return math.prod(math.factorial(count) for count in counts.values())
+
+
+def _relaxed_city_order(cities, vectors, labels, config, start_offset, tour_solver):
+    """City order from the side-relaxed layer ring; alignment order if no solver succeeds."""
+    try:
+        graph = _layered_tour_graph(cities, config, start_offset)
+
+        def accept(tour):
+            return _validated_layer_order(tour, graph)
+
+        if tour_solver is None:
+            return _solve_tour(graph.weights, config, accept, graph.tour_bound)
+        return accept(tour_solver(graph.weights))
+    except Exception as exc:
+        warnings.warn(
+            f"Displacement TSP failed ({exc}); falling back to alignment ordering.",
+            RuntimeWarning, stacklevel=3,
+        )
+    index = {city: i for i, city in enumerate(cities)}
+    order = _alignment_order(vectors, labels, start_offset)
+    return list(dict.fromkeys(index[(labels[i], vectors[i])] for i in order))
+
+
+def _gadget_city_order(cities, config, start_offset, upper_bound, gadget_solver=None):
+    """City order of the exact Noon-Bean/Jonker-Volgenant gadget tour (see TSP_GADGET.md).
+
+    ``gadget_solver`` maps the integer matrix to a tour; it defaults to
+    Concorde under ``concorde_time_limit``. The decoded tour is checked for
+    faithfulness, and every entry site must be a cardinal neighbor of its
+    city's target, the only places an interaction can happen.
+    """
+    graph = build_gadget(
+        cities, start_offset,
+        lambda a, b: _route(a, b, config)[0],
+        lambda step: _step_seconds(step, config),
+        upper_bound,
+    )
+    if gadget_solver is None:
+        concorde, _ = _tsp_backends()
+        if concorde is None:
+            raise _TourSolverError("pyconcorde (Concorde) is unavailable.")
+        # Isolated: a Concorde abort must cost only this candidate.
+        tour = _in_child_process(
+            _concorde_integer_tour, graph.weights, *concorde, _concorde_time_limit(config),
+        )
+    else:
+        tour = gadget_solver(graph.weights)
+    order, sites = decode_gadget_tour(tour, graph)
+    for city, site in zip(order, sites):
+        r, c = cities[city][1]
+        if abs(site[0] - r) + abs(site[1] - c) != 1:
+            raise _TourSolverError("Gadget tour interacts away from a target's cardinal sites.")
+    return order
+
+
 def _order_group_displacements(
     vectors: list[tuple[int, int]], config: dict,
     *, start_offset: tuple[int, int] = (0, 0),
     layer_ids: list[int] | None = None,
     tour_solver=None,
+    gadget_solver=None,
 ) -> list[int]:
-    """Return all vector indices in a side-priced TSP displacement tour.
+    """Return all vector indices in the fastest candidate displacement tour.
 
     Cities are partner positions relative to each mover's immutable home,
-    labelled (layer, displacement) on the penalized ring of
-    ``_layered_tour_graph``; the path starts at the current rigid-load offset
-    and ends at home (0, 0). Edges use the cheapest interaction sides, and
-    ``_optimize_visit_sides`` then fixes sides exactly for the chosen order.
-    Repeated displacements within a layer expand consecutively in input order.
+    labelled (layer, displacement); the tour starts at the current rigid-load
+    offset, ends at home (0, 0), and visits layers in order. Repeated
+    displacements within a layer expand consecutively in input order.
 
-    ``tour_solver`` maps the weight matrix to a Hamiltonian cycle; it defaults
-    to ``_solve_tour`` (Concorde, then fast_tsp if Concorde is missing, too
-    small for the graph, or fails). Only when no solver yields a valid
-    layer-ordered tour does the alignment heuristic order the targets instead;
-    the two methods are never both run and compared.
+    Under ``tour_ordering: "alignment"`` the alignment order is returned
+    as is, with no TSP graph or solver. Otherwise up to three candidate
+    orders are priced exactly with ``_optimize_visit_sides``:
+
+    - relaxed: the side-priced layer ring of ``_layered_tour_graph`` solved by
+      ``tour_solver`` (default ``_solve_tour``; see ``_tour_solvers`` for the
+      fast_tsp/Concorde order), or the alignment order if no solver succeeds;
+    - alignment: the per-layer alignment heuristic, which costs almost nothing;
+    - exact, only under ``"tsp_gadget"``: enumeration when there are at most
+      ``_EXACT_ENUMERATION_LIMIT`` layer-respecting orders, else the gadget
+      solved with ``gadget_solver`` (default Concorde).
+
+    The fastest wins; ties keep the earlier candidate in that list, and any
+    failure in the exact path just drops that candidate.
     """
     labels = _displacement_layer_labels(vectors, layer_ids)
     if not vectors:
@@ -463,24 +700,65 @@ def _order_group_displacements(
     cities = list(indices_by_city)
     if len(cities) == 1:
         return indices_by_city[cities[0]]
-    try:
-        graph = _layered_tour_graph(cities, config, start_offset)
-
-        def accept(tour):
-            return _validated_layer_order(tour, graph)
-
-        if tour_solver is None:
-            city_order = _solve_tour(graph.weights, config, accept)
-        else:
-            city_order = accept(tour_solver(graph.weights))
-        order = [cities[city] for city in city_order]
-    except Exception as exc:
-        warnings.warn(
-            f"Displacement TSP failed ({exc}); falling back to alignment ordering.",
-            RuntimeWarning, stacklevel=2,
-        )
+    stats = config.get("_tsp_stats")
+    if stats is not None:
+        stats.solves += 1
+    ordering = _tour_ordering(config)
+    if ordering == "alignment":
         return _alignment_order(vectors, labels, start_offset)
-    return [vector_index for city in order for vector_index in indices_by_city[city]]
+    best = _relaxed_city_order(cities, vectors, labels, config, start_offset, tour_solver)
+
+    def price(order):
+        return _city_order_seconds([cities[c][1] for c in order], config, start_offset)
+
+    try:
+        relaxed_seconds = price(best)
+    except ValueError:
+        # Targets the side DP cannot route (odd, or an SLM start) have
+        # nothing to compare against; the relaxed path already warned.
+        relaxed_seconds = None
+    if relaxed_seconds is not None:
+        index = {city: i for i, city in enumerate(cities)}
+        alignment = list(dict.fromkeys(
+            index[(labels[i], vectors[i])] for i in _alignment_order(vectors, labels, start_offset)
+        ))
+        candidates = [("relaxed", best, relaxed_seconds), ("alignment", alignment, price(alignment))]
+        if ordering == "tsp_gadget":
+            try:
+                if _layer_order_count(cities) <= _EXACT_ENUMERATION_LIMIT:
+                    kind = "enumerated"
+                    exact = min(_layer_orders(cities), key=price)
+                else:
+                    kind = "gadget"
+                    exact = _gadget_city_order(
+                        cities, config, start_offset, relaxed_seconds, gadget_solver,
+                    )
+                candidates.append(("exact", exact, price(exact)))
+            except Exception as exc:
+                if stats is not None:
+                    stats.exact_failures += 1
+                # A time-limited solve that ends on an unfaithful tour is routine
+                # on large groups; only unexpected errors are worth a warning.
+                if not isinstance(exc, (GadgetError, _TourSolverError)):
+                    warnings.warn(
+                        f"Exact displacement tour failed ({exc}); using the relaxed tour.",
+                        RuntimeWarning, stacklevel=2,
+                    )
+            else:
+                if stats is not None:
+                    setattr(stats, kind, getattr(stats, kind) + 1)
+        # Ties keep the earlier candidate, so results only change on a real gain.
+        name, best, seconds = candidates[0]
+        for candidate in candidates[1:]:
+            if candidate[2] < seconds * (1 - 1e-12):
+                name, best, seconds = candidate
+        if stats is not None and name != "relaxed":
+            setattr(stats, f"{name}_wins", getattr(stats, f"{name}_wins") + 1)
+            stats.seconds_saved += relaxed_seconds - seconds
+    layers = [cities[c][0] for c in best]
+    if sorted(best) != list(range(len(cities))) or layers != sorted(layers):
+        raise ValueError("Displacement tour changed gate occurrences or layer order.")
+    return [vector_index for city in best for vector_index in indices_by_city[cities[city]]]
 
 
 @lru_cache(maxsize=8192)
@@ -1472,6 +1750,8 @@ class CircuitSchedule:
     candidate_times: dict[str, Any]
     rejected_candidates: dict[str, str]
     reused_groups: int
+    # Displacement-tour counters of the selected candidate (see TourStats).
+    tsp_stats: TourStats | None = None
 
 
 def schedule_circuit(layers, singles, qubits, config, reference_nodes=None):
@@ -1490,6 +1770,9 @@ def schedule_circuit(layers, singles, qubits, config, reference_nodes=None):
         raise ValueError(_SIDE_ORDERING_REMOVED)
     if "parallel" in config:
         raise ValueError(_PARALLEL_REMOVED)
+    if "tsp_gadget" in config:
+        raise ValueError(_TSP_GADGET_REPLACED)
+    _tour_ordering(config)
     config = dict(config, _motion_parameters=_motion_parameters(config))
     layers = [list(nodes) for nodes in layers]
     if len(singles) != len(layers) + 1:
@@ -1506,17 +1789,18 @@ def schedule_circuit(layers, singles, qubits, config, reference_nodes=None):
         q for node in reference_nodes if node.op.name == "reset"
         for q in op_node_signature(node)[2]
     )
-    builders = {"reuse": lambda: _layered_candidate(layers, singles, homes, config, True)}
+    candidates = {"reuse": config}
     if list(config["max_dimension"]) != [1, 1]:
-        individual = _one_atom_aod(config)
-        builders["individual"] = lambda: _layered_candidate(layers, singles, homes, individual, True)
-    plans, times = {}, {}
-    for name, build in builders.items():
-        plans[name] = build()
+        candidates["individual"] = _one_atom_aod(config)
+    plans, times, stats = {}, {}, {}
+    for name, candidate in candidates.items():
+        candidate = dict(candidate, _tsp_stats=TourStats())
+        plans[name] = _layered_candidate(layers, singles, homes, candidate, True)
+        stats[name] = candidate["_tsp_stats"]
         validate_schedule(plans[name].events, homes, config, reference_nodes)
         times[name] = schedule_duration(plans[name].events, config)
     selected = min(times, key=times.get)
     plan = plans[selected]
     return CircuitSchedule(
-        plan.events, times[selected], selected, times, {}, plan.reused_groups,
+        plan.events, times[selected], selected, times, {}, plan.reused_groups, stats[selected],
     )

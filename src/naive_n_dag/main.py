@@ -12,7 +12,8 @@ from naive_n_dag.dag_helper import (
     reorder_cz_layers_by_displacement,
 )
 from naive_n_dag.dynamics import (
-    _PARALLEL_REMOVED, _SIDE_ORDERING_REMOVED, RYDBERG_RADIUS, schedule_circuit,
+    _PARALLEL_REMOVED, _SIDE_ORDERING_REMOVED, _TSP_GADGET_REPLACED, RYDBERG_RADIUS,
+    TOUR_ORDERINGS, schedule_circuit,
 )
 from naive_n_dag.scheduling import (
     count_emitted_timesteps,
@@ -45,6 +46,7 @@ _RETIRED_KEYS = {
     ),
     "_side_ordering": _SIDE_ORDERING_REMOVED,
     "parallel": _PARALLEL_REMOVED,
+    "tsp_gadget": _TSP_GADGET_REPLACED,
 }
 
 
@@ -181,6 +183,14 @@ def _validate_required_config(config: Mapping[str, Any]) -> None:
         limit = config["tsp_time_limit"]
         if not isinstance(limit, (int, float)) or isinstance(limit, bool) or limit <= 0:
             raise ValueError("tsp_time_limit must be a positive number of seconds.")
+
+    if "concorde_time_limit" in config:
+        limit = config["concorde_time_limit"]
+        if not isinstance(limit, (int, float)) or isinstance(limit, bool) or limit <= 0:
+            raise ValueError("concorde_time_limit must be a positive number of seconds.")
+
+    if "tour_ordering" in config and config["tour_ordering"] not in TOUR_ORDERINGS:
+        raise ValueError(f"tour_ordering must be one of {', '.join(map(repr, TOUR_ORDERINGS))}.")
 
     if "T_reuse" in config:
         reuse_horizon = config["T_reuse"]
@@ -338,6 +348,15 @@ def main(
     if not quiet:
         print(f"selected_schedule={schedule.selected}")
         print(f"reused_groups={schedule.reused_groups}")
+        if schedule.tsp_stats is not None:
+            stats = schedule.tsp_stats
+            print(
+                f"tsp_solves={stats.solves} tsp_enumerated={stats.enumerated} "
+                f"tsp_gadget={stats.gadget} tsp_exact_wins={stats.exact_wins} "
+                f"tsp_alignment_wins={stats.alignment_wins} "
+                f"tsp_exact_failures={stats.exact_failures} "
+                f"tsp_seconds_saved={stats.seconds_saved * 1e6:.6g}us"
+            )
         for name, duration in schedule.candidate_times.items():
             print(f"candidate_{name}_time={duration.to('microseconds')}")
         for name, reason in schedule.rejected_candidates.items():
