@@ -25,7 +25,6 @@
         "stage2_iterations": 8,
         "k": 7,
         "c": 100,
-        "stage3_temperature_threshold": 0.0001,
         "stage3_max_iterations": 10,
         "stage3_section_size": 3
     },

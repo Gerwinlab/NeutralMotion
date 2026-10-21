@@ -6,6 +6,8 @@ import warnings
 from typing import Any, Mapping
 
 from naive_n_dag.grid import Fastsa_Fill, generate_grid, initial_layout_fill, naive_fill
+from naive_n_dag.deterministic_placement import deterministic_fill, validate_options
+from naive_n_dag.placement_cost import COST_FUNCTION_REMOVED
 from naive_n_dag.dag_helper import (
     dag_from_txt_auto,
     load_qasm_to_two_qubit_dag_with_single_qubit_context,
@@ -47,6 +49,7 @@ _RETIRED_KEYS = {
     "_side_ordering": _SIDE_ORDERING_REMOVED,
     "parallel": _PARALLEL_REMOVED,
     "tsp_gadget": _TSP_GADGET_REPLACED,
+    "cost_function": COST_FUNCTION_REMOVED,
 }
 
 
@@ -163,8 +166,16 @@ def _validate_required_config(config: Mapping[str, Any]) -> None:
         raise ValueError("max_dimension must be a 2-item positive integer list: [x, y].")
 
     fill_strategy = config["fill_strategy"]
-    if fill_strategy not in {"random", "heuristic_fill", "fastsa", "Given"}:
-        raise ValueError("fill_strategy must be either 'random', 'heuristic_fill', or 'fastsa'.")
+    if fill_strategy not in {"random", "heuristic_fill", "fastsa", "Given", "deterministic"}:
+        raise ValueError(
+            "fill_strategy must be one of 'random', 'heuristic_fill', 'fastsa', 'Given', "
+            "or 'deterministic'."
+        )
+    deterministic_options = config.get("Deterministic_fill")
+    if deterministic_options is not None:
+        if not isinstance(deterministic_options, Mapping):
+            raise ValueError("Deterministic_fill must be a JSON object when provided.")
+        validate_options(deterministic_options)
 
     movement_shape = config["movement_shape"]
     if movement_shape not in {"trapezoidal", "Cubic_Spline"}:
@@ -315,17 +326,34 @@ def main(
             seed=fill_seed,
             stage1_iterations=int(fastsa_cfg.get("stage1_iterations", 200)),
             stage2_iterations=int(fastsa_cfg.get("stage2_iterations", 100)),
-            initial_accept_prob=float(fastsa_cfg.get("initial_accept_prob", 0.99)),
+            initial_accept_prob=float(fastsa_cfg.get("initial_accept_prob", 0.999)),
             c=float(fastsa_cfg.get("c", 100.0)),
-            stage3_temperature_threshold=float(fastsa_cfg.get("stage3_temperature_threshold", 1e-3)),
+            stage3_temperature_threshold=float(fastsa_cfg.get("stage3_temperature_threshold", 0.0)),
             stage3_max_iterations=int(fastsa_cfg.get("stage3_max_iterations", 1000)),
             stage3_section_size=int(fastsa_cfg.get("stage3_section_size", 4)),
             return_result=log,
+            reference_nodes=reference_nodes,
         )
         if log:
             qubits, fastsa_result = fill_output
         else:
             qubits = fill_output
+    elif config["fill_strategy"] == "deterministic":
+        # Same objective and two-qubit DAG as fastsa; program-order reference
+        # nodes (absent with step_order) give symmetry discovery its gate blocks.
+        qubits, placement = deterministic_fill(
+            grid, num_na, two_qubit_dag, config,
+            reference_nodes=reference_nodes,
+            options=config.get("Deterministic_fill"),
+            return_result=True,
+        )
+        if not quiet:
+            print(
+                f"deterministic_placement route={placement.route} "
+                f"objective={placement.objective:.6g} "
+                f"evaluations={placement.evaluations}/{placement.budget} "
+                f"descents={placement.descents} stop={placement.stop_reason}"
+            )
     if qubits is None:
         raise RuntimeError("Qubit placement is required before scheduling two-qubit layers.")
 
@@ -420,11 +448,13 @@ def main(
             log_filename = f"{pathlib.Path(log_filename_base).stem}.fastsa_log.csv"
         log_output = schedule_output.with_name(log_filename)
         with log_output.open("w", encoding="utf-8") as f:
+            # best_cost in the cost's own units; temperature on FastSA's
+            # normalised scale (cost / mean random-layout cost).
             f.write("step,best_cost,temperature\n")
             for step, (best_cost, temperature) in enumerate(
                 zip(fastsa_result.best_cost_history, fastsa_result.temperature_history)
             ):
-                f.write(f"{step},{best_cost},{temperature}\n")
+                f.write(f"{step},{best_cost * fastsa_result.cost_scale},{temperature}\n")
         if not quiet:
             print(f"fastsa_log_file={log_output}")
 

@@ -15,17 +15,6 @@ from .grid import Qubit, naive_fill
 
 
 @dataclass(frozen=True)
-class LayerVectorStats:
-    """Derived vector metrics for a single 2Q layer."""
-
-    vectors: list[tuple[int, int]]
-    vector_alignment_score: float
-    longest_magnitude: float
-    max_parallel_gates: int
-    layer_cost: float
-
-
-@dataclass(frozen=True)
 class FastSAResult:
     """Result bundle for full 3-stage Fast-SA."""
 
@@ -38,6 +27,8 @@ class FastSAResult:
     stage3_iterations: int
     best_cost_history: list[float]
     temperature_history: list[float]
+    # Costs above are normalised: absolute cost = normalised cost * cost_scale.
+    cost_scale: float = 1.0
 
 
 def qubit_position_map(qubits: Iterable[Qubit]) -> dict[int, tuple[int, int]]:
@@ -63,81 +54,6 @@ def position_map_from_grid(grid) -> dict[int, tuple[int, int]]:
                 qubit_id = int(qubit_obj)
             positions[int(qubit_id)] = (node.col, node.row)
     return positions
-
-
-def vector_alignment_score(vectors: Iterable[tuple[int, int]]) -> float:
-    """Return mean pairwise alignment score in [0, 1] for movement vectors."""
-    v = list(vectors)
-    if len(v) < 2:
-        return 0.0
-    normalizer = 0.0
-    score = 0.0
-    for i in range(len(v)):
-        ux, uy = v[i]
-        for j in range(i + 1, len(v)):
-            vx, vy = v[j]
-            umag = hypot(ux, uy)
-            vmag = hypot(vx, vy)
-            cosine = abs((ux * vx + uy * vy) / (umag * vmag))
-            mag_ratio = min(umag, vmag) / max(umag, vmag)
-            normalizer += 1
-            score += cosine * mag_ratio
-    return score / normalizer
-
-
-def compute_fastsa_cost(
-    two_qubit_layers: Iterable[Iterable["DAGOpNode"]],
-    positions_or_qubits: Mapping[int, tuple[int, int]] | Iterable["Qubit"],
-    normalize_by_length: float = 1.0,
-) -> tuple[float, list[dict]]:
-    """Compute Fast-SA objective for a given placement."""
-    if isinstance(positions_or_qubits, Mapping):
-        positions = dict(positions_or_qubits)
-    else:
-        positions = qubit_position_map(positions_or_qubits)
-
-    def canonical(v: tuple[int, int]) -> tuple[int, int]:
-        x, y = v
-        if x < 0 or (x == 0 and y < 0):
-            return (-x, -y)
-        return (x, y)
-
-    gate_layers = [
-        [node for node in layer["graph"].op_nodes()
-         if len(node.qargs) == 2 and node.op.name != "barrier"]
-        for layer in two_qubit_layers.layers()
-    ]
-    gate_layers = [layer for layer in gate_layers if layer]
-    total_cost = 0.0
-    normalize_by_layers = max(len(gate_layers), 1)
-    layer_stats_list: list[dict] = []
-    for layer_nodes in gate_layers:
-        vectors: list[tuple[int, int]] = []
-        layer_cost = 0.0
-        for node in layer_nodes:
-            q0 = extract_index_from_bit(node.qargs[0])
-            q1 = extract_index_from_bit(node.qargs[1])
-            if q0 not in positions or q1 not in positions:
-                raise KeyError(f"Missing qubit positions for q[{q0}] or q[{q1}].")
-
-            x0, y0 = positions[q0]
-            x1, y1 = positions[q1]
-            vectors.append((x1 - x0, y1 - y0))
-
-        alignment = vector_alignment_score(vectors)
-
-        counts = Counter(canonical(v) for v in vectors)
-        norm_counts = len(counts)
-        for vec, count in counts.items():
-            mag = hypot(vec[0], vec[1])
-            layer_cost += mag * (1.0 / count) / normalize_by_length / norm_counts
-        total_cost += (layer_cost - alignment) / normalize_by_layers
-        layer_stats_list.append({
-            "vectors": vectors,
-            "vector_alignment_score": alignment,
-            "layer_cost": layer_cost,
-        })
-    return total_cost, layer_stats_list
 
 
 def _sample_random_positions_with_naive_fill(
@@ -298,14 +214,38 @@ def run_fastsa(
     *,
     stage1_iterations: int = 10,
     stage2_iterations: int = 100,
-    initial_accept_prob: float = 0.99,
+    initial_accept_prob: float = 0.999,
     c: float = 100.0,
-    stage3_temperature_threshold: float = 1e-3,
+    stage3_temperature_threshold: float = 0.0,
     stage3_max_iterations: int = 1000,
     stage3_section_size: int = 4,
     seed: int = 0,
+    reference_nodes=None,
+    cost=None,
 ) -> FastSAResult:
-    """Run 3-stage Fast-SA: random, greedy-parallel, then local-random search."""
+    """Run 3-stage Fast-SA: random, greedy-parallel, then local-random search.
+
+    Layouts are scored by F_time (placement_cost.py); ``reference_nodes`` let
+    it model ``reorder_cz``'s post-placement layering. ``cost`` substitutes
+    any object with ``evaluate_positions`` (the benchmarks pass the legacy F,
+    benchmarks/legacy_f.py).
+
+    The cost is normalised before annealing, as Fast-SA prescribes (Chen &
+    Chang 2006): it is divided by the mean magnitude of the cost over the
+    start layout and stage 1's random layouts, so a random layout scores about
+    1 whatever the cost function or circuit. This matters because the
+    schedule is not scale-free -- ``t1`` is proportional to the cost and
+    ``T = t1 * <delta> / (n c)`` to its square -- so without it the cost's
+    units would act as a hidden temperature knob. With it,
+    ``initial_accept_prob`` (P), ``c`` and ``stage3_temperature_threshold``
+    mean the same thing on every circuit. Reported costs are normalised;
+    ``FastSAResult.cost_scale`` converts back.
+
+    Defaults P = 0.999 and threshold 0 (stage 3 runs ``stage3_max_iterations``)
+    were tuned on general circuits with benchmarks/fastsa_tuning.py
+    (COST_FUNCTIONS.md section 5). Under normalisation a threshold of 1e-3
+    switches stage 3 off almost entirely.
+    """
     if stage1_iterations < 1:
         raise ValueError("stage1_iterations must be >= 1")
     if stage2_iterations < 0:
@@ -320,20 +260,25 @@ def run_fastsa(
         )
 
     rng = random.Random(seed)
-    normalize_by_length = 1
+    from .placement_cost import make_cost
+    if cost is None:
+        cost = make_cost(two_qubit_dag, num_qubits, config, reference_nodes)
+    absolute = cost.evaluate_positions
 
-    current_positions = _sample_random_positions_with_naive_fill(
-        grid,
-        num_qubits,
-        # Resample a placement seed for each run to diversify starting points.
-        seed=rng.randint(0, 2**31 - 1),
-    )
+    # The start layout and stage 1's random layouts are drawn and scored up
+    # front: their mean cost magnitude is the normalisation scale.
+    random_layouts = [
+        _sample_random_positions_with_naive_fill(grid, num_qubits, seed=rng.randint(0, 2**31 - 1))
+        for _ in range(stage1_iterations + 1)
+    ]
+    random_costs = [absolute(layout) for layout in random_layouts]
+    cost_scale = sum(abs(value) for value in random_costs) / len(random_costs) or 1.0
 
-    current_cost, _ = compute_fastsa_cost(
-        two_qubit_dag,
-        current_positions,
-        normalize_by_length=normalize_by_length,
-    )
+    def evaluate(positions):
+        return absolute(positions) / cost_scale
+
+    current_positions = random_layouts[0]
+    current_cost = random_costs[0] / cost_scale
     best_positions = dict(current_positions)
     best_cost = current_cost
 
@@ -376,18 +321,8 @@ def run_fastsa(
         return temperature
 
     # Stage 1: n=1 initialization regime with random neighboring placements.
-    for _ in range(stage1_iterations):
-        neighbor_positions = _sample_random_positions_with_naive_fill(
-            grid,
-            num_qubits,
-            seed=rng.randint(0, 2**31 - 1),
-        )
-
-        neighbor_cost, _ = compute_fastsa_cost(
-            two_qubit_dag,
-            neighbor_positions,
-            normalize_by_length=normalize_by_length,
-        )
+    for neighbor_positions, raw_cost in zip(random_layouts[1:], random_costs[1:]):
+        neighbor_cost = raw_cost / cost_scale
 
         delta_c = neighbor_cost - current_cost
         accept_prob = _acceptance_probability(delta_c, temperature)
@@ -423,11 +358,7 @@ def run_fastsa(
                 grid_shape=grid_shape
             )
 
-            neighbor_cost, _ = compute_fastsa_cost(
-                two_qubit_dag,
-                neighbor_positions,
-                normalize_by_length=normalize_by_length,
-            )
+            neighbor_cost = evaluate(neighbor_positions)
             delta_c = neighbor_cost - current_cost
             accept_prob = _acceptance_probability(delta_c, temperature)
 
@@ -451,11 +382,7 @@ def run_fastsa(
             rng=rng,
             section_size=stage3_section_size,
         )
-        neighbor_cost, _ = compute_fastsa_cost(
-            two_qubit_dag,
-            neighbor_positions,
-            normalize_by_length=normalize_by_length,
-        )
+        neighbor_cost = evaluate(neighbor_positions)
         delta_c = neighbor_cost - current_cost
         accept_prob = _acceptance_probability(delta_c, temperature)
         accepted = rng.random() < accept_prob
@@ -479,4 +406,5 @@ def run_fastsa(
         stage3_iterations=stage3_iterations,
         best_cost_history=best_cost_history,
         temperature_history=temperature_history,
+        cost_scale=cost_scale,
     )

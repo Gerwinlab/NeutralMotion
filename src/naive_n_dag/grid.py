@@ -198,12 +198,13 @@ def Fastsa_Fill(
     seed: int = 0,
     stage1_iterations: int = 10,
     stage2_iterations: int = 100,
-    initial_accept_prob: float = 0.99,
+    initial_accept_prob: float = 0.999,
     c: float = 100.0,
-    stage3_temperature_threshold: float = 1e-6,
+    stage3_temperature_threshold: float = 0.0,
     stage3_max_iterations: int = 1000,
     stage3_section_size: int = 4,
     return_result: bool = False,
+    reference_nodes=None,
 ) -> List[Qubit] | tuple[List[Qubit], Any]:
     """Place qubits using Fast-SA best positions and return placed qubit objects."""
     from .FastSA_Solver import run_fastsa
@@ -220,6 +221,7 @@ def Fastsa_Fill(
         stage3_max_iterations=stage3_max_iterations,
         stage3_section_size=stage3_section_size,
         seed=seed,
+        reference_nodes=reference_nodes,
     )
 
     # Clear any existing occupancy before placing the optimized configuration.
