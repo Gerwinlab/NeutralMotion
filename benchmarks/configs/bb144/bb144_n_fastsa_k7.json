@@ -16,13 +16,13 @@
     "movement_shape": "trapezoidal",
     "prefer_moving_ancillas": true,
     "max_dimension": [
-        17,
+        24,
         17
     ],
     "fill_strategy": "fastsa",
     "alignment_conc": -1,
     "T_reuse": 3,
-    "tour_ordering": "tsp_gadget",
+    "tour_ordering": "alignment",
     "Fastsa_fill": {
         "stage1_iterations": 2,
         "stage2_iterations": 7,

@@ -23,7 +23,7 @@
     "Deterministic_fill": {
         "budget": 100103
     },
-    "tour_ordering": "tsp_gadget",
+    "tour_ordering": "tsp",
     "concorde_time_limit": 5.0,
     "tsp_time_limit": 0.5
 }
