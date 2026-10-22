@@ -25,6 +25,9 @@ COST_FUNCTION_REMOVED = (
 )
 
 
+_TOUR_CACHE_LIMIT = 200_000
+
+
 def make_cost(two_qubit_dag, num_qubits: int, config: Mapping[str, Any],
               reference_nodes: Sequence[Any] | None = None) -> "TimeCost":
     """The placement cost for one circuit; built once, evaluated many times."""
@@ -59,55 +62,67 @@ class TimeCost:
 
     Placement-independent time (single-qubit layers, the fixed number of
     gates) is left out, so only differences between layouts are meaningful.
-    Two modes, matching how the scheduler forms its two-qubit layers:
 
-    * fixed layers (``reorder_cz`` off, or no reference nodes): per DAG layer,
-      gates are grouped into AOD loads the way ``dynamics._build_groups``
+    Every two-qubit layer the scheduler will execute is priced as the router
+    executes it:
+
+    * loads: gates are grouped into AOD loads the way ``dynamics._build_groups``
       does (ancilla mover when ``prefer_moving_ancillas``, otherwise either
       operand; a load must fit the AOD span and, unless ``alignment_conc`` is
-      -1, the alignment threshold). Each load costs two transfers plus its
-      load and unload steps, one pulse per distinct stop, and a
-      nearest-neighbour tour from home through its stops and back.
-    * CZ sections (``reorder_cz`` on): the post-placement re-layering of each
-      commuting CZ section is modelled. Gates are bucketed by signed
-      displacement with the reorder's mover rule; a bucket needs as many
-      stops as its largest qubit degree (its matchings); the section needs
-      at least its largest qubit degree in layers, each one load; and one
-      tour visits the section's distinct stops. Other two-qubit gates are
-      single-gate layers.
+      -1, the alignment threshold). Each load pays two SLM<->AOD transfers;
+    * stops: one Rydberg pulse per distinct displacement in a load (a free
+      mover counts v and -v once, since the router may move either operand);
+    * travel: a nearest-neighbour tour from home through the load's stops and
+      back. A leg is the parity-highway route (``dynamics._route``) between
+      sites beside the two stops, minimised over the sides, as the TSP prices
+      its edges; leaving and returning home include the load/unload step.
+      Atoms move along odd rows and columns, never diagonally.
 
-    Not modelled: parity-highway detours and the one-step side offset at a
-    stop, Rydberg-radius pulse splitting, and load reuse across layers
-    beyond the section tour. Free movers are optimistic: v and -v count as
-    one stop, as the router may move either operand.
+    The layers are the DAG's two-qubit layers, or, with ``reorder_cz``, the
+    layers ``dag_helper.reorder_cz_layers_by_displacement`` will build for
+    this placement: per commuting CZ section, gates are bucketed by signed
+    displacement (ancilla mover when preferred, else the first operand),
+    split into matchings by ``dag_helper._color_cz_block`` and packed first
+    fit, exactly as the scheduler does. Not modelled: load reuse across
+    layers, Rydberg-radius pulse splitting, and the scheduler's exact tour
+    order and side choice (TSP or alignment ordering, side DP).
     """
 
     name = "time"
 
     def __init__(self, two_qubit_dag, num_qubits: int, config: Mapping[str, Any],
                  reference_nodes: Sequence[Any] | None = None):
-        from .dynamics import _max_grid_spans, _motion_parameters, _step_seconds
+        from .dynamics import _CARDINAL, _max_grid_spans, _motion_parameters, _route, _step_seconds
 
         self.num_qubits = num_qubits
-        self._motion = {
+        motion = {
             "_motion_parameters": config.get("_motion_parameters") or _motion_parameters(config),
             "movement_shape": config.get("movement_shape", "trapezoidal"),
         }
-        self._step_seconds = _step_seconds
-        self._hop_cache: dict[tuple[int, int], float] = {}
+        self._route_seconds = lambda a, b: _route(a, b, motion)[0]
+        self._cardinal = _CARDINAL
+        self._transfer_seconds = tuple(_step_seconds(step, motion) for step in _CARDINAL)
+        # Side tables per displacement (see _sides); they replace 16 route
+        # lookups per stop in the side DP. Bounded by the array's displacements.
+        self._side_cache: dict[tuple[int, int], tuple] = {}
+        self._entry_cache: dict[tuple[int, int], tuple] = {}
+        # Tour seconds per stop tuple. A search move changes only the layers
+        # touching the moved qubits, so most loads repeat their stops between
+        # evaluations. Cleared when full, which bounds memory.
+        self._tour_cache: dict[tuple, float] = {}
         seconds = lambda key: config[key].to("second").magnitude
         self.t_transfer = seconds("transfer_SLM_AOD")
         self.t_pulse = seconds("average_two_gate_time") + seconds("t_switch")
-        # Each load also moves one cardinal step on and one off the SLM row.
-        self.load_seconds = 2 * self.t_transfer + 2 * self._hop((1, 0))
+        # The load/unload steps' motion is part of the tour's first and last legs.
+        self.load_seconds = 2 * self.t_transfer
         conc = config.get("alignment_conc", 0)
         self.alignment_conc = None if conc is None or conc <= -1 else float(conc)
         self.spans = _max_grid_spans(config["max_dimension"])
         # Fast path, exact: with no alignment threshold and an AOD span that
-        # covers the whole array (every config in the repo), every gate of a
-        # layer fits the first load, and the mover choice cannot change the
-        # stops (a free mover counts v and -v once). So a layer is one load
-        # whose stops are its distinct displacements.
+        # covers the whole array, every gate of a layer fits the first load,
+        # and the mover choice cannot change the stops (a free mover counts v
+        # and -v once). So a layer is one load whose stops are its distinct
+        # displacements.
         dims = config.get("dimensions")
         self._one_load = (
             self.alignment_conc is None and dims is not None
@@ -121,6 +136,7 @@ class TimeCost:
                         if node.op.name == "reset" for q in node.qargs}
 
         def fixed_mover(a, b):
+            """The router's mover when it is forced: the gate's only ancilla."""
             if prefer:
                 preferred = [q for q in (a, b) if q in ancillas]
                 if len(preferred) == 1:
@@ -129,7 +145,8 @@ class TimeCost:
 
         reorder = bool(config.get("reorder_cz", False) or config.get("reorder_cz_by_displacement", False))
         self.mode = "sections" if reorder and reference_nodes is not None else "layers"
-        self.units = []                              # (kind, gates, fixed movers)
+        # ("layer", gates, fixed movers) or ("section", gates, fixed movers, bucket movers, nodes)
+        self.units = []
         if self.mode == "layers":
             for gates in _two_qubit_layers(two_qubit_dag):
                 self.units.append(("layer", gates, [fixed_mover(a, b) for a, b in gates]))
@@ -137,57 +154,143 @@ class TimeCost:
             for is_cz, nodes in _commuting_cz_sections(list(reference_nodes)):
                 if is_cz:
                     gates = [(extract_index_from_bit(n.qargs[0]), extract_index_from_bit(n.qargs[1])) for n in nodes]
-                    # The reorder's rule: the ancilla when preferred, else the first operand.
-                    movers = [fixed_mover(a, b) if fixed_mover(a, b) is not None else a for a, b in gates]
-                    self.units.append(("section", gates, movers))
+                    fixed = [fixed_mover(a, b) for a, b in gates]
+                    # The reorder's bucketing rule: the ancilla when preferred, else the first operand.
+                    bucket = [m if m is not None else a for m, (a, b) in zip(fixed, gates)]
+                    self.units.append(("section", gates, fixed, bucket, list(nodes)))
                 else:
                     node = nodes[0]
                     if len(node.qargs) == 2 and node.op.name not in ("barrier", "swap"):
                         a, b = (extract_index_from_bit(q) for q in node.qargs)
                         self.units.append(("layer", [(a, b)], [fixed_mover(a, b)]))
-        self.layer_pairs = [gates for _, gates, _ in self.units]
+        # Operands per gate as small ints (one per distinct Qubit object, so
+        # disjointness matches the reorder's node.qargs test), and colourings
+        # per bucket: a search move changes few buckets, and _color_cz_block
+        # depends only on the bucket's gates.
+        bit_ids: dict[Any, int] = {}
+        self._operands = [
+            [frozenset(bit_ids.setdefault(q, len(bit_ids)) for q in node.qargs) for node in unit[4]]
+            if unit[0] == "section" else None
+            for unit in self.units
+        ]
+        self._coloring_cache: dict[tuple, tuple] = {}
+        self.layer_pairs = [unit[1] for unit in self.units]
         used = {q for gates in self.layer_pairs for gate in gates for q in gate}
         if used and max(used) >= num_qubits:
             raise ValueError(f"The circuit uses qubit {max(used)}, but num_NA is {num_qubits}.")
-        # Placement-independent load count of each CZ section (its largest degree).
-        self._section_layers = []
-        for kind, gates, _ in self.units:
-            if kind == "section":
-                degree = collections.Counter(q for gate in gates for q in gate)
-                self._section_layers.append(max(degree.values()))
-            else:
-                self._section_layers.append(None)
+        # Incremental evaluation (see evaluate): which units and gates each qubit touches.
+        self._qubit_units = [[] for _ in range(num_qubits)]
+        self._qubit_gates = []
+        for unit_index, gates in enumerate(self.layer_pairs):
+            by_qubit = collections.defaultdict(list)
+            for gate_index, gate in enumerate(gates):
+                for q in set(gate):
+                    by_qubit[q].append(gate_index)
+            for q in by_qubit:
+                self._qubit_units[q].append(unit_index)
+            self._qubit_gates.append(dict(by_qubit))
+        self._last_grid: list | None = None
+        self._last_unit_seconds: list[tuple[float, ...]] = []
+        self._last_layer_seconds: list[dict[tuple, float]] = []
 
     def evaluate_positions(self, positions: Mapping[int, tuple[int, int]]) -> float:
         """Evaluate a FastSA position map ``{qubit: (x, y)}`` (x = 2*col, y = 2*row)."""
         return self.evaluate([(positions[q][1] // 2, positions[q][0] // 2) for q in range(self.num_qubits)])
 
     # -- motion ------------------------------------------------------------
-    def _hop(self, delta: tuple[int, int]) -> float:
-        """Seconds to move the load by ``delta`` grid steps (router's motion law)."""
-        value = self._hop_cache.get(delta)
+    def _sides(self, delta: tuple[int, int]) -> tuple:
+        """Route seconds between the sides of two stops ``delta`` grid steps apart.
+
+        Entry ``4*s + t`` is the highway route from cardinal side ``s`` of one
+        stop to side ``t`` of the other: ``dynamics._route`` from offset ``s``
+        to ``delta + t``. Stops are even-even, so a route depends only on the
+        start side's parity and the displacement, and this one table serves
+        every pair of stops at that displacement. The last entry is the
+        minimum, the side-relaxed leg the nearest-neighbour order uses. With
+        ``delta = -v`` it also prices leaving stop ``v`` for the unload offsets.
+        """
+        table = self._side_cache.get(delta)
+        if table is None:
+            route, dr, dc = self._route_seconds, delta[0], delta[1]
+            table = tuple(route(s, (dr + t[0], dc + t[1])) for s in self._cardinal for t in self._cardinal)
+            table += (min(table),)
+            self._side_cache[delta] = table
+        return table
+
+    def _entry(self, stop: tuple[int, int]) -> tuple:
+        """Seconds from home to each side of ``stop`` (best transfer step, then the route); minimum last."""
+        value = self._entry_cache.get(stop)
         if value is None:
-            value = self._step_seconds(delta, self._motion)
-            self._hop_cache[delta] = value
+            sides, transfer = self._sides(stop), self._transfer_seconds
+            value = tuple(min(transfer[s] + sides[4 * s + t] for s in range(4)) for t in range(4))
+            value += (min(value),)
+            self._entry_cache[stop] = value
         return value
 
+    def _leg(self, delta: tuple[int, int]) -> float:
+        """Seconds between stops ``delta`` grid steps apart, minimised over sides.
+
+        The load sits beside each stop's partner, so the leg is the best
+        parity-highway route between a site beside one stop and a site beside
+        the other.
+        """
+        return self._sides(delta)[16]
+
+    def _end(self, stop: tuple[int, int]) -> float:
+        """Seconds between home and a stop: one transfer step, then a highway route beside it."""
+        return self._entry(stop)[4]
+
     def _tour(self, stops) -> float:
-        """Nearest-neighbour tour from home through the stops and back, in seconds."""
-        current, total = (0, 0), 0.0
-        remaining = list(stops)
+        """Seconds for one load: home, through the stops, and back.
+
+        The order is nearest-neighbour on side-relaxed legs (cheap). The
+        order is then priced the way the router executes it: the side DP
+        of ``dynamics._optimize_visit_sides`` picks one consistent side per
+        stop. Pricing with relaxed legs alone would let the load arrive beside
+        a stop on one side and leave from another, which undercounts travel
+        more the more stops a load has. The DP here is that function's
+        recursion on the cached side tables, adding the same terms in the same
+        order, so it returns the same float without building the routes.
+        """
+        key = tuple(stops)
+        cached = self._tour_cache.get(key)
+        if cached is not None:
+            return cached
+        if not key:
+            return 0.0
+        sides, entry, cache = self._sides, self._entry, self._side_cache
+        remaining = list(key)
+        best_index = min(range(len(remaining)), key=lambda i: entry(remaining[i])[4])
+        previous = remaining.pop(best_index)
+        c0, c1, c2, c3 = entry(previous)[:4]
         while remaining:
-            best_index, best = 0, None
-            for index, stop in enumerate(remaining):
-                t = self._hop((stop[0] - current[0], stop[1] - current[1]))
-                if best is None or t < best:
-                    best_index, best = index, t
-            total += best
+            # Nearest neighbour, first on ties; inlined, as it is the hot loop.
+            pr, pc = previous
+            best, best_index = None, 0
+            for index, (r, c) in enumerate(remaining):
+                table = cache.get((r - pr, c - pc)) or sides((r - pr, c - pc))
+                if best is None or table[16] < best:
+                    best, best_index = table[16], index
             current = remaining.pop(best_index)
-        return total + self._hop((-current[0], -current[1]))
+            m = sides((current[0] - pr, current[1] - pc))
+            c0, c1, c2, c3 = (
+                min(c0 + m[0], c1 + m[4], c2 + m[8], c3 + m[12]),
+                min(c0 + m[1], c1 + m[5], c2 + m[9], c3 + m[13]),
+                min(c0 + m[2], c1 + m[6], c2 + m[10], c3 + m[14]),
+                min(c0 + m[3], c1 + m[7], c2 + m[11], c3 + m[15]),
+            )
+            previous = current
+        m, transfer = sides((-previous[0], -previous[1])), self._transfer_seconds
+        value = min(cost + m[4 * s + e] + transfer[e]
+                    for s, cost in enumerate((c0, c1, c2, c3)) for e in range(4))
+        if len(self._tour_cache) >= _TOUR_CACHE_LIMIT:
+            self._tour_cache.clear()
+        self._tour_cache[key] = value
+        return value
 
     def star_distance(self, d_row: int, d_col: int) -> float:
         # A single-gate layer is one load out to the stop and back.
-        return 2 * self._hop((2 * d_row, 2 * d_col))
+        return 2 * self._end((2 * d_row, 2 * d_col))
 
     # -- cost ---------------------------------------------------------------
     def _layer_seconds(self, gates, movers, grid):
@@ -219,6 +322,28 @@ class TimeCost:
         row_span, col_span = self.spans
         groups = []          # [min_row, max_row, min_col, max_col, vectors, stop keys]
         for (a, b), fixed in zip(gates, movers):
+            if fixed is not None and self.alignment_conc is None:
+                # One mover and no threshold: the first load it fits (hot path, inlined).
+                (r, c), (pr, pc) = grid[fixed], grid[b if fixed == a else a]
+                v = (pr - r, pc - c)
+                for group in groups:
+                    r0, r1, c0, c1 = group[0], group[1], group[2], group[3]
+                    if r < r0:
+                        r0 = r
+                    elif r > r1:
+                        r1 = r
+                    if c < c0:
+                        c0 = c
+                    elif c > c1:
+                        c1 = c
+                    if r1 - r0 <= row_span and c1 - c0 <= col_span:
+                        group[0], group[1], group[2], group[3] = r0, r1, c0, c1
+                        group[4].append(v)
+                        group[5].add(v)
+                        break
+                else:
+                    groups.append([r, r, c, c, [v], {v}])
+                continue
             choices = []
             for mover in ((fixed,) if fixed is not None else (a, b)):
                 partner = b if mover == a else a
@@ -257,23 +382,96 @@ class TimeCost:
             total += self.load_seconds + self.t_pulse * len(ordered) + self._tour(ordered)
         return total
 
-    def _section_seconds(self, gates, movers, grid, layers):
-        buckets = collections.defaultdict(collections.Counter)
-        for (a, b), mover in zip(gates, movers):
+    def _section_layers(self, unit_index, grid):
+        """The two-qubit layers the reorder step builds for one CZ section.
+
+        Mirrors ``dag_helper.reorder_cz_layers_by_displacement``: bucket by
+        signed displacement, split each bucket into matchings with
+        ``_color_cz_block``, sort them largest first and pack them first fit
+        into qubit-disjoint layers. Returns gate indices per layer.
+        """
+        from .dag_helper import _color_cz_block
+
+        _, gates, _, bucket_movers, nodes = self.units[unit_index]
+        operands = self._operands[unit_index]
+        buckets = {}
+        for i, ((a, b), mover) in enumerate(zip(gates, bucket_movers)):
             partner = b if mover == a else a
             m, p = grid[mover], grid[partner]
-            buckets[(p[0] - m[0], p[1] - m[1])].update((a, b))
-        stops = sum(max(degree.values()) for degree in buckets.values())
-        return (layers * self.load_seconds + self.t_pulse * stops
-                + self._tour(sorted(buckets)))
+            buckets.setdefault((p[0] - m[0], p[1] - m[1]), []).append(i)
+        bundles = []
+        for members in buckets.values():
+            key = (unit_index, *members)
+            coloring = self._coloring_cache.get(key)
+            if coloring is None:
+                index = {id(nodes[i]): i for i in members}
+                coloring = tuple(tuple(index[id(node)] for node in matching)
+                                 for matching in _color_cz_block([nodes[i] for i in members]))
+                if len(self._coloring_cache) >= _TOUR_CACHE_LIMIT:
+                    self._coloring_cache.clear()
+                self._coloring_cache[key] = coloring
+            bundles.extend(coloring)
+        bundles.sort(key=lambda matching: -len(matching))
+        packed = []
+        for matching in bundles:
+            used_here = frozenset().union(*(operands[i] for i in matching))
+            for layer, used in packed:
+                if used_here.isdisjoint(used):
+                    layer.extend(matching)
+                    used |= used_here
+                    break
+            else:
+                packed.append((list(matching), set(used_here)))
+        return [layer for layer, _ in packed]
 
     def evaluate(self, layout: Sequence[tuple[int, int]]) -> float:
-        """F_time of an injective layout of ``(row, col)`` site indices, in microseconds."""
+        """F_time of an injective layout of ``(row, col)`` site indices, in microseconds.
+
+        Incremental: the seconds of every unit (a two-qubit layer, or a CZ
+        section's layers) are kept from the previous call, and only units and
+        layers holding a qubit that moved since then are re-priced. A reused
+        layer has the same gates at the same sites, so its seconds are the
+        same; the total adds the same per-layer terms in the same order. So
+        the result depends only on ``layout``, never on the call history.
+        """
         grid = [(2 * r, 2 * c) for r, c in layout]
+        last = self._last_grid
+        changed = None
+        if last is not None and len(last) == len(grid):
+            changed = [q for q, (old, new) in enumerate(zip(last, grid)) if old != new]
+            if 4 * len(changed) > len(grid):          # a fresh layout: re-price everything
+                changed = None
+        if changed is None:
+            dirty_units = range(len(self.units))
+            self._last_unit_seconds = [()] * len(self.units)
+            self._last_layer_seconds = [{} for _ in self.units]
+        else:
+            dirty_units = sorted({u for q in changed for u in self._qubit_units[q]})
+        for unit_index in dirty_units:
+            unit = self.units[unit_index]
+            if unit[0] == "layer":
+                self._last_unit_seconds[unit_index] = (self._layer_seconds(unit[1], unit[2], grid),)
+                continue
+            gates, fixed = unit[1], unit[2]
+            previous = self._last_layer_seconds[unit_index]
+            moved = set()
+            if changed is not None:
+                by_qubit = self._qubit_gates[unit_index]
+                for q in changed:
+                    moved.update(by_qubit.get(q, ()))
+            seconds, layer_seconds = [], {}
+            for layer in self._section_layers(unit_index, grid):
+                key = tuple(layer)
+                value = previous.get(key) if moved.isdisjoint(key) else None
+                if value is None:
+                    value = self._layer_seconds([gates[i] for i in layer], [fixed[i] for i in layer], grid)
+                layer_seconds[key] = value
+                seconds.append(value)
+            self._last_unit_seconds[unit_index] = tuple(seconds)
+            self._last_layer_seconds[unit_index] = layer_seconds
+        self._last_grid = grid
         total = 0.0
-        for (kind, gates, movers), layers in zip(self.units, self._section_layers):
-            if kind == "section":
-                total += self._section_seconds(gates, movers, grid, layers)
-            else:
-                total += self._layer_seconds(gates, movers, grid)
+        for seconds in self._last_unit_seconds:
+            for value in seconds:
+                total += value
         return total * 1e6

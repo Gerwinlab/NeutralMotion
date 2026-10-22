@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import bisect
 import contextlib
 import math
 import multiprocessing
@@ -1546,27 +1547,67 @@ def _cz_run_traces(traces, commuting):
 
 
 def _validate_barrier_order(events, reference_nodes):
-    """Require every emitted operation to remain in its QASM barrier epoch."""
-    epochs = [defaultdict(int)]
-    for node in reference_nodes:
+    """Require every operation to stay on its side of each barrier it is fenced by.
+
+    A barrier orders only the qubits it names: every operation on one of them
+    before the barrier must be emitted in an earlier gate event (timestep)
+    than every operation on one of them after it. Operations on other qubits
+    may cross. The k-th emission of a statement is matched to its k-th
+    occurrence in the reference; identical statements are interchangeable,
+    and missing or extra ones are reported by the per-qubit trace check.
+    """
+    occurrences = defaultdict(int)
+    operations, barriers = [], []
+    for index, node in enumerate(reference_nodes):
         if node.op.name == "swap":
             continue
         if node.op.name == "barrier":
-            epochs.append(defaultdict(int))
+            barriers.append((index, op_node_signature(node)[2]))
         elif len(node.qargs) in (1, 2):
-            epochs[-1][format_node_line(node)] += 1
+            line = format_node_line(node)
+            operations.append((index, (line, occurrences[line]), op_node_signature(node)[2]))
+            occurrences[line] += 1
+    if not barriers:
+        return
 
-    epoch = 0
-    for event in events:
+    emitted, seen = {}, defaultdict(int)
+    for position, event in enumerate(events):
         if event[0] != "gate":
             continue
         for statement, _, _ in _gate_parts(event[1]):
-            while epoch < len(epochs) - 1 and not any(epochs[epoch].values()):
-                epoch += 1
-            if epochs[epoch].get(statement, 0):
-                epochs[epoch][statement] -= 1
-            elif any(later.get(statement, 0) for later in epochs[epoch + 1:]):
-                raise ValueError("An operation crossed a QASM barrier.")
+            emitted[(statement, seen[statement])] = position
+            seen[statement] += 1
+
+    # Per qubit, in reference order: the latest emission so far and the
+    # earliest emission from here on.
+    timeline = defaultdict(list)
+    for index, key, qubits in operations:
+        if key in emitted:
+            for q in qubits:
+                timeline[q].append((index, emitted[key]))
+    latest, earliest = {}, {}
+    for q, entries in timeline.items():
+        prefix, running = [], -1
+        for _, position in entries:
+            running = max(running, position)
+            prefix.append(running)
+        suffix, running = [0] * len(entries), math.inf
+        for i in reversed(range(len(entries))):
+            running = min(running, entries[i][1])
+            suffix[i] = running
+        latest[q], earliest[q] = prefix, suffix
+    for barrier_index, qubits in barriers:
+        before, after = -1, math.inf
+        for q in qubits:
+            if q not in timeline:
+                continue
+            split = bisect.bisect_left(timeline[q], (barrier_index, -1))
+            if split:
+                before = max(before, latest[q][split - 1])
+            if split < len(timeline[q]):
+                after = min(after, earliest[q][split])
+        if before >= after:
+            raise ValueError("An operation crossed a QASM barrier.")
 
 
 def _optimize_retained_loads(events, layers, homes, config, singles=None):

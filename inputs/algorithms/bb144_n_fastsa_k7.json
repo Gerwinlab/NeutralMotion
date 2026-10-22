@@ -20,7 +20,7 @@
         17
     ],
     "fill_strategy": "fastsa",
-    "alignment_conc": 0,
+    "alignment_conc": -1,
     "T_reuse": 3,
     "tour_ordering": "tsp",
     "Fastsa_fill": {

@@ -36,16 +36,20 @@ def schedule_single_qubit_time_steps(single_qubit_layer: list[DAGOpNode]) -> tup
     timesteps: list[list[str]] = []
     pulse_sets: list[set[str]] = []
     next_step_for_qubit: dict[int, int] = {}
-    barrier_floor = 0
 
     for node in single_qubit_layer:
         if node.op.name == "barrier":
-            barrier_floor = len(timesteps)
+            # A barrier orders only its own qubits: none of them may run
+            # before the latest step any of them has used.
+            fenced = [extract_index_from_bit(q) for q in node.qargs]
+            floor = max((next_step_for_qubit.get(q, 0) for q in fenced), default=0)
+            for q in fenced:
+                next_step_for_qubit[q] = floor
             continue
         if len(node.qargs) != 1:
             continue
         qid = extract_index_from_bit(node.qargs[0])
-        step_idx = max(next_step_for_qubit.get(qid, 0), barrier_floor)
+        step_idx = next_step_for_qubit.get(qid, 0)
 
         while len(timesteps) <= step_idx:
             timesteps.append([])

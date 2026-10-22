@@ -46,9 +46,13 @@ The following rules apply to both schedulers.
 - Measurements retain the classical register and destination, for example
   `measure q[2] -> c_x[5];`. Equal local indices in different registers remain distinct.
 - Barriers are scheduling metadata and are not emitted as physical operations.
-  Every barrier is a hard global epoch boundary: all operations before it must
-  be emitted before every operation after it, even when their operands are
-  disjoint. Reduced DAGs retain explicit empty separator layers for this rule.
+  A barrier is a hard boundary for the qubits it names: every operation on
+  one of them before the barrier must be emitted in an earlier timestep than
+  every operation on one of them after it. Operations on other qubits may
+  cross it, so a barrier on every qubit is a global boundary. Reduced DAGs
+  keep the barrier on its own qubits; it takes the layer after their latest
+  two-qubit gate (as `DAGCircuit.layers()` places it), which may also hold
+  gates on other qubits. Barriers are never widened.
 - The supported physical scheduling model handles one- and two-qubit operations. Unsupported higher-arity operations must not be silently scheduled as if they were supported.
 
 ## 3. Initialization and state tracking
@@ -299,8 +303,8 @@ This differs intentionally from standalone `naive_dag`, which may finish at a ch
   the chosen order. Weights are scaled to integers for the solvers, with a
   large finite weight for absent edges.
 - With `reorder_cz` or `reorder_cz_by_displacement` enabled, consecutive
-  CZ-only layers in one retained load with no 1Q context or barrier-emptied
-  layer between them form one graph stage: unconditional CZs commute, so
+  CZ-only layers in one retained load with no 1Q context, barrier or
+  barrier-emptied layer between them form one graph stage: unconditional CZs commute, so
   their stops may be visited in any order. Replay validation then compares
   per-wire traces up to permutations of maximal unconditional CZ runs, as in
   CZ preprocessing; otherwise exact per-wire order is still required.
@@ -333,7 +337,8 @@ This differs intentionally from standalone `naive_dag`, which may finish at a ch
 - `reorder_cz=true` always enables this pass. The compatibility option
   `reorder_cz_by_displacement=true` also enables it independently.
 - The pass in `dag_helper.py` preserves operation occurrences, quantum and
-  classical wire dependencies, and global barrier epochs. It rebuilds the
+  classical wire dependencies, and barrier order on each barrier's qubits
+  (a barrier is placed in the 1Q context and fences only its qubits). It rebuilds the
   single-qubit context and checked reference with the explicit layers.
   No later ASAP extraction may split equal-displacement bundles.
 - This is logical reordering only: no TSP travel search, side selection,

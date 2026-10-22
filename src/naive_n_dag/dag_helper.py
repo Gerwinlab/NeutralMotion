@@ -7,7 +7,6 @@ from pathlib import Path
 import re
 
 from qiskit import QuantumCircuit
-from qiskit.circuit import Barrier
 from qiskit.converters import circuit_to_dag
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.dagcircuit.dagnode import DAGOpNode
@@ -27,15 +26,18 @@ def load_qasm_to_dag(qasm_path: str | Path) -> DAGCircuit:
     return circuit_to_dag(circuit)
 
 
-def _with_global_barriers(dag: DAGCircuit) -> DAGCircuit:
-    """Return a DAG where every source barrier spans every quantum wire."""
-    result = dag.copy_empty_like()
+def reference_op_nodes(dag: DAGCircuit) -> list[DAGOpNode]:
+    """Source-ordered op nodes with SWAPs removed; barriers keep their own qubits.
+
+    A barrier orders only the qubits it names (a full-width barrier names
+    them all), so it is copied as written, never widened.
+    """
+    gate_only = dag.copy_empty_like()
     for node in sorted(dag.op_nodes(), key=lambda item: item._node_id):
-        if node.op.name == "barrier":
-            result.apply_operation_back(Barrier(len(dag.qubits)), dag.qubits, [])
-        else:
-            result.apply_operation_back(node.op, node.qargs, node.cargs)
-    return result
+        if isinstance(node.op, SwapGate):
+            continue
+        gate_only.apply_operation_back(node.op, node.qargs, node.cargs)
+    return list(gate_only.op_nodes())
 
 
 def op_node_signature(node: DAGOpNode) -> tuple[str, list[float], list[int]]:
@@ -139,8 +141,11 @@ def build_two_qubit_only_dag_with_single_qubit_context(
       last entry holds lines to run after the final two-qubit layer.
 
     Measurements are included in `single_layers`. Barriers are retained in the
-    reduced DAG as full-width separator layers and are not returned as physical
-    operations. This makes every barrier a global scheduling boundary.
+    reduced DAG on their own qubits and are not returned as physical
+    operations. A barrier orders only the qubits it names: it takes the layer
+    after their latest two-qubit gate, as ``DAGCircuit.layers()`` places it,
+    and later operations on those qubits go after it. Other qubits may
+    cross it.
     """
     two_qubit_dag = dag.copy_empty_like()
     # For each qubit, track the next 2Q layer index after the latest 2Q op touching it.
@@ -153,14 +158,11 @@ def build_two_qubit_only_dag_with_single_qubit_context(
             continue
 
         if node.op.name == "barrier":
-            boundary = max(qubit_twoq_progress.values(), default=num_twoq_layers)
-            two_qubit_dag.apply_operation_back(
-                Barrier(len(two_qubit_dag.qubits)), two_qubit_dag.qubits, []
-            )
-            next_layer = boundary + 1
-            qubit_twoq_progress = {
-                extract_index_from_bit(qubit): next_layer for qubit in dag.qubits
-            }
+            fenced = [extract_index_from_bit(qubit) for qubit in node.qargs]
+            two_qubit_dag.apply_operation_back(node.op, node.qargs, [])
+            next_layer = max((qubit_twoq_progress.get(q, 0) for q in fenced), default=0) + 1
+            for q in fenced:
+                qubit_twoq_progress[q] = next_layer
             num_twoq_layers = max(num_twoq_layers, next_layer)
             while len(single_layers) <= next_layer:
                 single_layers.append([])
@@ -333,17 +335,20 @@ def _validate_cz_reordering(original, reordered):
 
 
 def _commuting_cz_sections(reference_nodes):
-    """Yield non-CZ operations and reachable CZ blocks without crossing barriers."""
+    """Yield non-CZ operations and reachable CZ blocks without crossing barriers.
+
+    A barrier is an operation on the qubits it names, so it fences those
+    qubits only; CZs on other qubits may be grouped across it.
+    """
     original = list(reference_nodes)
     if any(getattr(n.op, "condition", None) is not None or
            getattr(n.op, "blocks", ()) for n in original):
         raise ValueError("CZ preprocessing does not support conditional gates or control flow.")
-    all_wires = {wire for node in original for wire in (*node.qargs, *node.cargs)}
     last = {}
     successors = defaultdict(set)
     pending = {}
     for index, node in enumerate(original):
-        wires = all_wires if node.op.name == "barrier" else (*node.qargs, *node.cargs)
+        wires = (*node.qargs, *node.cargs)
         predecessors = {last[wire] for wire in wires if wire in last}
         pending[index] = len(predecessors)
         for predecessor in predecessors:
@@ -452,7 +457,6 @@ def reorder_commuting_cz_blocks(dag: DAGCircuit) -> DAGCircuit:
     executing another non-CZ operation. Color that block and repeat. This is
     conservative across block boundaries and requires no BB-specific labels.
     """
-    dag = _with_global_barriers(dag)
     original = list(dag.topological_op_nodes())
     if any(getattr(n.op, "condition", None) is not None or
            getattr(n.op, "blocks", ()) for n in original):
@@ -484,7 +488,7 @@ def load_qasm_to_two_qubit_dag_with_single_qubit_context(
     Keep the original full DAG and context if the proposed ordering increases
     extracted two-qubit depth. Equal-depth proposals are accepted.
     """
-    dag = _with_global_barriers(load_qasm_to_dag(qasm_path))
+    dag = load_qasm_to_dag(qasm_path)
     result = build_two_qubit_only_dag_with_single_qubit_context(dag)
     if reorder_cz:
         proposed_dag = reorder_commuting_cz_blocks(dag)
@@ -500,8 +504,7 @@ def load_qasm_to_two_qubit_dag_with_single_qubit_context(
         if proposed_depth <= original_depth:
             dag, result = proposed_dag, proposed_result
     if return_reference_nodes:
-        from naive_dag.dag_helper import dag_with_gate_ops_only
-        return (*result, list(dag_with_gate_ops_only(dag)))
+        return (*result, reference_op_nodes(dag))
     return result
 
 

@@ -51,9 +51,11 @@ At a high level, `naive_dag` / `naive_n_dag`:
   AOD instead: only atoms that change traps get `load`/`unload`, and the kept
   atom appears as a `move` in the same step (it passes over its own home site).
 
-QASM barriers are treated as hard global scheduling boundaries. They are not
-printed as physical actions, but no gate or measurement may be moved from one
-side of a barrier to the other.
+QASM barriers are hard scheduling boundaries for the qubits they name. They
+are not printed as physical actions. No gate or measurement on a barrier's
+qubits may move from one side of it to the other, or share a timestep with
+one from the other side; operations on other qubits may cross it. A barrier
+on every qubit (`barrier q;`) is therefore a global boundary.
 
 ## Config Notes
 
@@ -152,7 +154,7 @@ partitions or prove globally minimum physical duration.
   Reset-identified ancilla preference determines the proxy mover when enabled;
   otherwise the first operand is used. Shared-operand gates and repeated
   occurrences remain in separate layers. Non-CZ wire dependencies, classical
-  destinations, and global barrier boundaries are preserved.
+  destinations, and barrier boundaries (on the barrier's qubits) are preserved.
 - `reorder_cz_by_displacement`: compatibility option that enables the same
   placement-aware pass independently. Setting it to `false` does not disable
   displacement packing when `reorder_cz=true`. Both options require QASM
