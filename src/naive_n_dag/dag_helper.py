@@ -1,3 +1,9 @@
+"""Circuit loading and preparation for the scheduler.
+
+QASM and timestep-text loaders, the two-qubit DAG with its single-qubit
+context, schedule-line formatting, and the commuting-CZ re-layering.
+"""
+
 from __future__ import annotations
 
 import math
@@ -180,8 +186,8 @@ def build_two_qubit_only_dag_with_single_qubit_context(
     The returned tuple is:
     - `two_qubit_dag`: DAG containing 2Q operations and barrier separators.
     - `single_layers`: list whose length is `len(list(two_qubit_dag.layers())) + 1`.
-      `single_layers[i]` holds lines to run before two-qubit layer `i`, and the
-      last entry holds lines to run after the final two-qubit layer.
+      `single_layers[i]` holds the nodes to run before two-qubit layer `i`, and
+      the last entry holds the nodes to run after the final two-qubit layer.
 
     Measurements are included in `single_layers`. Barriers are retained in the
     reduced DAG on their own qubits and are not returned as physical

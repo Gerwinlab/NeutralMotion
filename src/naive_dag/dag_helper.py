@@ -25,7 +25,7 @@ def load_qasm_to_dag(qasm_path: str | Path) -> DAGCircuit:
 
 
 def dag_with_gate_ops_only(dag: DAGCircuit) -> list[DAGOpNode]:
-    """Return source-ordered op nodes with SWAPs removed and global barriers."""
+    """Return source-ordered op nodes with SWAPs dropped and every barrier widened to all qubits."""
     gate_only = dag.copy_empty_like()
 
     for node in sorted(dag.op_nodes(), key=lambda item: item._node_id):
@@ -40,7 +40,7 @@ def dag_with_gate_ops_only(dag: DAGCircuit) -> list[DAGOpNode]:
 
 #TODO: This way of loading and making a dag can be limiting. Can do 1million+ gates but needs modification for future use.
 def load_qasm_to_gate_dag(qasm_path: str | Path) -> DAGCircuit:
-    """Load a QASM file and return a DAGCircuit with only gate operations."""
+    """Load a QASM file and return its op nodes as filtered by ``dag_with_gate_ops_only``."""
     return dag_with_gate_ops_only(load_qasm_to_dag(qasm_path))
 
 

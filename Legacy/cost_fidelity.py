@@ -2,7 +2,7 @@
 """Which placement cost is better: F ("fastsa") or F_time ("time")?
 
 F is no longer in src/ (F_time replaced it on 2026-10-20); this script takes it
-from benchmarks/legacy_f.py and hands each cost to the placers through their
+from Legacy/legacy_f.py and hands each cost to the placers through their
 ``cost=`` argument, so the comparison stays reproducible.
 
 The scheduler is the judge. It is run only here, offline, to time layouts;
@@ -38,7 +38,7 @@ inputs/qasm_files/general/). Two physics settings change which time term dominat
 
 Usage (from the repo root):
 
-    ~/Quantum_Class/Phys765_Test/bin/python Legacy/cost_fidelity.py \\
+    python Legacy/cost_fidelity.py \\
         --workers 10 --csv benchmarks/output/results/cost_fidelity.csv
 
 Quick check: --circuits qft_18 --physics slow --sample-scale 0.2 --fastsa-seeds 1
@@ -62,14 +62,14 @@ sys.path.insert(0, str(REPO / "src"))
 CIRCUIT_DIR = REPO / "inputs" / "qasm_files" / "general"
 
 PHYSICS = {
-    # QFT-29's config: slow motion, so travel dominates.
+    # Slow motion (QFT-29 config's 0.55 m/s, 2750 m/s^2), so travel dominates.
     "slow": dict(
         transfer_SLM_AOD="15 microseconds", max_acceleration="2750 m/s^2", max_velocity="0.55 m/s",
         lattice_spacing="15 micrometers", average_single_gate_time="1 microseconds",
         average_two_gate_time="0.27 microseconds", t_switch="1.5 microseconds",
         movement_shape="trapezoidal", T_reuse=3,
     ),
-    # bb144's config: fast motion, so transfers and pulses weigh more.
+    # Fast motion (bb144 config's 10 m/s, 20000 m/s^2, Cubic_Spline), so transfers and pulses weigh more.
     "fast": dict(
         transfer_SLM_AOD="15 microseconds", max_acceleration="20000 m/s^2", max_velocity="10 m/s",
         lattice_spacing="8 micrometers", average_single_gate_time="0.1 microseconds",
@@ -88,8 +88,8 @@ GENERATED = ("qaoa_24", "random_24", "qv_20", "heisenberg_24", "adder_18")
 CIRCUITS = (*REPO_CIRCUITS, *GENERATED)
 COSTS = ("fastsa", "time")
 COST_COLUMN = {"fastsa": "F", "time": "F_time"}
-# FastSA settings: main's current defaults (Fastsa_fill). The 2026-10-20 runs
-# in COST_FUNCTIONS.md section 4 used P = 0.99 and threshold 1e-3, the defaults then.
+# FastSA settings: naive_n_dag.main's current Fastsa_fill defaults. The original
+# 2026-10-20 comparison used P = 0.99 and threshold 1e-3, the defaults then.
 FASTSA_SETTINGS = dict(stage1_iterations=200, stage2_iterations=100, initial_accept_prob=0.999,
                        c=100.0, stage3_temperature_threshold=0.0, stage3_max_iterations=1000,
                        stage3_section_size=4)
@@ -108,6 +108,7 @@ def make_costs(ctx):
 # ---------------------------------------------------------------------------
 
 def _regular_graph(n, degree, seed):
+    """Sorted edges of a seeded random ``degree``-regular graph on ``n`` nodes."""
     import networkx as nx
     return sorted(tuple(sorted(e)) for e in nx.random_regular_graph(degree, n, seed=seed).edges())
 
@@ -157,6 +158,7 @@ def _generate(name):
 
 
 def circuit_path(name):
+    """QASM path for a benchmark circuit, writing generated ones on first use."""
     if name in REPO_CIRCUITS:
         return REPO_CIRCUITS[name]
     path = CIRCUIT_DIR / f"{name}.qasm"
@@ -233,6 +235,10 @@ def job_context(name, physics):
 
 
 def run_job(job):
+    """Run OUTCOME, FIDELITY and EASE for one (circuit, physics) job.
+
+    Returns ``(summary, records)``: one row of metrics and every scored layout.
+    """
     name, physics, budget, fastsa_seeds, scale = job
     warnings.simplefilter("ignore")
     from naive_n_dag import deterministic_placement as dp

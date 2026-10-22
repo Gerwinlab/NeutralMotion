@@ -1,3 +1,10 @@
+"""Command-line entry point for the single-mover ``naive_dag`` scheduler.
+
+Usage (from the repo root):
+
+    PYTHONPATH=src python -m naive_dag <config.json> <qasm_file> [schedule_output_dir]
+"""
+
 from __future__ import annotations
 
 import argparse

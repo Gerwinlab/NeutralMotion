@@ -1,3 +1,5 @@
+"""Single-qubit timestep packing and the textual schedule writer."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -247,7 +249,11 @@ def write_timed_schedule(
     rydberg_radius: str | None = None,
     qubit_registers: str | None = None,
 ) -> None:
-    """Write a gate-only textual schedule with optional initialization section.
+    """Write the textual schedule: a header, an optional ``T=0`` initialization,
+    then one timestep per gate event or per batch of moves.
+
+    Moves batch while they share a kind (and, for highway moves, a
+    displacement) and touch distinct qubits.
 
     ``qubit_registers`` (``l=q[0:63] r=q[63:126] ...``) records how a
     multi-register QASM's qubits were numbered; the schedule uses ``q[i]``.

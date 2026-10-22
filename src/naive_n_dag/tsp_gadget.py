@@ -6,8 +6,8 @@ another. Here each city is a cluster of its four side sites (a generalized
 TSP), Noon-Bean turns the clusters into an asymmetric TSP, and the
 Jonker-Volgenant in/out split turns that into the symmetric TSP Concorde
 solves. An optimal tour of the gadget is an optimal visit order *and* side
-choice under parity-routed motion times. TSP_GADGET.md has the construction
-and the proofs; this module only builds the matrix and decodes tours.
+choice under parity-routed motion times. This module only builds the
+integer matrix and decodes solver tours.
 
 Pure graph code: routing and timing come in as callables, so nothing here
 depends on the scheduler.
@@ -44,7 +44,8 @@ class GadgetGraph:
     and cluster C + 1 the unload terminal. ``clusters`` lists each cluster's
     ATSP nodes in Noon-Bean cycle order. Edges absent from the gadget weigh
     ``missing`` = 4K, which already makes any tour using one at least K worse
-    than a faithful tour (TSP_GADGET.md, "Absent edges").
+    than a faithful tour. ``cluster_layers`` is each cluster's layer, with
+    the terminals at -1 and L.
     """
 
     weights: tuple[tuple[int, ...], ...]
@@ -64,7 +65,7 @@ def build_gadget(cities, start_offset, route, transfer, upper_bound):
     (four transfer directions) or the AOD offset of a retained load.
     ``route(a, b)`` is the parity-routed motion seconds between two sites and
     ``transfer(step)`` the seconds of one cardinal SLM<->AOD transfer.
-    ``upper_bound`` is the exact motion seconds of any feasible tour (the
+    ``upper_bound`` is the exact motion seconds of one feasible tour (the
     relaxed tour); K must exceed the optimum, and this bounds it.
     """
     if not cities:
@@ -118,10 +119,12 @@ def build_gadget(cities, start_offset, route, transfer, upper_bound):
             return 0.0
         return depart[a] + route(node_site[a], node_site[b]) + arrive[b]
 
-    # Integer budget (TSP_GADGET.md §6). Every weight is at most 4K <= EDGE_CAP.
+    # Integer budget: K is capped so every weight is at most 4K <= EDGE_CAP.
     # Concorde's exact bounds use fixed-point arithmetic with about an int32
-    # range ("OVERFLOW in CCbigguy_addmult" aborts the process), so a faithful
-    # tour, (W+1)*K, stays at most INT_MAX/8, and even n absent edges fit.
+    # range ("OVERFLOW in CCbigguy_addmult" aborts the process). An optimal
+    # faithful tour pays K per cycle arc and 2K per inter-cluster arc (`total`
+    # K's in all) plus less than K of motion, so it weighs at most
+    # (total + 1) * K <= INT_MAX/8, and even n absent edges (4K each) fit.
     n = 2 * count
     total = sum(len(nodes) + 1 for nodes in clusters)
     k_max = min(EDGE_CAP // 4, INT_MAX // (8 * (total + 1)), INT_MAX // (4 * n))
@@ -188,6 +191,7 @@ def decode_gadget_tour(tour, graph):
         raise GadgetError("Solver tour traverses in/out pairs in both directions.")
     if orientation == {False}:
         tour.reverse()
+    # Start on an in node, so every other entry is an ATSP node in visit order.
     first = next(i for i, node in enumerate(tour) if node % 2 == 0)
     tour = tour[first:] + tour[:first]
     sequence = [node // 2 for node in tour[::2]]

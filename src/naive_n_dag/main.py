@@ -1,3 +1,9 @@
+"""Config validation and the naive_n_dag pipeline.
+
+Load the circuit, place the qubits (``fill_strategy``), optionally re-layer
+commuting CZs by displacement, schedule the motion and write the schedule.
+"""
+
 from __future__ import annotations
 
 import json
@@ -107,7 +113,7 @@ def _resolve_path(value: Any, base_dir: pathlib.Path) -> Any:
 
 
 def resolve_config_paths(config: Mapping[str, Any], base_dir: pathlib.Path) -> dict[str, Any]:
-    """Return a copy of ``config`` with qasm directory fields resolved to absolute paths."""
+    """Return a copy of ``config`` with its path fields resolved to absolute paths."""
     resolved: dict[str, Any] = dict(config)
     for key in ("qasm_dir", "qasm_base_dir", "initial_layout", "step_order"):
         if key in resolved:

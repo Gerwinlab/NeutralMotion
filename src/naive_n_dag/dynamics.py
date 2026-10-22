@@ -1,3 +1,12 @@
+"""Layered AOD movement planning, displacement tours, timing, and validation.
+
+Each DAG layer of two-qubit gates is split into rigid AOD loads, each load's
+gate visits are ordered by a displacement tour (relaxed TSP, alignment, or
+the exact gadget in ``tsp_gadget``), and a side DP picks the interaction site
+of every visit. ``schedule_circuit`` runs the whole circuit, validates it with
+``validate_schedule``, and times it with ``schedule_duration``.
+"""
+
 from __future__ import annotations
 
 import bisect
@@ -552,7 +561,7 @@ def _displacement_layer_labels(vectors, layer_ids):
 
 
 def _alignment_order(vectors, labels, start_offset):
-    """Fallback order: alignment heuristic within each layer, layers in order."""
+    """Alignment-heuristic order within each layer, layers in order."""
     order = []
     for label in sorted(set(labels)):
         buckets = {}
@@ -571,8 +580,9 @@ def _alignment_order(vectors, labels, start_offset):
 class TourStats:
     """Counters for displacement-tour solves, including discarded trial plans.
 
-    ``solves`` counts groups with at least two distinct cities. Each such
-    solve prices the relaxed and alignment orders and, under ``tour_ordering:
+    ``solves`` counts groups with at least two distinct cities. Unless
+    ``tour_ordering`` is ``"alignment"``, each such solve prices the relaxed
+    and alignment orders and, under ``tour_ordering:
     "tsp_gadget"``, an exact one (``enumerated`` for tiny groups, else ``gadget``).
     ``exact_wins`` / ``alignment_wins`` count groups where that order was
     strictly fastest, saving ``seconds_saved`` of motion against the relaxed
@@ -604,6 +614,7 @@ def _layer_orders(cities):
 
 
 def _layer_order_count(cities):
+    """How many orders ``_layer_orders`` yields: the product of per-layer factorials."""
     counts = defaultdict(int)
     for layer, _ in cities:
         counts[layer] += 1
@@ -632,7 +643,7 @@ def _relaxed_city_order(cities, vectors, labels, config, start_offset, tour_solv
 
 
 def _gadget_city_order(cities, config, start_offset, upper_bound, gadget_solver=None):
-    """City order of the exact Noon-Bean/Jonker-Volgenant gadget tour (see TSP_GADGET.md).
+    """City order of the exact Noon-Bean/Jonker-Volgenant gadget tour (``tsp_gadget``).
 
     ``gadget_solver`` maps the integer matrix to a tour; it defaults to
     Concorde under ``concorde_time_limit``. The decoded tour is checked for
@@ -764,6 +775,7 @@ def _order_group_displacements(
 
 @lru_cache(maxsize=8192)
 def _profile_seconds(distance: float, velocity: float, acceleration: float) -> float:
+    """Rest-to-rest move time on a trapezoidal profile (triangular if too short to cruise)."""
     if distance == 0:
         return 0.0
     ramp_distance = velocity * velocity / acceleration
@@ -773,6 +785,7 @@ def _profile_seconds(distance: float, velocity: float, acceleration: float) -> f
 
 
 def _step_seconds(step, config):
+    """Motion seconds of one straight AOD step (grid displacement) under ``movement_shape``."""
     spacing, velocity, acceleration = config.get("_motion_parameters") or _motion_parameters(config)
     dr = abs(step[0]) * spacing
     dc = abs(step[1]) * spacing
@@ -785,6 +798,7 @@ def _step_seconds(step, config):
 
 
 def _motion_parameters(config):
+    """(grid step in m, max velocity, max acceleration); a grid step is lattice_spacing / 2."""
     return (
         config["lattice_spacing"].to("meter").magnitude / 2,
         config["max_velocity"].to("meter/second").magnitude,
@@ -793,7 +807,10 @@ def _motion_parameters(config):
 
 
 def _highway_segment(start, end):
-    """Check the whole straight segment, including interior SLM sites."""
+    """True when start->end is one straight move along an odd row or column.
+
+    Such a segment passes no SLM site, interior ones included.
+    """
     if not (_is_valid_aod_position(start) and _is_valid_aod_position(end)):
         return False
     dr, dc = _movement_vector(start, end)
@@ -806,7 +823,8 @@ def parity_route_moves(start, end, config=None):
     """Route between AOD sites along odd rows/columns, as displacements.
 
     Compare paths through adjacent odd-odd intersections. A same-row shortcut
-    is legal only on an odd row (similarly for an odd column).
+    is legal only on an odd row (similarly for an odd column). Routes are
+    ranked by motion seconds with ``config``, else by grid distance.
     """
     if not (_is_valid_aod_position(start) and _is_valid_aod_position(end)):
         raise ValueError("Highway route endpoints must be AOD sites.")
@@ -854,6 +872,12 @@ _CARDINAL = ((1, 0), (-1, 0), (0, 1), (0, -1))
 
 @dataclass(frozen=True)
 class _SideTour:
+    """Result of ``_optimize_visit_sides``.
+
+    The load transfer step, the chosen AOD offset of each visit, the route
+    steps into each visit, the return-and-unload steps, and total motion seconds.
+    """
+
     load_step: tuple[int, int]
     visit_offsets: tuple[tuple[int, int], ...]
     routes: tuple[tuple[tuple[int, int], ...], ...]
@@ -935,6 +959,7 @@ def _translate(ids, positions, step, events, moves):
 
 
 def _gate_parts(line):
+    """Yield ``(statement;, pulse name, qubit ids)`` for each statement of a gate line."""
     for statement in line.split(";"):
         statement = statement.strip()
         if statement:
@@ -1138,10 +1163,15 @@ def _return_plan(plan, homes, config):
 
 
 def _reuse_group_allowed(previous_ids, current_ids, horizon, stage_index, next_use_by_id):
+    """Whether movers ``current_ids`` may ride the retained load ``previous_ids``.
+
+    They must be a subset of it, and every other loaded atom must be needed
+    again within ``horizon`` (T_reuse) layers of ``stage_index``.
+    """
     previous, current = set(previous_ids), set(current_ids)
     if not previous or not current or not current <= previous:
         return False
-    # Compatibility: zero still permits identical-set continuation.
+    # T_reuse = 0 still allows continuing with exactly the same load.
     if horizon == 0:
         return current == previous
     if horizon == float("inf") or horizon == "Inf":
@@ -1162,7 +1192,10 @@ def _preferred_mover(pair, config):
 
 
 def _reuse_movers(nodes, previous_ids, config):
-    """Single legality predicate used for both reuse selection and execution."""
+    """Movers that run ``nodes`` on the retained load, or None if that is illegal.
+
+    Single legality predicate used for both reuse selection and execution.
+    """
     previous = set(previous_ids)
     movers = []
     for node in nodes:
@@ -1225,7 +1258,7 @@ def _build_groups(nodes, positions, config, next_use=None):
             q, vector = choices[0]
             groups.append(([node], [q], [vector]))
 
-    #now we order the movers based on displacement
+    # Canonical order within each group: by displacement, then mover.
     for group, movers, vectors in groups:
         ordered = sorted(
             zip(group, movers, vectors),
@@ -1241,6 +1274,11 @@ def _build_groups(nodes, positions, config, next_use=None):
 
 
 def _execute_group(plan, nodes, movers, homes, config, reuse=False):
+    """Run one group's gates on a single rigid load and leave that load active.
+
+    With ``reuse`` the movers ride the retained load ``plan.ids``; otherwise
+    the previous load must already have been returned.
+    """
     if reuse:
         if _reuse_movers(nodes, plan.ids, config) != movers:
             raise ValueError("Cannot reuse an AOD load containing both interacting operands.")
@@ -1258,7 +1296,7 @@ def _execute_group(plan, nodes, movers, homes, config, reuse=False):
         pair = op_node_signature(node)[2]
         partner = pair[1] if pair[0] == mover else pair[0]
         home_targets.append(_movement_vector(homes[mover], plan.positions[partner]))
-    # Order home-relative targets with the side-priced TSP tour.
+    # Order home-relative targets by the fastest candidate tour.
     order = _order_group_displacements(home_targets, config, start_offset=start_offset)
 
     nodes = [nodes[i] for i in order]
@@ -1337,12 +1375,14 @@ def _reset_layer(plan, nodes, homes, config, next_use=None):
 
 
 def _closed_cost(plan, homes, config):
+    """Duration of ``plan``'s events plus returning its active load home."""
     ending = _Plan(dict(plan.positions), list(plan.ids), [])
     _return_plan(ending, homes, config)
     return schedule_duration(plan.events + ending.events, config)
 
 
 def _plan_layer(nodes, initial, homes, config, stage, next_use, allow_reuse=True):
+    """Cheapest plan for one layer: a full reset, or eligible gates on the retained load first."""
     reset = initial.copy()
     _reset_layer(reset, nodes, homes, config, next_use)
     if not allow_reuse or not initial.ids or not nodes:
@@ -1634,6 +1674,7 @@ def _optimize_retained_loads(events, layers, homes, config, singles=None):
             occurrences[format_node_line(node)].append((stage, node))
 
     def reroute(interval, ids):
+        """Replan one load-to-unload interval as one tour; single-layer ones are kept."""
         visits, targets, labels, contexts = [], [], [], {}
         pending = []
         stage, last_layer = -1, None
@@ -1751,6 +1792,7 @@ def _hold_reloaded_atoms(events):
 
 
 def _layered_candidate(layers, singles, homes, config, allow_reuse):
+    """Plan the circuit layer by layer, then reroute retained loads and hold reloads."""
     from .scheduling import single_qubit_layer_time
     next_uses = [{} for _ in layers]
     future = {}
@@ -1785,6 +1827,8 @@ def _layered_candidate(layers, singles, homes, config, allow_reuse):
 
 @dataclass
 class CircuitSchedule:
+    """``schedule_circuit`` result: the selected candidate's plan and every candidate's time."""
+
     events: list[ScheduleEvent]
     duration: Any
     selected: str
@@ -1804,7 +1848,7 @@ def schedule_circuit(layers, singles, qubits, config, reference_nodes=None):
     (``individual``), so a run never does worse than moving one atom at a
     time. Both are validated and timed with the common model; the cheaper is
     returned (``reuse`` on ties).
-    The side-priced TSP tour and side DP apply to ordinary groups regardless
+    The ``tour_ordering`` tour and side DP apply to ordinary groups regardless
     of CZ reordering. Planning or validation failures propagate.
     """
     if "_side_ordering" in config:

@@ -1,3 +1,17 @@
+"""Baseline: run the PowerMove and Enola compilers on a QASM circuit and report their times.
+
+Both artifacts are imported from a ``PowerMove_AE`` checkout next to this repo
+(``../PowerMove_AE``). The circuit is transpiled to {u1, u2, u3, cz, id} and
+split into CZ blocks; each tool's transfer and movement times come from its
+own model, and gate time is the number of CZ stages times T_RYDBERG_US. Results
+are printed only.
+
+Usage (from the repo root):
+
+    python benchmarks/powermove_script.py \\
+        --qasm inputs/qasm_files/qLDPC/bb_n144_k12_d12_cz_syndrome.qasm
+"""
+
 import argparse
 import contextlib
 import io
@@ -23,17 +37,19 @@ from Stage_Scheduler import storage_gate_scheduling as powermove_stage_schedulin
 from router.codegen import T_ACTIVATE
 
 
-T_RYDBERG_US = 0.36
+T_RYDBERG_US = 0.36  # time charged per CZ gate stage
 # Both artifacts charge this fidelity per atom transfer, so the number of atom
 # transfers is log(cir_fidelity_atom_transfer) / log(FIDELITY_ATOM_TRANSFER).
 FIDELITY_ATOM_TRANSFER = 0.999
 
 
 def _atom_transfers(fidelity_atom_transfer: float) -> int:
+    """Number of atom transfers implied by an artifact's total transfer fidelity."""
     return round(math.log(fidelity_atom_transfer) / math.log(FIDELITY_ATOM_TRANSFER))
 
 
 def load_cz_blocks(qasm_path: str):
+    """Transpile the QASM to the artifacts' basis; return (num_qubits, CZ blocks)."""
     circ = QuantumCircuit.from_qasm_file(qasm_path)
     test_circuit = transpile(
         circ,
@@ -50,6 +66,7 @@ def run_powermove(
     quiet: bool,
     storage_flag: bool = False,
 ) -> dict:
+    """Compile with PowerMove (``mvqc``) and return its stage counts and times in us."""
     t0 = time.time()
     n, cz_blocks = load_cz_blocks(qasm_path)
     row = math.ceil(math.sqrt(n))
@@ -93,6 +110,7 @@ def run_powermove(
 
 
 def run_enola(qasm_path: str, d: int, quiet: bool) -> dict:
+    """Compile with Enola and return its stage counts and times in us."""
     t0 = time.time()
     n, cz_blocks = load_cz_blocks(qasm_path)
     row = math.ceil(math.sqrt(n))
@@ -153,7 +171,7 @@ def print_result(name: str, result: dict) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run PowerMove then Enola on the [[144,12,12]] BB syndrome circuit"
+        description="Run PowerMove then Enola on a QASM circuit (default: the [[144,12,12]] BB syndrome circuit)"
     )
     parser.add_argument(
         "--qasm",

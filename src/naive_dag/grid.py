@@ -13,7 +13,9 @@ class GridNode:
 """
 grid.py
 
-Utilities for generating and managing a neutral atom grid with spacing defined by the lattice spacing.
+Utilities for generating and managing a neutral atom grid. Grid indices are
+half lattice steps: SLM traps sit at even-even (row, col), ``lattice_spacing``
+apart, and odd rows/columns are the AOD lanes between them.
 
 Each grid node stores:
     -Physical coordinates (x,y), starting at (0,0)
@@ -66,7 +68,7 @@ def generate_grid(dimensions: List[int],lattice_spacing) -> List[List[GridNode]]
     return grid
 
 def place_qubit(grid: List[List[GridNode]],row:int, col:int,qubit_id: int) ->Qubit:
-    """Create a qubit id and place it at a specific grid node."""
+    """Create ``Qubit(qubit_id)`` at grid node ``(row, col)``; raise if the node is occupied."""
     node = grid[row][col]
     if node.is_occupied():
         raise ValueError(f"Node ({row},{col}) is already occupied.")
@@ -76,18 +78,13 @@ def place_qubit(grid: List[List[GridNode]],row:int, col:int,qubit_id: int) ->Qub
 
 def move_qubit(qubit: Qubit, new_node: GridNode) -> None:
     """Move ``qubit`` to ``new_node`` while preserving occupancy invariants."""
-    # If the node is occupied by a *different* qubit, error
     if new_node.is_occupied() and new_node.qubit is not qubit:
         raise ValueError("Target node is already occupied by another qubit.")
 
-    # If it's the same node, nothing to do
     if new_node is qubit.node:
         return
 
-    # Free the old node
     qubit.node.qubit = None
-
-    # Occupy the new node
     new_node.qubit = qubit
     qubit.node = new_node
 

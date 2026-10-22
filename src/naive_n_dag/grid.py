@@ -1,18 +1,22 @@
 #TODO: Check if the number of traps is enough for the number of qubits and warn if your is an excess number of traps
-
-from dataclasses import dataclass
-from typing import Any, List, Mapping, Optional, Tuple
-import random
 """
 grid.py
 
 Utilities for generating and managing a neutral atom grid with spacing defined by the lattice spacing.
+
+The grid has (2*rows - 1) x (2*cols - 1) nodes, lattice_spacing / 2 apart:
+even-even nodes are SLM traps, and atoms in the AOD travel along the odd
+rows and columns between them.
 
 Each grid node stores:
     -Physical coordinates (x,y), starting at (0,0)
     -Grid indices (row,col)
     -qubit assignment
 """
+
+from dataclasses import dataclass
+from typing import Any, List, Mapping, Optional, Tuple
+import random
 
 @dataclass
 class GridNode:
@@ -49,12 +53,12 @@ def generate_grid(dimensions: List[int],lattice_spacing:float) -> List[List[Grid
 
     Parameters
     ----------
-    dimension : List[int] - given by initializing json file.
+    dimensions : List[int] - [rows, cols] of SLM traps, given by initializing json file.
     lattice_spacing : float - SLM trap pitch, given by initializing json file.
 
     Returns
     -------
-    List[List[GridNode]] - Matrix of Nodes that contain qubits.
+    List[List[GridNode]] - (2*rows - 1) x (2*cols - 1) matrix of empty Nodes.
     """
     rows,cols=dimensions
     grid = []
@@ -75,7 +79,7 @@ def place_qubit(grid: List[List[GridNode]],row:int, col:int,qubit_id: int) ->Qub
 
     Parameters
     ----------
-    Matrix/Grid : List[List[GridNode]] - created by generate_grid and has dimensions specified in Json file
+    grid : List[List[GridNode]] - created by generate_grid and has dimensions specified in Json file
     row : Int
     col : Int - location of node in grid
     qubit_id : int - number of qubit that is placed in spot.
@@ -100,11 +104,11 @@ def move_qubit(qubit: Qubit, new_node: GridNode) -> None:
 
 def naive_fill(grid: List[List[GridNode]], n:int, seed: int=0, random_fill: bool = True) -> List[Qubit]:
     """
-    Assign qubits 0..n-1 to grid locations where both row and column indices are even. Qubits should be placed on the outside and have a minor node between them.
+    Assign qubits 0..n-1 to free grid locations where both row and column indices are even (the SLM traps).
 
     Parameters
     ----------
-    Grid : 2D list of GridNoe
+    grid : 2D list of GridNode
     n : number of qubits
     seed : random seed (used only if random_fill=True)
     random_fill : bool
@@ -148,7 +152,8 @@ def initial_layout_fill(
     """
     Assign qubits 0..n-1 to explicit [row, col] coordinates from a layout list.
 
-    The i-th coordinate corresponds to qubit i.
+    The i-th coordinate corresponds to qubit i. Coordinates are SLM trap
+    indices: [row, col] is grid node (2*row, 2*col).
     """
     if len(coords_array) < n:
         raise ValueError(
@@ -206,7 +211,7 @@ def Fastsa_Fill(
     return_result: bool = False,
     reference_nodes=None,
 ) -> List[Qubit] | tuple[List[Qubit], Any]:
-    """Place qubits using Fast-SA best positions and return placed qubit objects."""
+    """Place qubits at Fast-SA's best positions; also return its FastSAResult if ``return_result``."""
     from .FastSA_Solver import run_fastsa
     result = run_fastsa(
         grid,

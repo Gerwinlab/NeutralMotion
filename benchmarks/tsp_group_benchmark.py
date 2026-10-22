@@ -8,11 +8,17 @@ Compares, for one group (one AOD load) at a time:
   concorde         relaxed side-priced TSP solved by Concorde
   gadget           exact Noon-Bean + Jonker-Volgenant gadget solved by Concorde
 
+"Relaxed" prices every edge with its cheapest pair of interaction sides, so a
+tour may arrive at a city on one side and leave from another. The gadget
+makes each city a cluster of its four side sites and converts that
+generalized TSP into a symmetric TSP, so its optimum is an optimal order and
+side choice.
+
 Every method only produces a visit ORDER. Each order is then timed the same
 way the scheduler times it: ``_optimize_visit_sides`` picks the best
 interaction site for every gate and returns the exact parity-routed motion
 time. So "quality" below is always real motion time, comparable across
-methods. See TSP_GADGET.md for what each method is.
+methods.
 
 Two things are measured:
 
@@ -28,14 +34,15 @@ dropped, so the city count can come out slightly below ``size``), optionally
 spread over several layers. Within one (size, seed), every method solves the
 same instance.
 
-Usage (from the repository root; uses the Phys765_Test environment):
+Usage (from the repository root, with the package installed):
 
-    ~/Quantum_Class/Phys765_Test/bin/python benchmarks/tsp_group_benchmark.py \\
-        --sizes 50 200 500 1000 --time-limits 0.1 1 10 60 --csv results.csv
+    python benchmarks/tsp_group_benchmark.py \\
+        --sizes 50 200 500 1000 --time-limits 0.1 1 10 60 \\
+        --csv benchmarks/output/results/tsp_group_benchmark.csv
 
 Quick smoke test (seconds):
 
-    ~/Quantum_Class/Phys765_Test/bin/python benchmarks/tsp_group_benchmark.py \\
+    python benchmarks/tsp_group_benchmark.py \\
         --sizes 20 --time-limits 0.1
 
 Rough costs, measured 2026-10-17 on one core (single layer, Cubic_Spline):
@@ -69,8 +76,8 @@ from naive_n_dag import dynamics as d  # noqa: E402
 from naive_n_dag import tsp_gadget as tg  # noqa: E402
 from naive_n_dag.main import _coerce_unit_config  # noqa: E402
 
-# Physics used when --config is not given: the same values as the test
-# fixtures (8 um lattice, 10 m/s, 20000 m/s^2, Cubic_Spline moves).
+# Physics used when --config is not given: the fast-motion settings of the
+# qLDPC configs (8 um lattice, 10 m/s, 20000 m/s^2, Cubic_Spline moves).
 DEFAULT_PHYSICS = dict(
     transfer_SLM_AOD="15 microseconds",
     max_acceleration="20000 m/s^2",

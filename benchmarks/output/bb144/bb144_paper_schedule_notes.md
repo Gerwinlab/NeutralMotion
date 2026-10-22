@@ -110,10 +110,10 @@ and all 288 per-qubit gate sequences against the original QASM.
 These are the repository's discrete checks. They do not establish physical
 crosstalk safety or analog path clearance beyond that model.
 
-From `/home/gage/Quantum_Class`:
+From the repository root:
 
 ```bash
-Phys765_Test/bin/python Phys765/benchmarks/bb144_paper_schedule.py
+python benchmarks/bb144_paper_schedule.py
 ```
 
 The generator writes the optimized schedule, timing/validation JSON, and CSV
@@ -146,10 +146,10 @@ triangular motion profile: `2*sqrt(distance/a)` rather than the paper's
 `sqrt(2/3)` times the Equation (3) estimate for these same segments. The
 2.404564 ms result is not an exact reproduction of the paper's motion model.
 
-Reproduce from `/home/gage/Quantum_Class`:
+Reproduce from the repository root:
 
 ```bash
-Phys765_Test/bin/python Phys765/benchmarks/bb144_paper_schedule.py \
-  --config Phys765/benchmarks/configs/bb144/bb144_paper_layout/bb144_n_paper_acceleration.json \
-  --output Phys765/benchmarks/output/bb144_paper_acceleration.schedule.txt
+python benchmarks/bb144_paper_schedule.py \
+  --config benchmarks/configs/bb144/bb144_paper_layout/bb144_n_paper_acceleration.json \
+  --output benchmarks/output/bb144_paper_acceleration.schedule.txt
 ```

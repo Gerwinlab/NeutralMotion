@@ -3,8 +3,8 @@
 F_time estimates, in microseconds, the two-qubit execution time that depends
 on the placement: every AOD load pays its transfers, every stop a Rydberg
 pulse, and each load's tour through its stops is timed with the router's
-motion law. See COST_FUNCTIONS.md. It replaced the original FastSA objective F
-on 2026-10-20 (a copy of F is kept in benchmarks/legacy_f.py).
+motion law. It replaced the original FastSA objective F, a copy of which
+is kept in Legacy/legacy_f.py.
 
 Layouts are lists indexed by qubit of ``(row, col)`` SLM site indices (grid
 coordinates ``(2*row, 2*col)``), or FastSA-style position maps
@@ -21,7 +21,7 @@ from .dag_helper import _commuting_cz_sections, extract_index_from_bit
 # Removed config key; main rejects it with this message.
 COST_FUNCTION_REMOVED = (
     "Config key 'cost_function' was removed: placement always uses F_time, the "
-    "time-based cost (COST_FUNCTIONS.md). Delete the key."
+    "time-based cost. Delete the key."
 )
 
 
@@ -53,6 +53,7 @@ def _two_qubit_layers(two_qubit_dag):
 # ---------------------------------------------------------------------------
 
 def _canonical(v):
+    """One representative of ``{v, -v}``, for movers that may go either way."""
     x, y = v
     return (-x, -y) if x < 0 or (x == 0 and y < 0) else (x, y)
 
@@ -73,10 +74,12 @@ class TimeCost:
     * stops: one Rydberg pulse per distinct displacement in a load (a free
       mover counts v and -v once, since the router may move either operand);
     * travel: a nearest-neighbour tour from home through the load's stops and
-      back. A leg is the parity-highway route (``dynamics._route``) between
-      sites beside the two stops, minimised over the sides, as the TSP prices
-      its edges; leaving and returning home include the load/unload step.
-      Atoms move along odd rows and columns, never diagonally.
+      back. The order is chosen on legs minimised over the sides, as the TSP
+      prices its edges: the parity-highway route (``dynamics._route``) between
+      sites beside the two stops. The order is then priced with one side per
+      stop, as the router's side DP does (see ``_tour``); leaving and returning
+      home include the load/unload step. Atoms move along odd rows and
+      columns, never diagonally.
 
     The layers are the DAG's two-qubit layers, or, with ``reorder_cz``, the
     layers ``dag_helper.reorder_cz_layers_by_displacement`` will build for
@@ -85,7 +88,7 @@ class TimeCost:
     split into matchings by ``dag_helper._color_cz_block`` and packed first
     fit, exactly as the scheduler does. Not modelled: load reuse across
     layers, Rydberg-radius pulse splitting, and the scheduler's exact tour
-    order and side choice (TSP or alignment ordering, side DP).
+    order (TSP or alignment ordering).
     """
 
     name = "time"

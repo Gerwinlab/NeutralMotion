@@ -1,3 +1,10 @@
+"""Fast-SA initial placement (``fill_strategy: "fastsa"``).
+
+The three-stage fast simulated annealing of Chen & Chang (2006), scoring
+layouts with F_time (placement_cost.py). Positions here are grid
+coordinates ``(x, y) = (col, row)``; qubits sit on even-even nodes.
+"""
+
 from __future__ import annotations
 
 from collections import Counter
@@ -227,8 +234,8 @@ def run_fastsa(
 
     Layouts are scored by F_time (placement_cost.py); ``reference_nodes`` let
     it model ``reorder_cz``'s post-placement layering. ``cost`` substitutes
-    any object with ``evaluate_positions`` (the benchmarks pass the legacy F,
-    benchmarks/legacy_f.py).
+    any object with ``evaluate_positions`` (Legacy/cost_fidelity.py passes
+    the legacy F from Legacy/legacy_f.py).
 
     The cost is normalised before annealing, as Fast-SA prescribes (Chen &
     Chang 2006): it is divided by the mean magnitude of the cost over the
@@ -242,9 +249,8 @@ def run_fastsa(
     ``FastSAResult.cost_scale`` converts back.
 
     Defaults P = 0.999 and threshold 0 (stage 3 runs ``stage3_max_iterations``)
-    were tuned on general circuits with benchmarks/fastsa_tuning.py
-    (COST_FUNCTIONS.md section 5). Under normalisation a threshold of 1e-3
-    switches stage 3 off almost entirely.
+    were tuned on general circuits with Legacy/fastsa_tuning.py. Under
+    normalisation a threshold of 1e-3 switches stage 3 off almost entirely.
     """
     if stage1_iterations < 1:
         raise ValueError("stage1_iterations must be >= 1")
@@ -320,7 +326,7 @@ def run_fastsa(
         temperature_history.append(temperature)
         return temperature
 
-    # Stage 1: n=1 initialization regime with random neighboring placements.
+    # Stage 1: the pre-drawn random layouts as neighbours of the start layout.
     for neighbor_positions, raw_cost in zip(random_layouts[1:], random_costs[1:]):
         neighbor_cost = raw_cost / cost_scale
 
@@ -372,7 +378,8 @@ def run_fastsa(
         n += 1
         temperature = _record_delta(delta_c, accepted=accepted)
 
-    # Stage 3: local randomization until temperature drops below threshold.
+    # Stage 3: local randomization until the temperature drops below the
+    # threshold or stage3_max_iterations is reached.
     stage3_iterations = 0
     while stage3_iterations < stage3_max_iterations:
         if abs(temperature) < stage3_temperature_threshold:

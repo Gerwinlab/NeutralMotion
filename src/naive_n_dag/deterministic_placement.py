@@ -1,8 +1,8 @@
 """Deterministic initial placement: ``fill_strategy: "deterministic"``.
 
-Ported from the collaborator's deterministic minimiser of the FastSA objective. It minimises
-the same cost FastSA anneals, F_time (placement_cost.py), on the same
-two-qubit DAG, but with no random numbers:
+Ported from the collaborator's (Munson's) deterministic minimiser of the
+FastSA objective. It minimises the same cost FastSA anneals, F_time
+(placement_cost.py), on the same two-qubit DAG, but with no random numbers:
 
   0. presolve   closed forms for star and path circuits
   1. seeds      interaction-graph orders laid along geometric paths, layouts
@@ -11,9 +11,9 @@ two-qubit DAG, but with no random numbers:
                 variable neighbourhood descent (swap/relocate moves with
                 candidate lists, and layer-guided moves)
 
-Every objective evaluation is counted against ``budget``. Ties are broken by
+Every search evaluation is counted against ``budget``. Ties are broken by
 index, so a run is reproducible. Only the placement path is ported: the
-handoff's analysis pool, antiparallel screen and disabled neighbourhoods
+original's analysis pool, antiparallel screen and disabled neighbourhoods
 (ejection chains, subgroup tilings) are left out.
 
 Layouts here are lists indexed by qubit of ``(row, col)`` SLM *site* indices
@@ -36,16 +36,17 @@ from .placement_cost import make_cost
 
 Layout = list[tuple[int, int]]
 
-# FastSA's evaluation count on the handoff's qLDPC configs; a cap, not a target.
+# FastSA's evaluation count on the qLDPC benchmark configs; a cap, not a target.
 DEFAULT_BUDGET = 100_103
 
 DEFAULT_OPTIONS: dict[str, Any] = {
     "budget": DEFAULT_BUDGET,
-    # Nearest-qubit candidate sizes, one swap phase (and one layer phase) each.
+    # Nearest-qubit candidate sizes: each k adds a swap phase with k nearest
+    # qubits (and, with layer_moves, a layer phase, which does not use k).
     "k_ladder": [12, 24, 48],
     # Well-spread "distant" swap candidates per qubit (golden-ratio walk).
     "k_disc": 6,
-    # Free sites tried per relocation.
+    # Nearest free sites tried when relocating a qubit.
     "free_per_qubit": 4,
     # Layer-guided neighbourhood inside the VND.
     "layer_moves": True,
@@ -53,11 +54,12 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "symmetry_seeds": True,
     # Star / path closed forms when every layer holds one gate.
     "closed_forms": True,
-    # Diversity veto: skip a seed within this many moved qubits of one already
-    # descended (or of a descent's end point). None means max(2, n // 6).
+    # Diversity veto: skip a seed whose sites differ in fewer than this many
+    # qubits from a layout already descended (or a descent's end point).
+    # None means max(2, n // 6).
     "min_sep": None,
     # Stop after this many descents without improvement (None: never)...
-    "stall": 1,
+    "stall": 10,
     # ...but only once this share of the budget has been spent.
     "min_spend_fraction": 0.10,
 }
@@ -158,8 +160,8 @@ def _star_layout(layer_pairs, n, R, C, distance) -> Layout | None:
     Every layer is then one load out to one stop and back, so the cost is a
     constant plus ``sum_g distance(v_g)``, which separates over leaves. For
     each hub site the leaves take the nearest sites, the most frequent leaves
-    the closest ones (rearrangement inequality); the best hub site wins. (The
-    handoff assigned repeated leaves twice; weighting them is the exact form.)
+    the closest ones (rearrangement inequality); the best hub site wins.
+    Leaves are weighted by gate count, so a repeated leaf is placed once.
     ``distance(d_row, d_col)`` is the cost's per-gate price of a site offset:
     the round-trip move time for F_time.
     """
@@ -192,8 +194,8 @@ def _path_layout(layer_pairs, n, R, C) -> Layout | None:
 
     Consecutive serpentine sites are adjacent, so every gate spans one site
     (2 grid steps), the shortest possible move, and each single-gate layer
-    costs its minimum. Requires a true path (connected, acyclic); the handoff
-    also accepted cycles.
+    costs its minimum. Requires a true path (connected, acyclic), which the
+    serpentine lays out end to end.
     """
     adjacency = collections.defaultdict(set)
     for gates in layer_pairs:
@@ -694,6 +696,7 @@ def _descent_swap(evaluate: _Evaluator, layout, R, C, adjacency, k_geom, k_disc,
 
 
 def _canonical(v):
+    """One representative of ``{v, -v}``: a gate's displacement up to which operand moves."""
     x, y = v
     return (-x, -y) if x < 0 or (x == 0 and y < 0) else (x, y)
 
@@ -843,8 +846,8 @@ def run_deterministic_placement(
     symmetry discovery its gate blocks; without them the two-qubit DAG is
     used as one block. ``config`` supplies the physics F_time needs. ``cost``
     substitutes any object with ``evaluate``, ``layer_pairs`` and
-    ``star_distance`` (the benchmarks pass the legacy F,
-    benchmarks/legacy_f.py); ``config`` is then not needed.
+    ``star_distance`` (Legacy/cost_fidelity.py passes the legacy F from
+    Legacy/legacy_f.py); ``config`` is then not needed.
     """
     options = validate_options(options)
     R, C = int(dimensions[0]), int(dimensions[1])

@@ -1,7 +1,7 @@
 {
-  "qasm": "qLDPC_Qasms/bb_n144_k12_d12_cz_syndrome.qasm",
+  "qasm": "inputs/qasm_files/qLDPC/bb_n144_k12_d12_cz_syndrome.qasm",
   "qasm_sha256": "2eb3558f079991ba780d2033956697c5f7ad08d8526fb4ea968191e5ac4bf628",
-  "coords": "/home/gage/Quantum_Class/bb144_coords.json",
+  "coords": "bb144_coords.json",
   "config": {
     "dimensions": [
       24,

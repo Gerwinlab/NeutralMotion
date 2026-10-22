@@ -1,3 +1,5 @@
+"""Gate-line formatting, 1Q gate-layer packing and timing, and the schedule file writer."""
+
 from __future__ import annotations
 
 import math
@@ -60,6 +62,7 @@ def _format_gate_line(gate_name: str, gate_params: list, qubit_ids: list[int]) -
 
 
 def _format_node_line(node: DAGOpNode) -> str:
+    """Format one op node as a schedule line; measurements keep their classical bit."""
     name, params, ids = op_node_signature(node)
     if name == "measure":
         if len(ids) != 1 or len(node.cargs) != 1:
@@ -73,6 +76,7 @@ def collect_single_qubit_gate_block(ops: list[DAGOpNode], start_index: int) -> t
     """Collect contiguous 1Q gates and pack them into disjoint-qubit time layers.
 
     The scan starts at ``start_index`` and stops before the next 2Q gate.
+    SWAPs are skipped; a barrier keeps later gates out of earlier layers.
     Returns:
     - A list of gate lines, one line per time layer.
     - The index where scanning stopped.
@@ -161,7 +165,9 @@ def write_timed_schedule(
 ) -> None:
     """Write the textual schedule with optional initialization and timed events.
 
-    Move events with identical start and end positions are omitted.
+    The initialization line is printed at ``T=0``; events are numbered
+    ``T + 1, T + 2, ...``. Move events with identical start and end positions
+    are omitted.
     """
     out_path = Path(output_path)
     lines: list[str] = [

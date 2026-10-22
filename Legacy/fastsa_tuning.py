@@ -6,7 +6,7 @@ normalisation), so P (``initial_accept_prob``) and ``stage3_temperature_threshol
 mean the same thing on every circuit and can be tuned once. This script:
 
 1. runs FastSA for every (cost, P, threshold) in the grid, on every
-   (circuit, physics) job of benchmarks/cost_fidelity.py, with seeds 0..k-1,
+   (circuit, physics) job of Legacy/cost_fidelity.py, with seeds 0..k-1,
    and schedules each result with the real scheduler (offline only);
 2. picks each cost's best setting on the TRAINING jobs only: lowest geometric
    mean of (median scheduled time over seeds) / (old shipped FastSA's median,
@@ -17,7 +17,7 @@ mean the same thing on every circuit and can be tuned once. This script:
 
 Usage (from the repo root):
 
-    ~/Quantum_Class/Phys765_Test/bin/python Legacy/fastsa_tuning.py \\
+    python Legacy/fastsa_tuning.py \\
         --reference benchmarks/output/results/cost_fidelity_2026-10-20.csv \\
         --csv benchmarks/output/results/fastsa_tuning_2026-10-20.csv --workers 10
 """
@@ -46,6 +46,7 @@ THRESHOLD_GRID = (1e-3, 0.0)        # 0: stage 3 always runs stage3_max_iteratio
 
 
 def run_job(job):
+    """FastSA over the whole (cost, P, threshold) grid for one job; one row per seed."""
     name, physics, seeds = job
     warnings.simplefilter("ignore")
     from naive_n_dag.FastSA_Solver import run_fastsa
@@ -72,9 +73,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--reference", required=True,
                         help="cost_fidelity CSV holding the old shipped FastSA runs (label fastsa-abs/fastsa/...)")
-    parser.add_argument("--seeds", type=int, default=3)
-    parser.add_argument("--workers", type=int, default=max(1, multiprocessing.cpu_count() - 1))
-    parser.add_argument("--csv", default=None)
+    parser.add_argument("--seeds", type=int, default=3, help="FastSA seeds per setting (default: 3)")
+    parser.add_argument("--workers", type=int, default=max(1, multiprocessing.cpu_count() - 1),
+                        help="Parallel worker processes (default: CPU count - 1)")
+    parser.add_argument("--csv", default=None, help="write every run to this CSV")
     args = parser.parse_args()
 
     reference = collections.defaultdict(list)

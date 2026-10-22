@@ -2,9 +2,9 @@
 
 F was the placement objective until 2026-10-20, when F_time
 (``naive_n_dag.placement_cost``) replaced it: tuned FastSA and the
-deterministic placer both give faster schedules with F_time (COST_FUNCTIONS.md
-§4-5). F is no longer in ``src/``; this copy lets the benchmarks reproduce the
-comparison:
+deterministic placer both give faster schedules with F_time (see
+cost_fidelity.py and fastsa_tuning.py in this folder). F is no longer in
+``src/``; this copy lets those benchmarks reproduce the comparison:
 
   compute_fastsa_cost   the original pure-Python objective
   FastSACost            the same values, precompiled and vectorised. Pass an
@@ -61,7 +61,12 @@ def compute_fastsa_cost(
     positions_or_qubits,
     normalize_by_length: float = 1.0,
 ) -> tuple[float, list[dict]]:
-    """Compute Fast-SA objective for a given placement."""
+    """Compute F for a placement; return ``(F, per-layer stats)``.
+
+    ``two_qubit_layers`` is the two-qubit DAGCircuit (its ``layers()`` are
+    used); ``positions_or_qubits`` is a ``{qubit: (x, y)}`` map or a list of
+    placed Qubit objects.
+    """
     if isinstance(positions_or_qubits, Mapping):
         positions = dict(positions_or_qubits)
     else:
@@ -128,8 +133,8 @@ def _two_qubit_layers(two_qubit_dag):
 class FastSACost:
     """``compute_fastsa_cost`` for one two-qubit DAG, precompiled and vectorised.
 
-    Matches ``FastSA_Solver.compute_fastsa_cost(dag, positions,
-    normalize_by_length=1)``: layers keep their non-barrier two-qubit gates,
+    Matches ``compute_fastsa_cost(dag, positions, normalize_by_length=1)``
+    above: layers keep their non-barrier two-qubit gates,
     empty layers are dropped, and the sum is divided by the number of
     non-empty layers. Two exact rewrites make it fast: the layer structure is
     derived once (the original rebuilds ``dag.layers()`` on every call), and

@@ -1,7 +1,7 @@
 {
-  "qasm": "/home/gage/Quantum_Class/Phys765/inputs/qasm_files/bb144_bivariate_bicycle_cz.qasm",
+  "qasm": "bb144_bivariate_bicycle_cz.qasm",
   "qasm_sha256": "9874bfd8a3d30a4c6594f73f779c84d7ba9c42b94253c5e0123608f4d20a67f3",
-  "coords": "/home/gage/Quantum_Class/bb144_coords.json",
+  "coords": "bb144_coords.json",
   "config": {
     "dimensions": [
       24,

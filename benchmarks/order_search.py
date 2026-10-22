@@ -3,7 +3,7 @@
 
 The 12 CZ blocks of a P126 or P254 syndrome-extraction round can run in many
 orders, but only the orders certified in ``../syndrome_qasm/sets/<code>.json``
-are known to keep the code's full circuit distance (714 for P126, 4 for P254).
+(714 for P126, 4 for P254) are known to keep the code's full circuit distance.
 This script exports each certified order with ``syndrome_qasm/export_qasm.py``
 (its classical registers ``sx``/``sz`` renamed to ``c_x``/``c_z``, since ``sx``
 is a qelib1.inc gate), places it with the deterministic placer and schedules
@@ -11,14 +11,15 @@ it, and ranks the orders by scheduled time.
 
 The deterministic placer's ``budget`` sets the cost of each order; a small
 budget screens all orders quickly, and ``--ranks`` re-runs a shortlist at a
-larger budget. Results go to ``benchmarks/output/results/order_search_<code>
-_b<budget>.csv``; ``--save-best`` also writes the fastest order's QASM to
+larger budget. Results go to
+``benchmarks/output/results/order_search_<code>_b<budget>.csv``;
+``--save-best`` also writes the fastest order's QASM to
 ``inputs/qasm_files/qLDPC/<code>_rank<rank>.qasm``.
 
 Usage (from the repo root):
 
-    ~/Quantum_Class/Phys765_Test/bin/python benchmarks/order_search.py P126 --budget 300 --workers 9
-    ~/Quantum_Class/Phys765_Test/bin/python benchmarks/order_search.py P126 --budget 20000 \\
+    python benchmarks/order_search.py P126 --budget 300 --workers 9
+    python benchmarks/order_search.py P126 --budget 20000 \\
         --ranks 188399054 444068163 --save-best
 """
 
@@ -45,6 +46,7 @@ REFERENCE_RANK = {"P126": 188399054, "P254": 179361634}
 
 
 def load_exporter(syndrome_dir: Path):
+    """Import ``export_qasm.py`` from the external syndrome_qasm checkout."""
     spec = importlib.util.spec_from_file_location("syndrome_export_qasm", syndrome_dir / "export_qasm.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -87,10 +89,14 @@ def main():
     parser.add_argument("--budget", type=int, default=300, help="Deterministic placer budget per order")
     parser.add_argument("--ranks", type=int, nargs="+", help="Only these certified ranks")
     parser.add_argument("--limit", type=int, help="Only the first N certified orders (quick tests)")
-    parser.add_argument("--workers", type=int, default=max(1, multiprocessing.cpu_count() - 1))
-    parser.add_argument("--syndrome-dir", type=Path, default=DEFAULT_SYNDROME_DIR)
-    parser.add_argument("--csv", type=Path, default=None)
-    parser.add_argument("--save-best", action="store_true", help="Write the fastest order's QASM to inputs/")
+    parser.add_argument("--workers", type=int, default=max(1, multiprocessing.cpu_count() - 1),
+                        help="Parallel worker processes (default: CPU count - 1)")
+    parser.add_argument("--syndrome-dir", type=Path, default=DEFAULT_SYNDROME_DIR,
+                        help="syndrome_qasm checkout holding export_qasm.py and sets/ (default: ../syndrome_qasm)")
+    parser.add_argument("--csv", type=Path, default=None,
+                        help="Results CSV (default: benchmarks/output/results/order_search_<code>_b<budget>.csv)")
+    parser.add_argument("--save-best", action="store_true",
+                        help="Write the fastest order's QASM to inputs/qasm_files/qLDPC/")
     args = parser.parse_args()
 
     exporter = load_exporter(args.syndrome_dir.resolve())

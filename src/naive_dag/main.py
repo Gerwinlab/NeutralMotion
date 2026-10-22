@@ -1,3 +1,5 @@
+"""Config loading and the end-to-end ``naive_dag`` pipeline: QASM -> placement -> schedule file."""
+
 from __future__ import annotations
 
 import json
@@ -22,7 +24,6 @@ def parse_quantity(value, key):
     except Exception:
         raise ValueError(f"{key} must include units (e.g. '60 microseconds'). Got: {value}")
 
-    # Check if units were actually provided
     if q.dimensionless:
         raise ValueError(f"{key} is missing units. Example: '60 microseconds'")
 
@@ -137,7 +138,8 @@ def main(
     grid = generate_grid(dims,config["lattice_spacing"])
     fill_seed = seed if seed is not None else 0
     qubits = naive_fill(grid,num_na,fill_seed,True)
-    # Candidates use independent placement objects, preserving the true initialization.
+    # schedule_circuit replans on its own grid copies, so ``qubits`` still holds
+    # the initial placement written to the schedule header below.
     schedule = schedule_circuit(qc, qubits, config)
     time, event_log = schedule.duration, schedule.events
     if not quiet:

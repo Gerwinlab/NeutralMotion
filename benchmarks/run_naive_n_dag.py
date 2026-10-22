@@ -7,6 +7,14 @@ QASM: ``<stem>.json`` (FastSA placement) and ``<stem>_deterministic.json``
 benchmarks/output/qLDPC/: ``<stem>.<strategy>.naive_n_dag.schedule.txt`` and,
 for FastSA, ``<stem>.fastsa.naive_n_dag.fastsa_log.csv``. Nothing else is
 written; progress, results and warnings are printed.
+
+Missing configs are generated from benchmarks/configs/vqe/vqe_n50.json;
+existing ones are kept (unless --overwrite-configs), so hand edits survive.
+
+Usage (from the repo root):
+
+    python benchmarks/run_naive_n_dag.py --placement deterministic
+    python benchmarks/run_naive_n_dag.py --pattern 'bb_n144*' --overwrite
 """
 
 from __future__ import annotations
@@ -37,6 +45,7 @@ def save_json(path, data):
 
 
 def grid_dimensions(qubits):
+    """Near-square ``[rows, cols]`` with at least ``qubits`` sites."""
     rows = math.isqrt(qubits)
     if rows * rows < qubits:
         rows += 1
@@ -194,8 +203,9 @@ def main():
     parser.add_argument("--pattern", default="*.qasm", help="QASM glob within inputs/qasm_files/qLDPC")
     parser.add_argument("--placement", choices=["fastsa", "deterministic", "both"], default="both",
                         help="Which placer(s) to run per QASM (default: both)")
-    parser.add_argument("--output-dir", type=Path, default=HERE / "output/qLDPC")
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--output-dir", type=Path, default=HERE / "output/qLDPC",
+                        help="Schedule/log directory (default: benchmarks/output/qLDPC)")
+    parser.add_argument("--seed", type=int, default=0, help="Seed passed to naive_n_dag (default: 0)")
     parser.add_argument("--timeout", type=float, default=0, help="Per-run seconds; 0 means unlimited")
     parser.add_argument("--prepare-only", action="store_true", help="Generate/validate JSONs without solving")
     parser.add_argument("--overwrite-configs", action="store_true", help="Regenerate JSONs from the template")
@@ -208,7 +218,7 @@ def main():
         from qiskit import qasm2
         import naive_n_dag.main  # noqa: F401
     except ImportError as error:
-        parser.error(f"{error}. Run using {PROJECT.parent / 'Phys765_Test/bin/python'}")
+        parser.error(f"{error}. Install the package first: python -m pip install -e .")
     qasms = sorted(path for path in QASM_DIR.glob(args.pattern)
                    if path.is_file() and path.suffix == ".qasm")
     if not qasms or any(path.parent != QASM_DIR or path.suffix != ".qasm" for path in qasms):

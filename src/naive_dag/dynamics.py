@@ -1,3 +1,12 @@
+"""Single-mover routing and timing for the ``naive_dag`` scheduler.
+
+Grid coordinates are half lattice steps: SLM traps are even-even points and the
+AOD moves atoms along odd rows and columns (the "highway"). Each 2Q gate loads
+one operand into the AOD, routes it next to its SLM partner, and then either
+keeps it loaded for the next gate or unloads it to its previous home (or to a
+relocation site chosen by a short rollout of upcoming gates).
+"""
+
 from __future__ import annotations
 
 import math
@@ -23,6 +32,7 @@ _CARDINAL = ((-1, 0), (0, -1), (0, 1), (1, 0))
 
 
 def _slm(point):
+    """True for an SLM trap position (both coordinates even)."""
     return point[0] % 2 == 0 and point[1] % 2 == 0
 
 
@@ -39,6 +49,7 @@ def _highway_segment(start, end):
 
 
 def _parameters(config):
+    """Hashable motion physics: (grid step in m, v_max, a_max, transfer s, movement_shape)."""
     return (
         config['lattice_spacing'].to('meter').magnitude / 2,
         config['max_velocity'].to('meter/second').magnitude,
@@ -50,6 +61,7 @@ def _parameters(config):
 
 @lru_cache(maxsize=8192)
 def _motion_seconds(distance, velocity, acceleration):
+    """Trapezoidal-profile time for ``distance`` m (triangular if v_max is never reached)."""
     if distance == 0:
         return 0.0
     ramp = velocity * velocity / acceleration
@@ -59,6 +71,11 @@ def _motion_seconds(distance, velocity, acceleration):
 
 
 def _path_seconds(points, parameters):
+    """Seconds to traverse ``points``; each hop into or out of an SLM trap adds one transfer.
+
+    Cubic_Spline moves the row and column axes in turn (sqrt(6 d / a) each);
+    trapezoidal moves along the straight line.
+    """
     spacing, velocity, acceleration, transfer, movement_shape = parameters
     total = 0.0
     for a, b in zip(points, points[1:]):
@@ -95,6 +112,7 @@ def _compact(points):
 
 
 def _route_key(points, parameters):
+    """Route ranking: fastest, then fewest points, then lexicographic."""
     return _path_seconds(points, parameters), len(points), points
 
 
@@ -130,6 +148,10 @@ def _highway_route(start, end, parameters):
 
 @lru_cache(maxsize=32768)
 def _interaction_route(start, target, parameters):
+    """Fastest path that brings the mover to an AOD point beside its SLM partner ``target``.
+
+    An SLM ``start`` is first loaded onto one of its neighbouring AOD points.
+    """
     if not _slm(target):
         raise ValueError('The interaction partner must remain in an SLM trap.')
     candidates = []
@@ -142,6 +164,7 @@ def _interaction_route(start, target, parameters):
 
 @lru_cache(maxsize=32768)
 def _unload_route(start, destination, parameters):
+    """Fastest path from AOD ``start`` into SLM trap ``destination`` via one of its neighbours."""
     if _slm(start) or not _slm(destination):
         raise ValueError('Unloading requires an AOD start and an SLM destination.')
     return min((_highway_route(start, end, parameters) + (destination,)
@@ -150,6 +173,7 @@ def _unload_route(start, destination, parameters):
 
 
 def gate_qubit_ids(ops: list[DAGOpNode], gate_index: int) -> list[int]:
+    """Qubit ids of ``ops[gate_index]``; 3+ qubit gates are rejected."""
     _, _, ids = op_node_signature(ops[gate_index])
     if len(ids) > 2:
         raise ValueError('This method does not support 3+ qubit gates')
@@ -157,6 +181,7 @@ def gate_qubit_ids(ops: list[DAGOpNode], gate_index: int) -> list[int]:
 
 
 def gate_qubits(ops, gate_index, qubits):
+    """The two Qubit objects of a 2Q gate, or ``[None, None]`` for any other op."""
     ids = gate_qubit_ids(ops, gate_index)
     if len(ids) != 2 or ops[gate_index].op.name in ('swap', 'barrier'):
         return [None, None]
@@ -165,6 +190,7 @@ def gate_qubits(ops, gate_index, qubits):
 
 
 def find_next_two_qubit_gate(ops, start_index):
+    """Index of the first 2Q gate (not SWAP or barrier) after ``start_index``, or None."""
     return next((i for i in range(start_index + 1, len(ops))
                  if len(ops[i].qargs) == 2
                  and ops[i].op.name not in ('swap', 'barrier')), None)
@@ -198,6 +224,7 @@ def _preferred_mover(pair, config):
 
 
 def _should_retain(mover, following, config):
+    """Keep ``mover`` loaded if the next gate uses it and would not prefer moving its partner."""
     if mover not in following:
         return False
     preferred = _preferred_mover(following, config)
@@ -205,6 +232,8 @@ def _should_retain(mover, following, config):
 
 
 def _choose_mover(pair, following, positions, config):
+    """Pick the operand to move: the one already in the AOD, else the preferred
+    ancilla, else ``pair[1]`` if the following gate uses it, else ``pair[0]``."""
     loaded = [q for q, p in positions.items() if not _slm(p)]
     if len(loaded) > 1 or loaded and loaded[0] not in pair:
         raise ValueError('Return the existing AOD atom before loading a different mover.')
@@ -242,6 +271,8 @@ def _rollout_cost(positions, pairs, parameters, config):
 
 
 def _choose_unload(mover, positions, previous_home, grid, pairs, parameters, config):
+    """Unload route for ``mover``: to ``previous_home``, or, with relocation enabled,
+    to the candidate vacant trap with the lowest unload time plus ``_rollout_cost``."""
     occupied = {p for q, p in positions.items() if q != mover}
     vacant = [(r, c) for r in range(0, len(grid), 2)
               for c in range(0, len(grid[0]), 2) if (r, c) not in occupied]
@@ -285,6 +316,7 @@ def _choose_unload(mover, positions, previous_home, grid, pairs, parameters, con
 
 
 def _set_position(qubit, position, grid, config):
+    """Move ``qubit`` to ``position``; an AOD point gets a standalone GridNode off the SLM grid."""
     if _slm(position):
         r, c = position
         if not (0 <= r < len(grid) and 0 <= c < len(grid[0])):
@@ -300,8 +332,9 @@ def _set_position(qubit, position, grid, config):
 def best_path_for_gate(ops, gate_index, qubits, grid, config, T):
     """Single-mover parity routing with mandatory next-gate retention.
 
-    The legacy public signature and absolute-position move events are preserved.
-    Relocation is considered only when this atom must leave the AOD.
+    Returns ``(duration, T + len(events), events)``; move events use absolute
+    grid positions. Relocation is considered only when this atom must leave
+    the AOD.
     """
     q1, q2 = gate_qubits(ops, gate_index, qubits)
     if q1 is None:
@@ -348,7 +381,10 @@ def best_path_for_gate(ops, gate_index, qubits, grid, config, T):
 
 
 def validate_schedule(events, initial, config, reference_nodes):
-    """Replay one-AOD legality and SWAP-filtered wire order; allow changed homes."""
+    """Replay one-AOD legality and SWAP-filtered wire order; allow changed homes.
+
+    Raises ``ValueError`` on any violation and returns the final positions.
+    """
     positions = dict(initial)
     rows, cols = config['dimensions']
     if len(set(initial.values())) != len(initial) or any(
@@ -461,6 +497,7 @@ def _validate_barrier_order(events, reference_nodes):
 
 @dataclass
 class CircuitSchedule:
+    """The selected plan's events and duration, every candidate's duration, and final positions."""
     events: list[ScheduleEvent]
     duration: object
     selected: str
