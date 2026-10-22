@@ -1,0 +1,97 @@
+solver: naive_n_dag
+qasm_file: surface_rotated_n9_k1_d3_cz_syndrome.qasm
+final_time: 1040.7930384058318 microsecond
+lattice_spacing: 8.0 micrometer
+rydberg_radius: 15 micrometer
+random number seed: 0
+
+T=0
+initialize q[0] -> (8,4); q[1] -> (6,6); q[2] -> (0,4); q[3] -> (6,2); q[4] -> (4,4); q[5] -> (2,6); q[6] -> (4,0); q[7] -> (0,0); q[8] -> (2,2); q[9] -> (6,4); q[10] -> (0,6); q[11] -> (6,0); q[12] -> (2,4); q[13] -> (8,6); q[14] -> (4,6); q[15] -> (4,2); q[16] -> (0,2);
+T=1
+reset q[9]; reset q[10]; reset q[11]; reset q[12]; reset q[13]; reset q[14]; reset q[15]; reset q[16]; h q[0]; h q[1]; h q[2]; h q[3]; h q[4]; h q[5]; h q[6]; h q[7]; h q[8];
+T=2
+h q[9]; h q[10]; h q[11]; h q[12];
+T=3
+load q[9] -> (6,4) : (7,4) load q[10] -> (0,6) : (1,6) load q[12] -> (2,4) : (3,4)
+T=4
+cz q[9],q[0]; cz q[10],q[5];
+T=5
+cz q[12],q[4];
+T=6
+move q[9] (7,4) : (7,3) move q[10] (1,6) : (1,5) move q[12] (3,4) : (3,3)
+T=7
+move q[9] (7,3) : (6,3) move q[10] (1,5) : (0,5) move q[12] (3,3) : (2,3)
+T=8
+cz q[10],q[2]; cz q[9],q[3];
+T=9
+cz q[12],q[8];
+T=10
+move q[9] (6,3) : (6,4) unload q[10] -> (0,5) : (0,6) move q[12] (2,3) : (2,4)
+T=11
+move q[9] (6,4) : (6,5) load q[11] -> (6,0) : (6,1) move q[12] (2,4) : (2,5)
+T=12
+cz q[9],q[1]; cz q[12],q[5];
+T=13
+cz q[11],q[3];
+T=14
+move q[9] (6,5) : (5,5) move q[11] (6,1) : (5,1) move q[12] (2,5) : (1,5)
+T=15
+move q[9] (5,5) : (5,0) move q[11] (5,1) : (5,-4) move q[12] (1,5) : (1,0)
+T=16
+cz q[12],q[7];
+T=17
+move q[9] (5,0) : (5,4) move q[11] (5,-4) : (5,0) move q[12] (1,0) : (1,4)
+T=18
+cz q[9],q[4]; cz q[11],q[6];
+T=19
+h q[9]; h q[10]; h q[11]; h q[12]; h q[0]; h q[1]; h q[2]; h q[3]; h q[4]; h q[5]; h q[6]; h q[7]; h q[8];
+T=20
+h q[13]; h q[14]; h q[15]; h q[16];
+T=21
+unload q[9] -> (5,4) : (6,4) unload q[11] -> (5,0) : (6,0) unload q[12] -> (1,4) : (2,4)
+T=22
+load q[13] -> (8,6) : (8,5) load q[14] -> (4,6) : (4,5) load q[15] -> (4,2) : (4,1) load q[16] -> (0,2) : (0,1)
+T=23
+cz q[13],q[0]; cz q[14],q[4]; cz q[16],q[7];
+T=24
+cz q[15],q[6];
+T=25
+move q[13] (8,5) : (9,5) move q[14] (4,5) : (5,5) move q[15] (4,1) : (5,1) move q[16] (0,1) : (1,1)
+T=26
+move q[13] (9,5) : (9,6) move q[14] (5,5) : (5,6) move q[15] (5,1) : (5,2) move q[16] (1,1) : (1,2)
+T=27
+cz q[15],q[3]; cz q[14],q[1];
+T=28
+cz q[16],q[8];
+T=29
+move q[13] (9,6) : (8,6) move q[14] (5,6) : (4,6) move q[15] (5,2) : (4,2) unload q[16] -> (1,2) : (0,2)
+T=30
+move q[13] (8,6) : (7,6) move q[14] (4,6) : (3,6) move q[15] (4,2) : (3,2)
+T=31
+cz q[13],q[1];
+T=32
+cz q[14],q[5];
+T=33
+move q[13] (7,6) : (7,7) move q[14] (3,6) : (3,7) move q[15] (3,2) : (3,3)
+T=34
+move q[13] (7,7) : (8,7) move q[14] (3,7) : (4,7) move q[15] (3,3) : (4,3)
+T=35
+cz q[15],q[4];
+T=36
+unload q[13] -> (8,7) : (8,6) move q[14] (4,7) : (4,6) move q[15] (4,3) : (4,2)
+T=37
+move q[14] (4,6) : (4,5) move q[15] (4,2) : (4,1)
+T=38
+move q[14] (4,5) : (0,5) move q[15] (4,1) : (0,1)
+T=39
+cz q[14],q[2];
+T=40
+cz q[15],q[7];
+T=41
+h q[13]; h q[14]; h q[15]; h q[16];
+T=42
+measure q[9] -> c_x[0]; measure q[10] -> c_x[1]; measure q[11] -> c_x[2]; measure q[12] -> c_x[3]; measure q[13] -> c_z[0]; measure q[14] -> c_z[1]; measure q[15] -> c_z[2]; measure q[16] -> c_z[3];
+T=43
+move q[14] (0,5) : (4,5) move q[15] (0,1) : (4,1)
+T=44
+unload q[14] -> (4,5) : (4,6) unload q[15] -> (4,1) : (4,2)

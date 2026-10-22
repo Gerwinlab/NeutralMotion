@@ -25,18 +25,42 @@ This installs the package in editable mode and exposes these CLI commands:
 - `naive_dag`
 - `naive_n_dag`
 
+## Repository Layout
+
+- `src/`: the `naive_dag` and `naive_n_dag` packages; `tests/`: the test suite.
+- `inputs/qasm_files/`: every QASM circuit, grouped by family (`qLDPC/` with its
+  `checks/` and `manifest.json`, `bb144/`, `qft/`, `bv/`, `vqe/`, `general/`).
+- `benchmarks/configs/`: scheduler JSONs grouped by family. A config that uses
+  an initial placement (`initial_layout`) or a `step_order` file lives in its
+  own folder together with that file, e.g.
+  `benchmarks/configs/bb144/bb144_n_interleaved/`. Config paths are relative to
+  the config file.
+- `benchmarks/output/`: schedules, FastSA logs, result CSVs (`results/`) and
+  plots (`plots/`); `benchmarks/*.py` and `analysis_notebook.ipynb` are the
+  benchmark scripts and analysis.
+- `Examples/`: tutorial and example notebooks.
+- `Legacy/`: the legacy cost F (`legacy_f.py`), the F vs F_time benchmark
+  (`cost_fidelity.py`, `fastsa_tuning.py`) and old benchmark plots.
+
 ## Quick Run (`naive_n_dag`)
 
 Example:
 
 ```bash
-naive_n_dag inputs/algorithms/qft_06_n_fastsa.json inputs/qasm_files/qft_6.qasm outputs --seed 0 --output-name qft_06_n_fastsa_example --log
+naive_n_dag benchmarks/configs/qft/qft_06_n_fastsa.json qft_6.qasm benchmarks/output --seed 0 --output-name qft_06_n_fastsa_example --log
 ```
 
 This writes:
 
-- `outputs/qft_06_n_fastsa_example.schedule.txt`
-- `outputs/qft_06_n_fastsa_example.fastsa_log.csv` (because `--log` is enabled with FastSA)
+- `benchmarks/output/qft_06_n_fastsa_example.schedule.txt`
+- `benchmarks/output/qft_06_n_fastsa_example.fastsa_log.csv` (because `--log` is enabled with FastSA)
+
+QASM files may use several quantum and classical registers. Quantum registers
+are numbered globally in declaration order (for `qreg l[63]; qreg r[63];`,
+`r[0]` is `q[63]`); the schedule header line `qubit_registers:` records the
+mapping, and measurements keep their classical register
+(`measure q[126] -> c_x[0];`). `num_NA` counts the qubits of all registers.
+Register names may not reuse `qelib1.inc` gate names such as `sx`.
 
 ## What The Schedulers Do
 
@@ -173,10 +197,10 @@ grouping and shuttling code. `alignment_conc`, AOD span (`max_dimension`), `T_re
 continue to control physical execution.
 Disabling CZ reordering does not disable the group-level TSP tour or side DP.
 
-`inputs/algorithms/bb144_n_init_qldpc.json` enables `reorder_cz`. Run it with:
+`benchmarks/configs/bb144/bb144_n_init_qldpc/bb144_n_init_qldpc.json` enables `reorder_cz`. Run it with:
 
 ```bash
-PYTHONPATH=src python -m naive_n_dag inputs/algorithms/bb144_n_init_qldpc.json qLDPC_Qasms/bb_n144_k12_d12_cz_syndrome.qasm outputs/bb144 --output-name bb144_qldpc_edge_colored
+PYTHONPATH=src python -m naive_n_dag benchmarks/configs/bb144/bb144_n_init_qldpc/bb144_n_init_qldpc.json bb_n144_k12_d12_cz_syndrome.qasm benchmarks/output/bb144 --output-name bb144_qldpc_edge_colored
 ```
 
 For the Python loader, pass `reorder_cz=True` to
@@ -194,19 +218,19 @@ remains available to Python callers but is not the CLI's placement-aware pass.
 
 Example configs:
 
-- `inputs/algorithms/qft_06_n_fastsa.json`
-- `inputs/algorithms/bb144_n_fastsa_k1000.json`
+- `benchmarks/configs/qft/qft_06_n_fastsa.json`
+- `benchmarks/configs/bb144/bb144_n_fastsa_k1000.json`
 
 ## Tutorials
 
 For usage walkthroughs:
 
-- `schedule_tutorial.ipynb`: end-to-end scheduler usage (`naive_dag` and `naive_n_dag`).
-- `qasm_to_circuit_and_dag_examples.ipynb`: QASM -> Qiskit circuit -> DAG examples.
+- `Examples/schedule_tutorial.ipynb`: end-to-end scheduler usage (`naive_dag` and `naive_n_dag`).
+- `Examples/qasm_to_circuit_and_dag_examples.ipynb`: QASM -> Qiskit circuit -> DAG examples.
 
 ## Benchmark Scripts
 
-- `powermove_script.py` is used to generate runtime data for running `[[144,12,12]]` with Enola and PowerMove.
+- `benchmarks/powermove_script.py` is used to generate runtime data for running `[[144,12,12]]` with Enola and PowerMove.
 - This script requires cloning the PowerMove repository before use.
 
 ## AI Usage Note

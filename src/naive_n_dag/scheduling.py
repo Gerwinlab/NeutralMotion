@@ -245,12 +245,21 @@ def write_timed_schedule(
     events: Iterable[ScheduleEvent],
     initial_qubits: Iterable[Qubit] | None = None,
     rydberg_radius: str | None = None,
+    qubit_registers: str | None = None,
 ) -> None:
-    """Write a gate-only textual schedule with optional initialization section."""
+    """Write a gate-only textual schedule with optional initialization section.
+
+    ``qubit_registers`` (``l=q[0:63] r=q[63:126] ...``) records how a
+    multi-register QASM's qubits were numbered; the schedule uses ``q[i]``.
+    """
     out_path = Path(output_path)
     lines: list[str] = [
         f"solver: {solver}",
         f"qasm_file: {qasm_filename}",
+    ]
+    if qubit_registers:
+        lines.append(f"qubit_registers: {qubit_registers}")
+    lines += [
         f"final_time: {final_time}",
         f"lattice_spacing: {lattice_spacing}",
     ]

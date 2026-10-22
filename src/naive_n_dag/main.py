@@ -10,6 +10,7 @@ from naive_n_dag.deterministic_placement import deterministic_fill, validate_opt
 from naive_n_dag.placement_cost import COST_FUNCTION_REMOVED
 from naive_n_dag.dag_helper import (
     dag_from_txt_auto,
+    format_qubit_registers,
     load_qasm_to_two_qubit_dag_with_single_qubit_context,
     reorder_cz_layers_by_displacement,
 )
@@ -433,6 +434,9 @@ def main(
         fill_seed=fill_seed,
         events=event_log,
         initial_qubits=qubits,
+        qubit_registers=format_qubit_registers(
+            two_qubit_dag.metadata.get("qubit_registers") if two_qubit_dag.metadata else None
+        ),
     )
 
     if not quiet:

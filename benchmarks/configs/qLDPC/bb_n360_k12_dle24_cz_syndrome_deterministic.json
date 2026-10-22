@@ -1,0 +1,31 @@
+{
+    "dimensions": [
+        27,
+        27
+    ],
+    "num_NA": 720,
+    "qasm_base_dir": "../../../inputs/qasm_files/qLDPC",
+    "transfer_SLM_AOD": "15 microseconds",
+    "max_acceleration": "20000 m/s^2",
+    "max_velocity": "10 m/s",
+    "lattice_spacing": "8 micrometers",
+    "average_single_gate_time": "1 microseconds",
+    "average_two_gate_time": "0.27 microseconds",
+    "t_switch": "1.5 microseconds",
+    "reorder_cz": true,
+    "movement_shape": "Cubic_Spline",
+    "prefer_moving_ancillas": true,
+    "max_dimension": [
+        27,
+        27
+    ],
+    "fill_strategy": "deterministic",
+    "alignment_conc": -1,
+    "T_reuse": 3,
+    "Deterministic_fill": {
+        "budget": 100103
+    },
+    "tour_ordering": "tsp_gadget",
+    "concorde_time_limit": 5.0,
+    "tsp_time_limit": 0.5
+}

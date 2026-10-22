@@ -1,0 +1,33 @@
+{
+    "dimensions": [
+        24,
+        12
+    ],
+    "num_NA": 288,
+    "qasm_base_dir": "../../../inputs/qasm_files/qLDPC",
+    "transfer_SLM_AOD": "15 microseconds",
+    "max_acceleration": "2750 m/s^2",
+    "max_velocity": "0.55 m/s",
+    "lattice_spacing": "8 micrometers",
+    "average_single_gate_time": "0.1 microseconds",
+    "average_two_gate_time": "0.27 microseconds",
+    "t_switch": "1.5 microseconds",
+    "movement_shape": "trapezoidal",
+    "max_dimension": [
+        24,
+        12
+    ],
+    "fill_strategy": "fastsa",
+    "alignment_conc": -1,
+    "T_reuse": 3,
+    "Fastsa_fill": {
+        "stage1_iterations": 5,
+        "stage2_iterations": 2000,
+        "c": 1000,
+        "stage3_max_iterations": 100000,
+        "stage3_section_size": 12
+    },
+    "tour_ordering": "tsp_gadget",
+    "concorde_time_limit": 5.0,
+    "tsp_time_limit": 0.5
+}

@@ -6,7 +6,7 @@ from fractions import Fraction
 from pathlib import Path
 import re
 
-from qiskit import QuantumCircuit
+from qiskit import QuantumCircuit, QuantumRegister
 from qiskit.converters import circuit_to_dag
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.dagcircuit.dagnode import DAGOpNode
@@ -21,9 +21,52 @@ def load_qasm_to_circuit(qasm_path: str | Path) -> QuantumCircuit:
 
 
 def load_qasm_to_dag(qasm_path: str | Path) -> DAGCircuit:
-    """Load a QASM file and convert it to a DAGCircuit."""
+    """Load a QASM file as a DAGCircuit with one quantum register (see flatten_quantum_registers)."""
     circuit = load_qasm_to_circuit(qasm_path)
-    return circuit_to_dag(circuit)
+    return flatten_quantum_registers(circuit_to_dag(circuit))
+
+
+def flatten_quantum_registers(dag: DAGCircuit) -> DAGCircuit:
+    """Merge several quantum registers into one register ``q``, in declaration order.
+
+    The solver identifies a qubit by its index (``extract_index_from_bit``),
+    which is local to its register, so ``l[5]`` and ``r[5]`` would collide.
+    Qubit ``reg[i]`` becomes ``q[start + i]``, where ``start`` is the number
+    of qubits declared before ``reg``: Qiskit's global bit index. Classical
+    registers are kept, so measurements still name their own register
+    (``measure q[126] -> sx[0];``). ``metadata["qubit_registers"]`` records
+    ``(name, start, size)`` per original register for the schedule header.
+    A DAG with at most one quantum register is returned unchanged.
+    """
+    registers = list(dag.qregs.values())
+    if len(registers) <= 1:
+        return dag
+    if sum(register.size for register in registers) != dag.num_qubits():
+        raise ValueError("Every qubit must belong to exactly one quantum register.")
+    flat = DAGCircuit()
+    flat.name, flat.global_phase = dag.name, dag.global_phase
+    flat.metadata = dict(dag.metadata or {})
+    register = QuantumRegister(dag.num_qubits(), "q")
+    flat.add_qreg(register)
+    for creg in dag.cregs.values():
+        flat.add_creg(creg)
+    loose = [bit for bit in dag.clbits if not dag.find_bit(bit).registers]
+    if loose:
+        flat.add_clbits(loose)
+    qubit = {bit: register[dag.find_bit(bit).index] for bit in dag.qubits}
+    for node in sorted(dag.op_nodes(), key=lambda item: item._node_id):
+        flat.apply_operation_back(node.op, [qubit[bit] for bit in node.qargs], node.cargs)
+    flat.metadata["qubit_registers"] = [
+        (reg.name, dag.find_bit(reg[0]).index, reg.size) for reg in registers
+    ]
+    return flat
+
+
+def format_qubit_registers(layout) -> str | None:
+    """``l=q[0:63] r=q[63:126] ...`` for a flattened DAG's register layout, else None."""
+    if not layout:
+        return None
+    return " ".join(f"{name}=q[{start}:{start + size}]" for name, start, size in layout)
 
 
 def reference_op_nodes(dag: DAGCircuit) -> list[DAGOpNode]:

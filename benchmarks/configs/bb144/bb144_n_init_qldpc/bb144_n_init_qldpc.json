@@ -1,0 +1,30 @@
+{
+    "dimensions": [
+        24,
+        12
+    ],
+    "initial_layout": "bb144_qldpc_coords.json",
+    "num_NA": 288,
+    "qasm_base_dir": "../../../../inputs/qasm_files/qLDPC",
+    "reorder_cz": true,
+    "transfer_SLM_AOD": "15 microseconds",
+    "max_acceleration": "20000 m/s^2",
+    "max_velocity": "10 m/s",
+    "lattice_spacing": "8 micrometers",
+    "average_single_gate_time": "0.1 microseconds",
+    "average_two_gate_time": "0.27 microseconds",
+    "measurement_time": "0 microseconds",
+    "t_switch": "1.5 microseconds",
+    "movement_shape": "Cubic_Spline",
+    "max_dimension": [
+        24,
+        12
+    ],
+    "fill_strategy": "Given",
+    "alignment_conc": -1,
+    "T_reuse": "Inf",
+    "prefer_moving_ancillas": true,
+    "tour_ordering": "tsp_gadget",
+    "concorde_time_limit": 5.0,
+    "tsp_time_limit": 0.5
+}

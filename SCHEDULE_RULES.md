@@ -45,6 +45,12 @@ The following rules apply to both schedulers.
 - Simultaneous gates must have disjoint operands.
 - Measurements retain the classical register and destination, for example
   `measure q[2] -> c_x[5];`. Equal local indices in different registers remain distinct.
+- A QASM may declare several quantum registers. The loader numbers their qubits
+  globally in declaration order (`qreg l[63]; qreg r[63];` gives `l[i] = q[i]`,
+  `r[i] = q[63 + i]`), and the schedule writes `q[...]` with a
+  `qubit_registers:` header line recording the mapping. Classical registers
+  are kept as written. Register names must not reuse `qelib1.inc` gate names
+  (`sx`, `h`, `cz`, ...): Qiskit rejects the file.
 - Barriers are scheduling metadata and are not emitted as physical operations.
   A barrier is a hard boundary for the qubits it names: every operation on
   one of them before the barrier must be emitted in an earlier timestep than
