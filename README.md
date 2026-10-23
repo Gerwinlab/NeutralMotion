@@ -164,8 +164,12 @@ layers inside one retained load, with no 1Q context or barrier between them,
 commute and form a single graph layer, so their stops can be visited in any
 order. Replay validation then accepts per-wire order up to permutations of
 these unconditional CZ runs. Duplicate targets in different layers stay distinct; duplicates
-within a layer stay consecutive. If the tour fails, alignment ordering runs
-separately within each layer with a warning.
+within a layer stay consecutive. If every solver fails, a returned
+Hamiltonian tour that only broke layer order is repaired by sorting its cities
+into layer order (keeping the tour's order within each layer, both directions
+tried) with a warning; with no such tour, alignment ordering runs separately
+within each layer with a warning. Either stand-in is still compared against
+alignment (and the exact tour) like the normal relaxed tour.
 The side DP then plans the complete retained-load route with one final return.
 Load membership, retention decisions, gate dependencies,
 and intervening single-qubit contexts are preserved and the result is replayed.

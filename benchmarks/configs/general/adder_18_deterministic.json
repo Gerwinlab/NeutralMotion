@@ -21,7 +21,20 @@
     "alignment_conc": -1,
     "T_reuse": 3,
     "Deterministic_fill": {
-        "budget": 100103
+        "budget": 300103,
+        "k_ladder": [
+            12,
+            24,
+            48
+        ],
+        "k_disc": 6,
+        "free_per_qubit": 4,
+        "layer_moves": true,
+        "symmetry_seeds": true,
+        "closed_forms": true,
+        "min_sep": null,
+        "stall": 100,
+        "min_spend_fraction": 0.10
     },
     "tour_ordering": "tsp",
     "concorde_time_limit": 5.0,

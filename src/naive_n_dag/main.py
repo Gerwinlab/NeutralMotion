@@ -390,6 +390,7 @@ def main(
                 f"tsp_gadget={stats.gadget} tsp_exact_wins={stats.exact_wins} "
                 f"tsp_alignment_wins={stats.alignment_wins} "
                 f"tsp_exact_failures={stats.exact_failures} "
+                f"tsp_repaired={stats.repaired} tsp_repaired_used={stats.repaired_used} "
                 f"tsp_seconds_saved={stats.seconds_saved * 1e6:.6g}us"
             )
         for name, duration in schedule.candidate_times.items():

@@ -548,6 +548,28 @@ def _validated_layer_order(tour, graph):
     return [node - 1 for node in cycle[1:-1]]
 
 
+def _repaired_layer_orders(tour, graph):
+    """Layer-ordered city orders recovered from a tour that broke the layer ring.
+
+    The cycle is read from the load terminal in both directions, since an
+    unfaithful tour need not use the unload-to-load edge, and each reading is
+    stably sorted by layer, so cities keep the tour's order within a layer.
+    Returns no orders when the tour is not a Hamiltonian cycle of the graph.
+    """
+    tour = list(tour)
+    count = len(graph.weights)
+    if len(tour) != count or set(tour) != set(range(count)):
+        return []
+    start = tour.index(0)
+    path = [node - 1 for node in tour[start + 1:] + tour[:start] if node != count - 1]
+    orders = []
+    for reading in (path, path[::-1]):
+        order = sorted(reading, key=lambda city: graph.cities[city][0])
+        if order not in orders:
+            orders.append(order)
+    return orders
+
+
 def _displacement_layer_labels(vectors, layer_ids):
     """Normalize chronological labels, allowing empty intervening DAG layers."""
     if layer_ids is None:
@@ -587,6 +609,9 @@ class TourStats:
     ``exact_wins`` / ``alignment_wins`` count groups where that order was
     strictly fastest, saving ``seconds_saved`` of motion against the relaxed
     order in total; ``exact_failures`` counts exact attempts that failed.
+    ``repaired`` counts groups whose relaxed order is a layer-sorted repair of
+    an unfaithful solver tour, and ``repaired_used`` those where that repair
+    was the order kept.
     """
 
     solves: int = 0
@@ -595,6 +620,8 @@ class TourStats:
     exact_wins: int = 0
     alignment_wins: int = 0
     exact_failures: int = 0
+    repaired: int = 0
+    repaired_used: int = 0
     seconds_saved: float = 0.0
 
 
@@ -622,24 +649,47 @@ def _layer_order_count(cities):
 
 
 def _relaxed_city_order(cities, vectors, labels, config, start_offset, tour_solver):
-    """City order from the side-relaxed layer ring; alignment order if no solver succeeds."""
+    """City order from the side-relaxed layer ring, and whether it was repaired.
+
+    Only when every solver fails are the Hamiltonian tours they returned, but
+    validation rejected, repaired by ``_repaired_layer_orders``; the fastest
+    repair is the order. With no tour to repair, the alignment order stands in.
+    """
+    rejected = []
     try:
         graph = _layered_tour_graph(cities, config, start_offset)
 
         def accept(tour):
-            return _validated_layer_order(tour, graph)
+            try:
+                return _validated_layer_order(tour, graph)
+            except ValueError:
+                rejected.append(tour)
+                raise
 
         if tour_solver is None:
-            return _solve_tour(graph.weights, config, accept, graph.tour_bound)
-        return accept(tour_solver(graph.weights))
+            return _solve_tour(graph.weights, config, accept, graph.tour_bound), False
+        return accept(tour_solver(graph.weights)), False
     except Exception as exc:
+        failure = exc
+    repairs = [order for tour in rejected for order in _repaired_layer_orders(tour, graph)]
+    if repairs:
         warnings.warn(
-            f"Displacement TSP failed ({exc}); falling back to alignment ordering.",
+            f"Displacement TSP failed ({failure}); using the solver tour sorted into layer order.",
             RuntimeWarning, stacklevel=3,
         )
+        stats = config.get("_tsp_stats")
+        if stats is not None:
+            stats.repaired += 1
+        return min(repairs, key=lambda order: _city_order_seconds(
+            [cities[c][1] for c in order], config, start_offset,
+        )), True
+    warnings.warn(
+        f"Displacement TSP failed ({failure}); falling back to alignment ordering.",
+        RuntimeWarning, stacklevel=3,
+    )
     index = {city: i for i, city in enumerate(cities)}
     order = _alignment_order(vectors, labels, start_offset)
-    return list(dict.fromkeys(index[(labels[i], vectors[i])] for i in order))
+    return list(dict.fromkeys(index[(labels[i], vectors[i])] for i in order)), False
 
 
 def _gadget_city_order(cities, config, start_offset, upper_bound, gadget_solver=None):
@@ -694,7 +744,8 @@ def _order_group_displacements(
 
     - relaxed: the side-priced layer ring of ``_layered_tour_graph`` solved by
       ``tour_solver`` (default ``_solve_tour``; see ``_tour_solvers`` for the
-      fast_tsp/Concorde order), or the alignment order if no solver succeeds;
+      fast_tsp/Concorde order); if no solver succeeds, a rejected tour sorted
+      into layer order, else the alignment order;
     - alignment: the per-layer alignment heuristic, which costs almost nothing;
     - exact, only under ``"tsp_gadget"``: enumeration when there are at most
       ``_EXACT_ENUMERATION_LIMIT`` layer-respecting orders, else the gadget
@@ -718,7 +769,7 @@ def _order_group_displacements(
     ordering = _tour_ordering(config)
     if ordering == "alignment":
         return _alignment_order(vectors, labels, start_offset)
-    best = _relaxed_city_order(cities, vectors, labels, config, start_offset, tour_solver)
+    best, repaired = _relaxed_city_order(cities, vectors, labels, config, start_offset, tour_solver)
 
     def price(order):
         return _city_order_seconds([cities[c][1] for c in order], config, start_offset)
@@ -767,6 +818,8 @@ def _order_group_displacements(
         if stats is not None and name != "relaxed":
             setattr(stats, f"{name}_wins", getattr(stats, f"{name}_wins") + 1)
             stats.seconds_saved += relaxed_seconds - seconds
+        elif stats is not None and repaired:
+            stats.repaired_used += 1
     layers = [cities[c][0] for c in best]
     if sorted(best) != list(range(len(cities))) or layers != sorted(layers):
         raise ValueError("Displacement tour changed gate occurrences or layer order.")
