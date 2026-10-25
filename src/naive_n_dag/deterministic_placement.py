@@ -6,7 +6,8 @@ FastSA objective. It minimises the same cost FastSA anneals, F_time
 
   0. presolve   closed forms for star and path circuits
   1. seeds      interaction-graph orders laid along geometric paths, layouts
-                that realise the circuit's translation symmetry, row-major
+                that realise the circuit's translation symmetry, row-major,
+                and any layouts supplied with the ``seed_layouts`` option
   2. search     best-first multistart over the seeds, each descended by a
                 variable neighbourhood descent (swap/relocate moves with
                 candidate lists, and layer-guided moves)
@@ -25,7 +26,9 @@ from __future__ import annotations
 import collections
 import heapq
 import itertools
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
@@ -54,6 +57,10 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "symmetry_seeds": True,
     # Star / path closed forms when every layer holds one gate.
     "closed_forms": True,
+    # Layout JSON files ([row, col] site per qubit, as initial_layout) added
+    # to the seed pool. They start the search from a known layout, so the
+    # result reports it in origin_seed. Empty: every seed is constructed.
+    "seed_layouts": [],
     # Diversity veto: skip a seed whose sites differ in fewer than this many
     # qubits from a layout already descended (or a descent's end point).
     # None means max(2, n // 6).
@@ -99,6 +106,10 @@ def validate_options(options: Mapping[str, Any] | None) -> dict[str, Any]:
     for key in ("min_sep", "stall"):
         if merged[key] is not None:
             positive_int(key)
+    seed_layouts = merged["seed_layouts"]
+    if not isinstance(seed_layouts, (list, tuple)) or not all(isinstance(p, str) for p in seed_layouts):
+        raise ValueError("Deterministic_fill.seed_layouts must be a list of layout file paths.")
+    merged["seed_layouts"] = list(seed_layouts)
     fraction = merged["min_spend_fraction"]
     if not isinstance(fraction, (int, float)) or isinstance(fraction, bool) or not 0 <= fraction <= 1:
         raise ValueError("Deterministic_fill.min_spend_fraction must be in [0, 1].")
@@ -136,8 +147,9 @@ class DeterministicPlacementResult:
     budget: int
     route: str                    # "star", "path" or "search"
     stop_reason: str
-    best_seed: str | None = None
+    best_seed: str | None = None            # the cheapest seed before the search
     best_seed_objective: float | None = None
+    origin_seed: str | None = None          # the seed whose descent gave the returned layout
     seeds_scored: int = 0
     descents: int = 0
     symmetry_group_order: int | None = None
@@ -321,6 +333,34 @@ def _general_seeds(layer_pairs, n, R, C):
             for slot, q in enumerate(order):
                 layout[q] = path[slot]
             out.append((f"order={order_name} | {path_name}", layout))
+    return out
+
+
+def _supplied_seeds(paths, n, R, C):
+    """``seed_layouts`` files as seeds, checked like ``initial_layout``.
+
+    A file lists one ``[row, col]`` SLM site per qubit; the first ``n``
+    entries are used, as ``initial_layout_fill`` does.
+    """
+    out = []
+    for path in paths:
+        name = Path(path).name
+        with open(path, encoding="utf-8") as f:
+            sites = json.load(f)
+        if not isinstance(sites, list) or len(sites) < n:
+            raise ValueError(f"Seed layout {name} must list a [row, col] site for each of the {n} qubits.")
+        layout = []
+        for q, site in enumerate(sites[:n]):
+            if (not isinstance(site, list) or len(site) != 2
+                    or not all(isinstance(v, int) and not isinstance(v, bool) for v in site)
+                    or not (0 <= site[0] < R and 0 <= site[1] < C)):
+                raise ValueError(
+                    f"Seed layout {name}: qubit {q} has {site!r}, not a [row, col] site of the {R}x{C} array."
+                )
+            layout.append(tuple(site))
+        if len(set(layout)) != n:
+            raise ValueError(f"Seed layout {name} puts two qubits on one site.")
+        out.append((f"given:{name}", layout))
     return out
 
 
@@ -784,17 +824,21 @@ def _vnd(evaluate: _Evaluator, layout, R, C, adjacency, layer_pairs, options):
 
 
 def _multistart(evaluate: _Evaluator, ranked, R, C, adjacency, layer_pairs, options):
-    """Best-first descent of the ranked seeds under a diversity veto and stall rule."""
+    """Best-first descent of the ranked seeds under a diversity veto and stall rule.
+
+    Returns the best value and layout, the number of descents, the stop
+    reason, and the index into ``ranked`` of the seed the best layout came from.
+    """
     n = len(ranked[0][2])
     min_sep = options["min_sep"] or max(2, n // 6)
     min_spend = int(options["min_spend_fraction"] * evaluate.budget)
     heap = [(value, index, tuple(layout)) for index, (value, _, layout) in enumerate(ranked)]
     heapq.heapify(heap)
-    descended, best, best_layout = [], None, None
+    descended, best, best_layout, origin = [], None, None, None
     descents = since_improve = 0
     reason = None
     while heap and not evaluate.exhausted:
-        _, _, layout = heapq.heappop(heap)
+        _, index, layout = heapq.heappop(heap)
         if any(sum(x != y for x, y in zip(layout, d)) < min_sep for d in descended):
             continue
         descended.append(layout)
@@ -803,7 +847,7 @@ def _multistart(evaluate: _Evaluator, ranked, R, C, adjacency, layer_pairs, opti
         descended.append(tuple(end))
         improved = best is None or value < best - _TOL
         if improved:
-            best, best_layout = value, end
+            best, best_layout, origin = value, end, index
         if evaluate.exhausted:
             reason = "budget cap"
             break
@@ -816,7 +860,7 @@ def _multistart(evaluate: _Evaluator, ranked, R, C, adjacency, layer_pairs, opti
                 break
     if reason is None:
         reason = "budget cap" if evaluate.exhausted else "exhaustion (every seed descended or vetoed)"
-    return best, best_layout, descents, reason
+    return best, best_layout, descents, reason, origin
 
 
 # ---------------------------------------------------------------------------
@@ -891,6 +935,8 @@ def run_deterministic_placement(
         graph = _BlockGraph(_program_operations(two_qubit_dag, reference_nodes))
         torus, group_order = _symmetry_seeds(graph, n, R, C)
         groups.append(torus)
+    # Last: the ranking is stable, so a constructed seed wins any tie.
+    groups.append(_supplied_seeds(options["seed_layouts"], n, R, C))
     ranked, seen = [], set()
     for group in groups:
         for name, layout in group:
@@ -909,14 +955,16 @@ def run_deterministic_placement(
         for a, b in gates:
             adjacency[a].add(b)
             adjacency[b].add(a)
-    best, best_layout, descents, reason = _multistart(
+    best, best_layout, descents, reason, origin = _multistart(
         evaluate, ranked, R, C, adjacency, layer_pairs, options,
     )
+    origin_seed = None if origin is None else ranked[origin][1]
     if best is None or seed_value <= best:
-        best_layout = seed_layout
+        best_layout, origin_seed = seed_layout, seed_name
     return finish(best_layout, "search", reason, best_seed=seed_name,
-                  best_seed_objective=seed_value, seeds_scored=len(ranked),
-                  descents=descents, symmetry_group_order=group_order)
+                  best_seed_objective=seed_value, origin_seed=origin_seed,
+                  seeds_scored=len(ranked), descents=descents,
+                  symmetry_group_order=group_order)
 
 
 def deterministic_fill(

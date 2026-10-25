@@ -118,6 +118,11 @@ def resolve_config_paths(config: Mapping[str, Any], base_dir: pathlib.Path) -> d
     for key in ("qasm_dir", "qasm_base_dir", "initial_layout", "step_order"):
         if key in resolved:
             resolved[key] = _resolve_path(resolved[key], base_dir)
+    deterministic = resolved.get("Deterministic_fill")
+    if isinstance(deterministic, Mapping) and isinstance(deterministic.get("seed_layouts"), list):
+        resolved["Deterministic_fill"] = dict(
+            deterministic, seed_layouts=[_resolve_path(p, base_dir) for p in deterministic["seed_layouts"]],
+        )
     return resolved
 
 
@@ -359,7 +364,8 @@ def main(
                 f"deterministic_placement route={placement.route} "
                 f"objective={placement.objective:.6g} "
                 f"evaluations={placement.evaluations}/{placement.budget} "
-                f"descents={placement.descents} stop={placement.stop_reason}"
+                f"descents={placement.descents} stop={placement.stop_reason} "
+                f"origin_seed={placement.origin_seed}"
             )
     if qubits is None:
         raise RuntimeError("Qubit placement is required before scheduling two-qubit layers.")
