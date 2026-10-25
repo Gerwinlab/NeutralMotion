@@ -11,7 +11,7 @@ import pathlib
 import warnings
 from typing import Any, Mapping
 
-from naive_n_dag.grid import Fastsa_Fill, generate_grid, initial_layout_fill, naive_fill
+from naive_n_dag.grid import Fastsa_Fill, generate_grid, initial_layout_fill, naive_fill, place_qubit
 from naive_n_dag.deterministic_placement import deterministic_fill, validate_options
 from naive_n_dag.placement_cost import COST_FUNCTION_REMOVED
 from naive_n_dag.dag_helper import (
@@ -224,6 +224,45 @@ def _validate_required_config(config: Mapping[str, Any]) -> None:
             raise ValueError('T_reuse must be a nonnegative integer or "Inf".')
 
 
+# Fast settings for ranking schedule_screen candidates: the relaxed TSP with
+# short solver limits instead of the configured tour_ordering. On bb144 this
+# ranks 100 candidates like full schedules do (rank correlation 0.92) at about
+# 40% of the time, and its top three include the fastest.
+_SCREEN_FAST_SETTINGS = {"tour_ordering": "tsp", "concorde_time_limit": 0.2, "tsp_time_limit": 0.05}
+
+
+def _screen_placements(candidates, plan, *, grid_factory, config, quiet):
+    """Schedule ``Deterministic_fill.schedule_screen`` candidates; return (qubits, plan result) of the fastest.
+
+    ``candidates`` are (name, layout) from the deterministic placer: its
+    result, the current-code pick, then the best seeds by the cost. Every
+    candidate is ranked by a fast schedule; the best ``screen_final`` of
+    them, plus the result and the current-code pick, are scheduled with the
+    run's own settings, and the fastest of those full schedules is kept.
+    """
+    final_count = (config.get("Deterministic_fill") or {}).get("screen_final", 3)
+    always = {k for k, (name, _) in enumerate(candidates)
+              if name.startswith(("search result", "current-code pick"))}
+    placements = []
+    for name, layout in candidates:
+        grid = grid_factory()
+        placements.append((name, [place_qubit(grid, 2 * r, 2 * c, q) for q, (r, c) in enumerate(layout)]))
+    chosen = set(range(len(candidates)))
+    if len(candidates) > final_count + len(always):
+        fast = dict(config, **_SCREEN_FAST_SETTINGS)
+        speeds = sorted((plan(placed, fast)[0].duration, k) for k, (_, placed) in enumerate(placements))
+        chosen = always | {k for _, k in speeds[:final_count]}
+    finals = sorted(((plan(placements[k][1], config), k) for k in chosen),
+                    key=lambda item: (item[0][0].duration, item[1]))
+    result, k = finals[0]
+    if not quiet:
+        searched = next((r[0].duration for r, j in finals if j == 0), None)
+        print(f"schedule_screen candidates={len(candidates)} full={len(finals)} chosen_rank={k} "
+              f"chosen={candidates[k][0]} time={result[0].duration.to('microseconds').magnitude:.6g}us"
+              + (f" search_result_time={searched.to('microseconds').magnitude:.6g}us" if searched is not None else ""))
+    return placements[k][1], result
+
+
 def main(
     config: Mapping[str, Any],
     qasm_file: PathLike,
@@ -370,19 +409,29 @@ def main(
     if qubits is None:
         raise RuntimeError("Qubit placement is required before scheduling two-qubit layers.")
 
-    # CZ displacement packing is an unconditional preprocessing step when
-    # enabled, not a candidate competing with unreordered physical schedules.
-    if config.get("reorder_cz", False) or config.get("reorder_cz_by_displacement", False):
-        two_qubit_layers, single_layers, reference_nodes = reorder_cz_layers_by_displacement(
-            reference_nodes, {q.id: q.grid_position() for q in qubits}, config,
-        )
-        if not quiet:
-            print(f"displacement_precompile_layers={sum(bool(layer) for layer in two_qubit_layers)}")
+    reorder = config.get("reorder_cz", False) or config.get("reorder_cz_by_displacement", False)
 
-    # Group and route only after the placement-aware gate order is finalized.
-    schedule = schedule_circuit(
-        two_qubit_layers, single_layers, qubits, config, reference_nodes,
-    )
+    def plan(placed, settings):
+        """Schedule one placement: (schedule, two-qubit layers, single layers, reference nodes)."""
+        layers, singles, reference = two_qubit_layers, single_layers, reference_nodes
+        # CZ displacement packing is an unconditional preprocessing step when
+        # enabled, not a candidate competing with unreordered physical schedules.
+        if reorder:
+            layers, singles, reference = reorder_cz_layers_by_displacement(
+                reference_nodes, {q.id: q.grid_position() for q in placed}, settings,
+            )
+        # Group and route only after the placement-aware gate order is finalized.
+        return schedule_circuit(layers, singles, placed, settings, reference), layers, singles, reference
+
+    if config["fill_strategy"] == "deterministic" and placement.candidates:
+        qubits, (schedule, two_qubit_layers, single_layers, reference_nodes) = _screen_placements(
+            placement.candidates, plan, grid_factory=lambda: generate_grid(dims, config["lattice_spacing"]),
+            config=config, quiet=quiet,
+        )
+    else:
+        schedule, two_qubit_layers, single_layers, reference_nodes = plan(qubits, config)
+    if reorder and not quiet:
+        print(f"displacement_precompile_layers={sum(bool(layer) for layer in two_qubit_layers)}")
     event_log = schedule.events
     time = schedule.duration
     emitted_timesteps = count_emitted_timesteps(event_log)

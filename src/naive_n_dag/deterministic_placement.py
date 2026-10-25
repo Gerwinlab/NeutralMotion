@@ -11,6 +11,9 @@ FastSA objective. It minimises the same cost FastSA anneals, F_time
   2. search     best-first multistart over the seeds, each descended by a
                 variable neighbourhood descent (swap/relocate moves with
                 candidate lists, and layer-guided moves)
+  3. screening  optional (``schedule_screen``): the result plus the best
+                seeds go back to ``main``, which schedules them and keeps the
+                fastest (see run_deterministic_placement)
 
 Every search evaluation is counted against ``budget``. Ties are broken by
 index, so a run is reproducible. Only the placement path is ported: the
@@ -57,6 +60,16 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "symmetry_seeds": True,
     # Star / path closed forms when every layer holds one gate.
     "closed_forms": True,
+    # Torus seeds from every generator pair of the translation group, not the
+    # first pair per shape (the collaborator's Oct-15 torus_variants "all").
+    "torus_all_pairs": False,
+    # Screening: hand main the result plus the best distinct seeds by the cost,
+    # up to this many; main ranks them by a fast schedule and keeps the
+    # fastest full schedule. 0: off (the result is the search's layout).
+    "schedule_screen": 0,
+    # Candidates main schedules in full after the fast ranking (the search's
+    # result and the current-code pick always are).
+    "screen_final": 3,
     # Layout JSON files ([row, col] site per qubit, as initial_layout) added
     # to the seed pool. They start the search from a known layout, so the
     # result reports it in origin_seed. Empty: every seed is constructed.
@@ -94,13 +107,15 @@ def validate_options(options: Mapping[str, Any] | None) -> dict[str, Any]:
     positive_int("budget")
     positive_int("k_disc", allow_zero=True)
     positive_int("free_per_qubit", allow_zero=True)
+    positive_int("schedule_screen", allow_zero=True)
+    positive_int("screen_final")
     ladder = merged["k_ladder"]
     if not isinstance(ladder, (list, tuple)) or not ladder or not all(
         isinstance(k, int) and not isinstance(k, bool) and k > 0 for k in ladder
     ):
         raise ValueError("Deterministic_fill.k_ladder must be a non-empty list of positive integers.")
     merged["k_ladder"] = list(ladder)
-    for key in ("layer_moves", "symmetry_seeds", "closed_forms"):
+    for key in ("layer_moves", "symmetry_seeds", "closed_forms", "torus_all_pairs"):
         if not isinstance(merged[key], bool):
             raise ValueError(f"Deterministic_fill.{key} must be true or false.")
     for key in ("min_sep", "stall"):
@@ -150,6 +165,9 @@ class DeterministicPlacementResult:
     best_seed: str | None = None            # the cheapest seed before the search
     best_seed_objective: float | None = None
     origin_seed: str | None = None          # the seed whose descent gave the returned layout
+    # schedule_screen: (name, layout) for main to schedule; the result first,
+    # then the current-code pick, then the best seeds by the cost.
+    candidates: tuple = ()
     seeds_scored: int = 0
     descents: int = 0
     symmetry_group_order: int | None = None
@@ -595,7 +613,32 @@ def _presentations(group_info):
     return out
 
 
-def _symmetry_seeds(g: _BlockGraph, n, R, C):
+# Cap on all-pair torus seeds. The collaborator's 12,000 cuts off bb144's best
+# torus seed on a 30x30 array (it is about the 13,000th generated).
+_TORUS_ALL_PAIRS_CAP = 50_000
+
+
+def _generator_pairs(group_info):
+    """Every generator pair per shape: {(L, M): [(g1 key, g2 key), ...]} with H = <g1> x <g2>.
+
+    The collaborator's Oct-15 ``generator_pairs(all_pairs=True)``.
+    ``_presentations`` keeps only the first pair per shape.
+    """
+    group = group_info["group"]
+    size = group_info["size"]
+    n = len(group[0])
+    identity = np.arange(n, dtype=np.int32).tobytes()
+    cyclic = {p.tobytes(): set(_generate([p], n, cap=size)) for p in group if p.tobytes() != identity}
+    out = {}
+    for k1, c1 in cyclic.items():
+        for k2, c2 in cyclic.items():
+            shape = (len(c1), len(c2))
+            if shape[0] * shape[1] == size and len(c1 & c2) == 1:
+                out.setdefault(shape, []).append((k1, k2))
+    return out
+
+
+def _symmetry_seeds(g: _BlockGraph, n, R, C, all_pairs=False, cap=_TORUS_ALL_PAIRS_CAP):
     """Equivariant layouts: every gate of a symmetry orbit gets one displacement.
 
     For each presentation H = Z_L x Z_M, group element g1^i g2^j becomes torus
@@ -604,6 +647,10 @@ def _symmetry_seeds(g: _BlockGraph, n, R, C):
     orbit-to-cell assignments and both axis orders are generated; layouts
     must fit the array. Qubits outside the circuit's support take spare sites
     in row-major order.
+
+    One generator pair per shape by default; with ``all_pairs`` every pair
+    (``_generator_pairs``), at most ``cap`` layouts. The pair changes which
+    group elements share a row, and on bb144 the best pair is not the first.
     """
     translations = _find_translations(g)
     info = _free_abelian_subgroup(g, translations) if translations else None
@@ -612,7 +659,13 @@ def _symmetry_seeds(g: _BlockGraph, n, R, C):
     by_key = {h.tobytes(): h for h in info["group"]}
     support = g.support
     out, seen = [], set()
-    for (L, M), (k1, k2) in sorted(_presentations(info).items(), key=lambda kv: repr(kv[0])):
+    if all_pairs:
+        pairs = [(shape, pair) for shape, plist in sorted(_generator_pairs(info).items()) for pair in plist]
+    else:
+        pairs = sorted(_presentations(info).items(), key=lambda kv: repr(kv[0]))
+    for (L, M), (k1, k2) in pairs:
+        if len(out) >= cap:
+            break
         g1, g2 = by_key[k1], by_key[k2]
         coord = {}
         current_i = np.arange(len(support), dtype=np.int32)
@@ -646,7 +699,7 @@ def _symmetry_seeds(g: _BlockGraph, n, R, C):
                 if key not in seen:
                     seen.add(key)
                     out.append((f"torus {shape[0]}x{shape[1]}/c{''.join(map(str, cells))}s{int(swap)}", layout))
-    return out, info["size"]
+    return out[:cap], info["size"]
 
 
 # ---------------------------------------------------------------------------
@@ -931,10 +984,13 @@ def run_deterministic_placement(
     groups = [[("row-major", [divmod(i, C) for i in range(n)])],
               _general_seeds(layer_pairs, n, R, C)]
     group_order = None
+    current_torus = []
     if options["symmetry_seeds"]:
         graph = _BlockGraph(_program_operations(two_qubit_dag, reference_nodes))
-        torus, group_order = _symmetry_seeds(graph, n, R, C)
+        torus, group_order = _symmetry_seeds(graph, n, R, C, all_pairs=options["torus_all_pairs"])
         groups.append(torus)
+        # The torus seeds the current code uses (one pair per shape), for the screening baseline.
+        current_torus = _symmetry_seeds(graph, n, R, C)[0] if options["torus_all_pairs"] else torus
     # Last: the ranking is stable, so a constructed seed wins any tie.
     groups.append(_supplied_seeds(options["seed_layouts"], n, R, C))
     ranked, seen = [], set()
@@ -961,10 +1017,40 @@ def run_deterministic_placement(
     origin_seed = None if origin is None else ranked[origin][1]
     if best is None or seed_value <= best:
         best_layout, origin_seed = seed_layout, seed_name
+    candidates = _screen_candidates(best_layout, origin_seed, ranked, groups, current_torus, options)
     return finish(best_layout, "search", reason, best_seed=seed_name,
-                  best_seed_objective=seed_value, origin_seed=origin_seed,
+                  best_seed_objective=seed_value, origin_seed=origin_seed, candidates=candidates,
                   seeds_scored=len(ranked), descents=descents,
                   symmetry_group_order=group_order)
+
+
+def _screen_candidates(best_layout, origin_seed, ranked, groups, current_torus, options):
+    """Layouts for main to schedule under ``schedule_screen`` (empty when it is off).
+
+    First the search's result, then the best seed of the pool the current
+    code builds (row-major, general and one-pair torus seeds, plus any
+    ``seed_layouts``), so screening can only match or beat the current code;
+    then the best remaining seeds by the cost. Distinct layouts, at most
+    ``schedule_screen``. The cost cannot order near-equivalent layouts (on
+    bb144 the fastest torus layout is about the 93rd by F_time), which is why
+    main judges them by schedule time.
+    """
+    if not options["schedule_screen"]:
+        return ()
+    current = {tuple(map(tuple, layout)) for group in (groups[0], groups[1], groups[-1]) for _, layout in group}
+    current |= {tuple(map(tuple, layout)) for _, layout in current_torus}
+    head = [(f"search result ({origin_seed})", best_layout)]
+    head += [(f"current-code pick ({name})", layout) for _, name, layout in ranked
+             if tuple(map(tuple, layout)) in current][:1]
+    out, seen = [], set()
+    for name, layout in head + [(name, layout) for _, name, layout in ranked]:
+        key = tuple(map(tuple, layout))
+        if key not in seen:
+            seen.add(key)
+            out.append((name, [tuple(site) for site in layout]))
+            if len(out) >= options["schedule_screen"]:
+                break
+    return tuple(out)
 
 
 def deterministic_fill(
