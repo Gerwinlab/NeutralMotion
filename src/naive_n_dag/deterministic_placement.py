@@ -6,7 +6,8 @@ FastSA objective. It minimises the same cost FastSA anneals, F_time
 
   0. presolve   closed forms for star and path circuits
   1. seeds      interaction-graph orders laid along geometric paths, layouts
-                that realise the circuit's translation symmetry, row-major,
+                that realise the circuit's translation symmetry, product
+                layouts of hypergraph-product codes (optional), row-major,
                 and any layouts supplied with the ``seed_layouts`` option
   2. search     best-first multistart over the seeds, each descended by a
                 variable neighbourhood descent (swap/relocate moves with
@@ -61,8 +62,12 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     # Star / path closed forms when every layer holds one gate.
     "closed_forms": True,
     # Torus seeds from every generator pair of the translation group, not the
-    # first pair per shape (the collaborator's Oct-15 torus_variants "all").
+    # first pair per shape.
     "torus_all_pairs": False,
+    # Product seeds for circuits whose interaction graph is a certified
+    # Cartesian product (hypergraph-product codes): qubit (u, v) at site
+    # (order0(u), order1(v)).
+    "product_seeds": False,
     # Screening: hand main the result plus the best distinct seeds by the cost,
     # up to this many; main ranks them by a fast schedule and keeps the
     # fastest full schedule. 0: off (the result is the search's layout).
@@ -115,7 +120,7 @@ def validate_options(options: Mapping[str, Any] | None) -> dict[str, Any]:
     ):
         raise ValueError("Deterministic_fill.k_ladder must be a non-empty list of positive integers.")
     merged["k_ladder"] = list(ladder)
-    for key in ("layer_moves", "symmetry_seeds", "closed_forms", "torus_all_pairs"):
+    for key in ("layer_moves", "symmetry_seeds", "closed_forms", "torus_all_pairs", "product_seeds"):
         if not isinstance(merged[key], bool):
             raise ValueError(f"Deterministic_fill.{key} must be true or false.")
     for key in ("min_sep", "stall"):
@@ -613,7 +618,7 @@ def _presentations(group_info):
     return out
 
 
-# Cap on all-pair torus seeds. The collaborator's 12,000 cuts off bb144's best
+# Cap on all-pair torus seeds. A cap of 12,000 would cut off bb144's best
 # torus seed on a 30x30 array (it is about the 13,000th generated).
 _TORUS_ALL_PAIRS_CAP = 50_000
 
@@ -621,7 +626,6 @@ _TORUS_ALL_PAIRS_CAP = 50_000
 def _generator_pairs(group_info):
     """Every generator pair per shape: {(L, M): [(g1 key, g2 key), ...]} with H = <g1> x <g2>.
 
-    The collaborator's Oct-15 ``generator_pairs(all_pairs=True)``.
     ``_presentations`` keeps only the first pair per shape.
     """
     group = group_info["group"]
@@ -700,6 +704,296 @@ def _symmetry_seeds(g: _BlockGraph, n, R, C, all_pairs=False, cap=_TORUS_ALL_PAI
                     seen.add(key)
                     out.append((f"torus {shape[0]}x{shape[1]}/c{''.join(map(str, cells))}s{int(swap)}", layout))
     return out[:cap], info["size"]
+
+
+# ---------------------------------------------------------------------------
+# 1c. Product seeds: hypergraph-product codes on their two factor coordinates
+# (``product_seeds``).
+# ---------------------------------------------------------------------------
+
+# Factors with at most this many vertices have every vertex order scored
+# (10! orders take a few seconds). Larger factors use the spectral, reverse
+# Cuthill-McKee and identity orders instead.
+_PRODUCT_ENUMERATION_MAX = 10
+
+
+class _UnionFind:
+    def __init__(self, n):
+        self.parent = list(range(n))
+
+    def find(self, x):
+        while self.parent[x] != x:
+            self.parent[x] = self.parent[self.parent[x]]
+            x = self.parent[x]
+        return x
+
+    def union(self, a, b):
+        a, b = self.find(a), self.find(b)
+        if a != b:
+            if a > b:
+                a, b = b, a
+            self.parent[b] = a
+
+
+def _mixed_squares(g: _BlockGraph, same_block=False):
+    """4-cycles u-a-w-b as edge ids (e_ua, e_ub, e_wa, e_wb), u < w, a < b.
+
+    Mixed: u's two edges in one block and w's in another (X check - data -
+    Z check - data). ``same_block`` (a one-block graph): every 4-cycle.
+    """
+    by_block = collections.defaultdict(lambda: collections.defaultdict(list))
+    for e, (x, y, k) in enumerate(g.edges):
+        by_block[x][k].append((y, e))
+        by_block[y][k].append((x, e))
+    out = []
+    for u in g.support:
+        for bu, edges_u in sorted(by_block[u].items()):
+            bucket = collections.defaultdict(list)
+            for a, e_ua in edges_u:
+                for bw, edges_a in by_block[a].items():
+                    if bw == bu and not same_block:
+                        continue
+                    for w, e_aw in edges_a:
+                        if w > u:
+                            bucket[(w, bw)].append((a, e_ua, e_aw))
+            for _, entries in sorted(bucket.items()):
+                entries.sort()
+                for i in range(len(entries)):
+                    for j in range(i + 1, len(entries)):
+                        a, e_ua, e_wa = entries[i]
+                        b, e_ub, e_wb = entries[j]
+                        if a != b:
+                            out.append((e_ua, e_ub, e_wa, e_wb))
+    return out
+
+
+def _product_structure(g: _BlockGraph, n):
+    """Certified Cartesian product of the interaction graph, or ``{"is_product": False}``.
+
+    Opposite edges of every mixed square fall in one parallel class (union
+    find); classes 2-coloured by orthogonality split into two factors; a
+    qubit's coordinate in factor f is its component in the other factor's
+    edges. Certified when coordinates are injective, every class is one
+    factor edge, and every class is a matching.
+    """
+    E = len(g.edges)
+    squares = _mixed_squares(g, same_block=(g.nblocks == 1))
+    record = {"is_product": False}
+    if not squares:
+        return record
+    uf = _UnionFind(E)
+    for e_ua, e_ub, e_wa, e_wb in squares:
+        uf.union(e_ua, e_wb)
+        uf.union(e_ub, e_wa)
+    roots = [uf.find(e) for e in range(E)]
+    ids = {r: i for i, r in enumerate(sorted(set(roots)))}
+    cls = np.array([ids[r] for r in roots], np.int64)
+    on_square = np.zeros(E, bool)
+    for square in squares:
+        on_square[list(square)] = True
+    orth, self_orth = collections.defaultdict(set), False
+    for e_ua, e_ub, e_wa, e_wb in squares:
+        for x, y in ((e_ua, e_ub), (e_wa, e_wb)):
+            cx, cy = int(cls[x]), int(cls[y])
+            self_orth |= cx == cy
+            orth[cx].add(cy)
+            orth[cy].add(cx)
+    factor = np.full(len(ids), -1, np.int64)
+    bipartite = not self_orth
+    for start in sorted(orth):
+        if factor[start] >= 0:
+            continue
+        factor[start], stack = 0, [start]
+        while stack and bipartite:
+            x = stack.pop()
+            for y in sorted(orth[x]):
+                if factor[y] < 0:
+                    factor[y] = 1 - factor[x]
+                    stack.append(y)
+                elif factor[y] == factor[x]:
+                    bipartite = False
+                    break
+    if not bipartite or not on_square.all():
+        return record
+    matching = True
+    for c in range(len(ids)):
+        seen = set()
+        for e in np.flatnonzero(cls == c).tolist():
+            a, b, _ = g.edges[e]
+            if a in seen or b in seen:
+                matching = False
+            seen.update((a, b))
+    edge_factor = factor[cls]
+    coords = np.full((n, 2), -1, np.int64)
+    for f in (0, 1):
+        uf2 = _UnionFind(n)
+        for e in range(E):
+            if edge_factor[e] != f:
+                a, b, _ = g.edges[e]
+                uf2.union(a, b)
+        component = {r: i for i, r in enumerate(sorted({uf2.find(v) for v in g.support}))}
+        for v in g.support:
+            coords[v, f] = component[uf2.find(v)]
+    injective = len({tuple(coords[v]) for v in g.support}) == len(g.support)
+    single = True
+    for c in range(len(ids)):
+        f = int(factor[c])
+        pairs = set()
+        for e in np.flatnonzero(cls == c).tolist():
+            a, b, _ = g.edges[e]
+            if coords[a, 1 - f] != coords[b, 1 - f]:
+                single = False
+                break
+            pairs.add(tuple(sorted((int(coords[a, f]), int(coords[b, f])))))
+        if not single or len(pairs) != 1:
+            single = False
+            break
+    return {"is_product": bool(injective and single and matching), "coords": coords}
+
+
+def _factor_edges(g: _BlockGraph, coords, f):
+    """Factor-f edges (coordinate pairs) of the gates whose other coordinate is constant."""
+    out = set()
+    for a, b, _ in g.edges:
+        if coords[a, 1 - f] == coords[b, 1 - f] and coords[a, f] != coords[b, f]:
+            out.add(tuple(sorted((int(coords[a, f]), int(coords[b, f])))))
+    return sorted(out)
+
+
+def _linear_order(nv, edges):
+    """Vertex order of a path factor (from its smaller end), or None if the factor is not a path."""
+    adjacency = collections.defaultdict(set)
+    for a, b in edges:
+        adjacency[a].add(b)
+        adjacency[b].add(a)
+    if any(len(adjacency[v]) > 2 for v in range(nv)):
+        return None
+    ends = [v for v in range(nv) if len(adjacency[v]) == 1]
+    if len(ends) != 2:
+        return None
+    order, previous = [min(ends)], None
+    while len(order) < nv:
+        following = [w for w in adjacency[order[-1]] if w != previous]
+        if not following:
+            return None
+        previous = order[-1]
+        order.append(min(following))
+    return order
+
+
+def _product_factor_orders(nv, edges, move_seconds, top_k=4):
+    """The ``top_k`` best vertex orders of one factor: [(score, order)], best first.
+
+    A path factor has one order, along the path. Otherwise every order is
+    scored when ``nv <= _PRODUCT_ENUMERATION_MAX``, else the spectral,
+    reverse Cuthill-McKee and identity orders. The score: the bipartite
+    factor's edges (bit -> check) give signed
+    spans under an order, and each distinct span costs one move of that many
+    trap steps. Returns [] when the factor is not bipartite.
+    """
+    path = _linear_order(nv, edges)
+    adjacency = [[] for _ in range(nv)]
+    for a, b in edges:
+        adjacency[a].append(b)
+        adjacency[b].append(a)
+    side = [-1] * nv
+    for start in range(nv):
+        if side[start] >= 0:
+            continue
+        side[start], stack = 0, [start]
+        while stack:
+            u = stack.pop()
+            for w in adjacency[u]:
+                if side[w] < 0:
+                    side[w] = 1 - side[u]
+                    stack.append(w)
+                elif side[w] == side[u]:
+                    return []
+    directed = np.array([(a, b) if side[a] == 0 else (b, a) for a, b in edges], np.int64).reshape(-1, 2)
+    span_seconds = np.array([move_seconds(abs(k)) for k in range(-nv, nv + 1)])
+
+    def score(inverse):
+        spans = inverse[:, directed[:, 1]] - inverse[:, directed[:, 0]]
+        present = np.zeros((len(inverse), 2 * nv + 1), bool)
+        np.put_along_axis(present, spans + nv, True, axis=1)
+        return present @ span_seconds + 1e-9 * present.sum(1)
+
+    def ranked(orders):
+        block = np.array(orders, np.int64)
+        values = score(np.argsort(block, axis=1))
+        return sorted((float(v), list(map(int, o))) for v, o in zip(values, block))[:top_k]
+
+    if path is not None:
+        return ranked([path])
+    if nv <= _PRODUCT_ENUMERATION_MAX:
+        best, orders = [], itertools.permutations(range(nv))
+        while True:
+            chunk = list(itertools.islice(orders, 400_000))
+            if not chunk:
+                return best
+            best = sorted(best + ranked(chunk))[:top_k]
+    W = np.zeros((nv, nv))
+    for a, b in edges:
+        W[a, b] += 1.0
+        W[b, a] += 1.0
+    candidates = {tuple(range(nv)), tuple(_order_spectral(W)), tuple(_order_reverse_cuthill_mckee(W))}
+    return ranked(sorted(candidates))
+
+
+def _grid_images(sites, R, C):
+    """The up to 8 reflections / transposes of ``sites`` that fit the R x C array, deduplicated."""
+    t = np.asarray(sites, np.int64)
+    rmax, cmax = int(t[:, 0].max()), int(t[:, 1].max())
+    out, seen = [], set()
+    for transpose, flip_r, flip_c in itertools.product((False, True), repeat=3):
+        r, c = (t[:, 1], t[:, 0]) if transpose else (t[:, 0], t[:, 1])
+        hr, hc = (cmax, rmax) if transpose else (rmax, cmax)
+        r = hr - r if flip_r else r
+        c = hc - c if flip_c else c
+        if r.max() >= R or c.max() >= C:
+            continue
+        key = tuple(zip(r.tolist(), c.tolist()))
+        if key not in seen:
+            seen.add(key)
+            out.append((f"img{'t' if transpose else ''}{'r' if flip_r else ''}{'c' if flip_c else ''}", key))
+    return out
+
+
+def _product_seeds(g: _BlockGraph, n, R, C, move_seconds, top_k=4):
+    """Layouts of a certified Cartesian-product circuit: qubit (u, v) at site (order0(u), order1(v)).
+
+    Every combination of each factor's ``top_k`` orders, in each of the up to
+    8 array images that fit; qubits outside the circuit take spare sites in
+    row-major order. [] when the circuit is not a product or nothing fits.
+    """
+    product = _product_structure(g, n)
+    if not product["is_product"]:
+        return []
+    coords = product["coords"]
+    support = [q for q in range(n) if coords[q, 0] >= 0]
+    sizes = [int(coords[support, f].max()) + 1 for f in (0, 1)]
+    scored = {}                    # identical factors (e.g. both Hamming) are ordered once
+    orders = []
+    for f in (0, 1):
+        key = (sizes[f], tuple(_factor_edges(g, coords, f)))
+        if key not in scored:
+            scored[key] = _product_factor_orders(key[0], list(key[1]), move_seconds, top_k)
+        orders.append(scored[key])
+    if not orders[0] or not orders[1]:
+        return []
+    out, seen = [], set()
+    for (s0, o0), (s1, o1) in itertools.product(*orders):
+        p0 = {v: i for i, v in enumerate(o0)}
+        p1 = {v: i for i, v in enumerate(o1)}
+        base = [(p0[int(coords[q, 0])], p1[int(coords[q, 1])]) for q in support]
+        for tag, image in _grid_images(base, R, C):
+            placed = dict(zip(support, image))
+            layout = _fill_idle([placed.get(q) for q in range(n)], R, C)
+            key = tuple(layout)
+            if key not in seen:
+                seen.add(key)
+                out.append((f"product {sizes[0]}x{sizes[1]} {tag}", layout))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -991,6 +1285,9 @@ def run_deterministic_placement(
         groups.append(torus)
         # The torus seeds the current code uses (one pair per shape), for the screening baseline.
         current_torus = _symmetry_seeds(graph, n, R, C)[0] if options["torus_all_pairs"] else torus
+    if options["product_seeds"]:
+        groups.append(_product_seeds(_BlockGraph(_program_operations(two_qubit_dag, reference_nodes)),
+                                     n, R, C, _trap_move_seconds(config)))
     # Last: the ranking is stable, so a constructed seed wins any tie.
     groups.append(_supplied_seeds(options["seed_layouts"], n, R, C))
     ranked, seen = [], set()
@@ -1022,6 +1319,16 @@ def run_deterministic_placement(
                   best_seed_objective=seed_value, origin_seed=origin_seed, candidates=candidates,
                   seeds_scored=len(ranked), descents=descents,
                   symmetry_group_order=group_order)
+
+
+def _trap_move_seconds(config):
+    """Seconds of a straight move of k trap steps (2k grid steps); k itself when no physics is given."""
+    if config is None:
+        return float
+    from .dynamics import _motion_parameters, _step_seconds
+    motion = {"_motion_parameters": config.get("_motion_parameters") or _motion_parameters(config),
+              "movement_shape": config.get("movement_shape", "trapezoidal")}
+    return lambda k: _step_seconds((2 * k, 0), motion)
 
 
 def _screen_candidates(best_layout, origin_seed, ranked, groups, current_torus, options):

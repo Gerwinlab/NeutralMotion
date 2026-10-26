@@ -7,7 +7,7 @@
     "qasm_base_dir": "../../../inputs/qasm_files/qft",
     "transfer_SLM_AOD": "60 microseconds",
     "max_acceleration": "2500 m/s^2",
-    "max_velocity": "0.13 m/s",
+    "max_velocity": "10 m/s",
     "lattice_spacing": "8 micrometers",
     "reorder_cz": true,
     "average_single_gate_time": "0.1 microseconds",

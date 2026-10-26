@@ -1,7 +1,7 @@
 {
     "dimensions": [
-        14,
-        13
+        30,
+        6
     ],
     "num_NA": 180,
     "qasm_base_dir": "../../../inputs/qasm_files/qLDPC",
@@ -16,14 +16,28 @@
     "movement_shape": "Cubic_Spline",
     "prefer_moving_ancillas": true,
     "max_dimension": [
-        14,
-        13
+        30,
+        6
     ],
     "fill_strategy": "deterministic",
     "alignment_conc": -1,
     "T_reuse": 3,
     "Deterministic_fill": {
-        "budget": 100103
+        "budget": 100103,
+        "k_ladder": [12, 24, 48],
+        "k_disc": 6,
+        "free_per_qubit": 4,
+        "layer_moves": true,
+        "symmetry_seeds": true,
+        "closed_forms": true,
+        "torus_all_pairs": true,
+        "product_seeds": false,
+        "schedule_screen": 100,
+        "screen_final": 3,
+        "seed_layouts": [],
+        "min_sep": null,
+        "stall": 10,
+        "min_spend_fraction": 0.1
     },
     "tour_ordering": "tsp_gadget",
     "concorde_time_limit": 5.0,

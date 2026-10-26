@@ -1,0 +1,58 @@
+solver,config_json,qasm_arg,Tcomp (s),output_file,Texec (µs),Benchmark
+naive_n_dag,Scheduler_Test/INPUT/bv_n14.json,bv_n14.qasm,81.583885,Scheduler_Test/OUTPUT/bv_n14.naive_n_dag.schedule.txt,4185.808800871916,BV-14
+naive_dag,Scheduler_Test/INPUT/bv_n14.json,bv_n14.qasm,0.369181,Scheduler_Test/OUTPUT/bv_n14.naive_dag.schedule.txt,3985.8221276579634,BV-14
+naive_n_dag,Scheduler_Test/INPUT/bv_n50.json,bv_n50.qasm,105.110749,Scheduler_Test/OUTPUT/bv_n50.naive_n_dag.schedule.txt,6977.726493056247,BV-50
+naive_dag,Scheduler_Test/INPUT/bv_n50.json,bv_n50.qasm,0.379166,Scheduler_Test/OUTPUT/bv_n50.naive_dag.schedule.txt,8899.819684254046,BV-50
+naive_n_dag,Scheduler_Test/INPUT/bv_n70.json,bv_n70.qasm,199.592804,Scheduler_Test/OUTPUT/bv_n70.naive_n_dag.schedule.txt,13117.678835233834,BV-70
+naive_dag,Scheduler_Test/INPUT/bv_n70.json,bv_n70.qasm,0.40852,Scheduler_Test/OUTPUT/bv_n70.naive_dag.schedule.txt,14788.690768755914,BV-70
+naive_n_dag,Scheduler_Test/INPUT/qft_n18.json,qft_n18_transpiled.qasm,343.78,Scheduler_Test/OUTPUT/qft_n18.naive_n_dag.schedule.txt,53160.1042282945,QFT-18
+naive_dag,Scheduler_Test/INPUT/qft_n18.json,qft_n18_transpiled.qasm,0.474751,Scheduler_Test/OUTPUT/qft_n18.naive_dag.schedule.txt,100937.22440589874,QFT-18
+naive_n_dag,Scheduler_Test/INPUT/qft_n29.json,qft_n29_transpiled.qasm,1002.54,Scheduler_Test/OUTPUT/qft_n29.naive_n_dag.schedule.txt,174289.979209677,QFT-29
+naive_dag,Scheduler_Test/INPUT/qft_n29.json,qft_n29_transpiled.qasm,0.637311,Scheduler_Test/OUTPUT/qft_n29.naive_dag.schedule.txt,311446.4026798211,QFT-29
+naive_n_dag,Scheduler_Test/INPUT/vqe_n30.json,vqe_n30.qasm,104.524093,Scheduler_Test/OUTPUT/vqe_n30.naive_n_dag.schedule.txt,9521.90391559371,VQE-30
+naive_dag,Scheduler_Test/INPUT/vqe_n30.json,vqe_n30.qasm,0.434495,Scheduler_Test/OUTPUT/vqe_n30.naive_dag.schedule.txt,17681.892274866776,VQE-30
+naive_n_dag,Scheduler_Test/INPUT/vqe_n50.json,vqe_n50.qasm,232.098793,Scheduler_Test/OUTPUT/vqe_n50.naive_n_dag.schedule.txt,21723.009239567487,VQE-50
+naive_dag,Scheduler_Test/INPUT/vqe_n50.json,vqe_n50.qasm,0.421571,Scheduler_Test/OUTPUT/vqe_n50.naive_dag.schedule.txt,29421.751264451985,VQE-50
+Enola,,bv_n14.qasm,669.48,,5583.98,BV-14
+Enola,,bv_n50.qasm,1710.91,,10118.96,BV-50
+Enola,,bv_n70.qasm,4334.5,,17620.11,BV-70
+Enola,,qft_n18_transpiled.qasm,10917.8,,108173.62,QFT-18
+Enola,,qft_n29_transpiled.qasm,24116,,239150,QFT-29
+Enola,,vqe_n30.qasm,57.62,,5436.18,VQE-30
+Enola,,vqe_n50.qasm,56.58,,10196.5,VQE-50
+PowerMove,benchmarks/powermove_script.py,bv_n14.qasm,15.02,,2894.74,BV-14
+PowerMove,benchmarks/powermove_script.py,bv_n50.qasm,11.1,,5580.58,BV-50
+PowerMove,benchmarks/powermove_script.py,bv_n70.qasm,12.92,,10064.73,BV-70
+PowerMove,benchmarks/powermove_script.py,qft_n18_transpiled.qasm,137.63,,24790.89,QFT-18
+PowerMove,benchmarks/powermove_script.py,qft_n29_transpiled.qasm,222.43,,46546.73,QFT-29
+PowerMove,benchmarks/powermove_script.py,vqe_n30.qasm,14.97,,3075.13,VQE-30
+PowerMove,benchmarks/powermove_script.py,vqe_n50.qasm,17.07,,5753.41,VQE-50
+naive_n_dag,,bb144_bivariate_bicycle_cz.qasm,1898.63,Scheduler_Test/OUTPUT/bb144_n_fastsa_k1000.naive_n_dag.schedule.txt,109416.96722982454,"[[144,12,12]]"
+naive_dag,,bb144_bivariate_bicycle_cz.qasm,2.14,Scheduler_Test/OUTPUT/bb144_n_fastsa_k1000.naive_dag.schedule.txt,562868.6664511404,"[[144,12,12]]"
+Enola,script.py,bb144_bivariate_bicycle_cz.qasm,258.15,,742617.95,"[[144,12,12]]"
+PowerMove,benchmarks/powermove_script.py,bb_n144_k12_d12_cz_syndrome.qasm,36.91,,120697.73,"[[144,12,12]]"
+Enola,benchmarks/powermove_script.py,adder_18.qasm,1107.07,,70243.67,Adder-18
+Enola,benchmarks/powermove_script.py,qv_20.qasm,922.72,,85328.76,QV-20
+Enola,benchmarks/powermove_script.py,heisenberg_24.qasm,2131.32,,159765.88,Heisenberg-24
+Enola,benchmarks/powermove_script.py,qaoa_24.qasm,1053.43,,81559.2,QAOA-24
+Enola,benchmarks/powermove_script.py,random_24.qasm,1265.0,,117558.58,Random-24
+PowerMove,benchmarks/powermove_script.py,adder_18.qasm,61.47,,24027.69,Adder-18
+PowerMove,benchmarks/powermove_script.py,qv_20.qasm,78.3,,7661.24,QV-20
+PowerMove,benchmarks/powermove_script.py,heisenberg_24.qasm,127.33,,15122.49,Heisenberg-24
+PowerMove,benchmarks/powermove_script.py,qaoa_24.qasm,62.82,,15756.44,QAOA-24
+PowerMove,benchmarks/powermove_script.py,random_24.qasm,63.57,,26359.22,Random-24
+PowerMove,benchmarks/powermove_script.py,qft_n63_transpiled.qasm,241.23,,159831.41,QFT-63
+PowerMove (storage on),benchmarks/powermove_script.py,bv_n14.qasm,16.01,,5280.68,BV-14
+PowerMove (storage on),benchmarks/powermove_script.py,bv_n50.qasm,11.17,,11200.64,BV-50
+PowerMove (storage on),benchmarks/powermove_script.py,bv_n70.qasm,11.24,,18967.1,BV-70
+PowerMove (storage on),benchmarks/powermove_script.py,qft_n18_transpiled.qasm,139.52,,149076.07,QFT-18
+PowerMove (storage on),benchmarks/powermove_script.py,qft_n29_transpiled.qasm,225.18,,332807.93,QFT-29
+PowerMove (storage on),benchmarks/powermove_script.py,vqe_n30.qasm,15.28,,13718.41,VQE-30
+PowerMove (storage on),benchmarks/powermove_script.py,vqe_n50.qasm,15.92,,24892.5,VQE-50
+PowerMove (storage on),benchmarks/powermove_script.py,adder_18.qasm,58.44,,74313.58,Adder-18
+PowerMove (storage on),benchmarks/powermove_script.py,qv_20.qasm,76.25,,14604.43,QV-20
+PowerMove (storage on),benchmarks/powermove_script.py,heisenberg_24.qasm,131.08,,49908.41,Heisenberg-24
+PowerMove (storage on),benchmarks/powermove_script.py,qaoa_24.qasm,63.4,,56127.05,QAOA-24
+PowerMove (storage on),benchmarks/powermove_script.py,random_24.qasm,62.1,,83512.36,Random-24
+PowerMove (storage on),benchmarks/powermove_script.py,bb_n144_k12_d12_cz_syndrome.qasm,36.41,,281987.51,"[[144,12,12]]"
+PowerMove (storage on),benchmarks/powermove_script.py,qft_n63_transpiled.qasm,239.8,,1069783.59,QFT-63

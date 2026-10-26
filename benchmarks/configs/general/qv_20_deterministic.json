@@ -1,40 +1,41 @@
 {
     "dimensions": [
-        5,
-        4
+        7,
+        7
     ],
     "num_NA": 20,
     "qasm_base_dir": "../../../inputs/qasm_files/general",
     "transfer_SLM_AOD": "15 microseconds",
     "max_acceleration": "2750 m/s^2",
-    "max_velocity": "0.55 m/s",
+    "max_velocity": "10 m/s",
     "lattice_spacing": "8 micrometers",
     "average_single_gate_time": "1 microseconds",
     "average_two_gate_time": "0.27 microseconds",
     "t_switch": "1.5 microseconds",
     "movement_shape": "trapezoidal",
     "max_dimension": [
-        5,
-        4
+        7,
+        7
     ],
     "fill_strategy": "deterministic",
     "alignment_conc": -1,
     "T_reuse": 3,
     "Deterministic_fill": {
         "budget": 300103,
-        "k_ladder": [
-            12,
-            24,
-            48
-        ],
+        "k_ladder": [12, 24, 48],
         "k_disc": 6,
         "free_per_qubit": 4,
         "layer_moves": true,
         "symmetry_seeds": true,
         "closed_forms": true,
+        "torus_all_pairs": false,
+        "product_seeds": false,
+        "schedule_screen": 0,
+        "screen_final": 3,
+        "seed_layouts": [],
         "min_sep": null,
         "stall": 10,
-        "min_spend_fraction": 0.10
+        "min_spend_fraction": 0.1
     },
     "tour_ordering": "tsp",
     "concorde_time_limit": 5.0,

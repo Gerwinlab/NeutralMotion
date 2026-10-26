@@ -1,7 +1,7 @@
 {
     "dimensions": [
-        20,
-        20
+        18,
+        14
     ],
     "num_NA": 252,
     "qasm_base_dir": "../../../inputs/qasm_files/qLDPC",
@@ -14,8 +14,8 @@
     "t_switch": "1.5 microseconds",
     "movement_shape": "Cubic_Spline",
     "max_dimension": [
-        20,
-        20
+        18,
+        14
     ],
     "fill_strategy": "fastsa",
     "alignment_conc": -1,

@@ -1,21 +1,21 @@
 {
     "dimensions": [
-        5,
-        4
+        7,
+        7
     ],
     "num_NA": 20,
     "qasm_base_dir": "../../../inputs/qasm_files/general",
     "transfer_SLM_AOD": "15 microseconds",
     "max_acceleration": "2750 m/s^2",
-    "max_velocity": "0.55 m/s",
+    "max_velocity": "10 m/s",
     "lattice_spacing": "8 micrometers",
     "average_single_gate_time": "1 microseconds",
     "average_two_gate_time": "0.27 microseconds",
     "t_switch": "1.5 microseconds",
     "movement_shape": "trapezoidal",
     "max_dimension": [
-        5,
-        4
+        7,
+        7
     ],
     "fill_strategy": "fastsa",
     "alignment_conc": -1,
