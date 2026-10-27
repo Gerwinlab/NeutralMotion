@@ -1,13 +1,25 @@
+# `naive_n_dag` Scheduler
+
+How the `naive_n_dag` solver schedules a circuit: its coordinate model,
+circuit preservation, state tracking, movement and timing rules, the
+grouped-AOD algorithm, serialization, and validation. The solver-independent
+problem rules are summarised in [Rules.md](Rules.md).
+
 Implementation references:
 
-- [`naive_dag` dynamics](../src/naive_dag/dynamics.py)
-- [`naive_n_dag` dynamics](../src/naive_n_dag/dynamics.py)
-- [`naive_dag` DAG preparation](../src/naive_dag/dag_helper.py)
-- [`naive_n_dag` DAG preparation](../src/naive_n_dag/dag_helper.py)
+- [Dynamics and scheduling](dynamics.py)
+- [DAG preparation](dag_helper.py)
+- [TSP gadget](tsp_gadget.py) (see `resources/TSP_GADGET.md`)
 
 ## 1. Coordinate model
 
-The schedulers use integer grid coordinates `(row, column)`.
+`Rules.md` only requires a fixed rectangular grid of SLM traps with highways
+between them. This solver adds the parity model below as a collision-avoidance
+heuristic: traps sit only on even-even sites and moving atoms travel only along
+odd lanes, so a moving atom never passes through a trap.
+
+Positions are integer grid coordinates `(row, column)`. One grid step is
+`lattice_spacing / 2`.
 
 - An **SLM trap** is an even-even coordinate: both row and column are even.
 - Every other coordinate is an **AOD position**.
@@ -17,20 +29,27 @@ The schedulers use integer grid coordinates `(row, column)`.
 - For configured SLM dimensions `[R, C]`, initial and unloading trap coordinates lie within rows `0..2R-2` and columns `0..2C-2`.
 - AOD highway coordinates may extend outside that rectangle. The current model does not impose a finite physical AOD travel boundary.
 
+```text
+column:   0 1 2 3 4
+row 0:    S | S | S      S  SLM trap (even, even)
+row 1:    - + - + -      -  horizontal highway (odd row)
+row 2:    S | S | S      |  vertical highway (odd column)
+row 3:    - + - + -      +  intersection (odd, odd)
+row 4:    S | S | S
+```
+
 A straight movement segment is judged by its complete interior, not only its endpoints. A segment may not pass through an even-even SLM coordinate. For example, `(6,1) -> (6,5)` is illegal because horizontal movement is on even row 6 and crosses SLM traps.
 
 ## 2. Circuit preservation
 
-The following rules apply to both schedulers.
-
 - Input SWAP operations are removed while constructing the scheduling DAG.
 - SWAPs must not appear in scheduling layers or emitted schedules.
-- Neither scheduler may insert a routing SWAP or replace an omitted SWAP with a decomposition.
+- The scheduler may not insert a routing SWAP or replace an omitted SWAP with a decomposition.
 - If a SWAP unexpectedly reaches a layer, it is omitted and the DAG filtering path should be investigated.
 - Circuit comparison is performed against the supported input operation sequence **after SWAP removal**.
 - Every remaining supported one- and two-qubit operation must appear exactly once. No operation may be added, duplicated, or omitted.
 - Gate identity, parameters, measurement destinations, and per-qubit operation order must be preserved.
-- Optional exception for `naive_n_dag` QASM input: `reorder_cz=true` or
+- Optional exception for QASM input: `reorder_cz=true` or
   `reorder_cz_by_displacement=true` permits
   exchanging unconditional CZs within commuting blocks before scheduling.
   Preprocessing preserves every operation occurrence and checks that each
@@ -73,10 +92,19 @@ The following rules apply to both schedulers.
 
 ## 4. Loads, unloads, and ordinary movement
 
+The one-step transfers and parity highways below are this solver's choices
+for avoiding collisions; `Rules.md` is less strict.
+
+Every movement batch, including loads, unloads and held atoms, applies one
+common displacement to every loaded atom; replay rejects any batch that does
+not. A rigid batch cannot cross, merge or split AOD rows or columns, so the
+ordering rules of `Rules.md` Section 4.1 hold by construction.
+
 - A `load` starts at an even-even SLM trap and ends at a non-even-even AOD position.
 - An `unload` starts at an AOD position and ends at an even-even SLM trap.
 - Every load and unload is exactly one cardinal grid step.
-- Direct SLM-to-SLM movement is forbidden.
+- Direct SLM-to-SLM movement is never emitted. `Rules.md` allows it when no
+  collision occurs; the solver avoids it so every move stays on a highway.
 - An ordinary `move` has AOD positions at both endpoints.
 - Ordinary movement is axis-aligned and follows the parity highways described in Section 1.
 - Zero-length movement events are omitted and cost no time.
@@ -89,20 +117,22 @@ The current discrete model checks grid-position collisions and legal highway int
 
 ## 5. Two-qubit interaction geometry
 
-At every emitted two-qubit gate:
+`Rules.md` only requires a gate's two atoms to be within the Rydberg radius.
+This solver uses a stricter geometry, chosen to keep loaded atoms off the
+traps and make collision checks simple. At every emitted two-qubit gate:
 
 - Exactly one operand is in the AOD.
 - Exactly one operand remains in an even-even SLM trap.
 - The two operands are exactly one cardinal grid step apart, so their Manhattan distance is `1`.
 - The loaded operand must be the atom tracked by the scheduler as active in the AOD.
-- A gate with both operands loaded is forbidden.
-- A gate with both operands in SLM traps is forbidden under this movement model.
+- The solver never emits a gate with both operands loaded.
+- The solver never emits a gate with both operands in SLM traps.
 
-### 5.1 Rydberg-radius pulse separation (`naive_n_dag`)
+### 5.1 Rydberg-radius pulse separation
 
 `lattice_spacing` (config) is the SLM trap pitch; one grid step is
 `lattice_spacing / 2`. The Rydberg radius is the fixed constant
-`RYDBERG_RADIUS = 15 micrometers` in `naive_n_dag/dynamics.py`.
+`RYDBERG_RADIUS = 15 micrometers` in `dynamics.py`.
 
 - A gate pair is one grid step apart, so `lattice_spacing / 2` must be strictly
   smaller than the Rydberg radius.
@@ -163,7 +193,7 @@ Additional timing rules:
 
 - A transfer charge is added once per actual load or unload batch.
 - Ordinary highway movement has no transfer surcharge.
-- Shared rigid movement in `naive_n_dag` is charged once per simultaneous batch, not once per transported atom.
+- Shared rigid movement is charged once per simultaneous batch, not once per transported atom.
 - When multiple atoms move in one valid rigid batch, batch duration is the longest movement duration in that batch. Valid batches share the same displacement, so these durations should agree.
 - Consecutive same-direction highway pieces that serialize as one segment are timed as one segment.
 - A turn, gate, load, unload, direction reversal, or otherwise separate emitted segment creates a stop/start boundary.
@@ -177,69 +207,18 @@ Additional timing rules:
 
 Candidate schedules may be compared only when timed under the same model and from the same initial placement.
 
-## 7. Rules specific to `naive_dag`
+## 7. Rules specific to `naive_n_dag`
 
-### 7.1 One moving atom
+### 7.1 Immutable homes and final restoration
 
-- At most one atom is active in the AOD at any time.
-- A new atom may not load until the active atom has unloaded.
-- Only the active atom may perform an ordinary movement or unload.
-- The scheduler chooses one operand of each two-qubit gate as the mover.
-
-### 7.2 Mandatory immediate reuse
-
-- If the next two-qubit gate uses the currently loaded atom, that atom remains in the AOD.
-- Exception: with `prefer_moving_ancillas=true`, a loaded data atom returns
-  before a data-ancilla gate so that the reset-identified ancilla can move.
-- It must not be unloaded and immediately loaded again for that next gate.
-- Intervening one-qubit operations do not cancel this rule.
-- The atom may move through legal parity routes from its current interaction site to the next partner.
-- It unloads only when the next two-qubit gate requires a different mover or when the circuit is complete.
-
-### 7.3 Changing homes is allowed
-
-`naive_dag` may change an atom's SLM home during execution.
-
-- When unloading is necessary, the atom may return to its previous home or choose another currently vacant SLM trap.
-- The destination need only be vacant at unloading time; prior occupancy does not disqualify it.
-- The new trap becomes that atom's current home for later planning.
-- Final positions may differ from initialization.
-- Relocation is chosen for speed, not merely because a trap appears first in grid order.
-
-The relocation heuristic compares the previous home with a bounded set of vacant destinations. By default it scores at most eight destinations and looks ahead through at most eight upcoming two-qubit gates or two upcoming uses of the atom being unloaded, whichever limit is reached first. The score includes the legal route and unload plus simulated future movement and transfers. Ties favor the previous home.
-
-The optional configuration keys are:
-
-| Key | Default | Meaning |
-|---|---:|---|
-| `relocation_enabled` | `true` | Enable the relocation candidate |
-| `relocation_candidates` | `8` | Maximum unload destinations scored |
-| `relocation_lookahead_gates` | `8` | Maximum future two-qubit gates simulated |
-| `relocation_lookahead_uses` | `2` | Maximum future uses of the atom simulated |
-
-### 7.4 Complete-plan protection
-
-Standalone `naive_dag` builds complete plans from the same initial placement:
-
-- `previous_home`: mandatory immediate reuse, followed by unloading to the atom's previous home whenever unloading is required.
-- `relocation`: mandatory immediate reuse, followed by lookahead-based destination selection whenever unloading is required.
-
-Both plans are validated and timed. The lower-duration complete plan is emitted; ties favor `previous_home`. Therefore relocation cannot make the selected complete schedule slower than the corrected previous-home baseline under the common timing model.
-
-## 8. Rules specific to `naive_n_dag`
-
-### 8.1 Immutable homes and final restoration
-
-For native `naive_n_dag` candidates, the initial SLM positions are immutable homes.
+For native candidates, the initial SLM positions are immutable homes.
 
 - Native candidates may move atoms during execution but do not permanently change their homes.
 - Every active AOD load is completely returned and unloaded when a reset is required.
 - At circuit completion, every atom is back at its own original home.
 - Final positions equal initialization exactly.
 
-This differs intentionally from standalone `naive_dag`, which may finish at a changed valid placement.
-
-### 8.2 Rigid AOD-load behavior
+### 7.2 Rigid AOD-load behavior
 
 `naive_n_dag` may move one atom or a group of atoms in the AOD.
 
@@ -269,8 +248,8 @@ This differs intentionally from standalone `naive_dag`, which may finish at a ch
   displacement `mover_position - mover_home` (zero for a fresh load) and ends
   at home `(0, 0)`, including for reused loads. Edge costs are the cheapest
   parity-routed motion between any interaction sides of the two targets
-  (Section 8.2, layered graph). All gates with an identical displacement remain
-  consecutive and retain their original relative order. There is no size limit.
+  (Section 7.2, layered graph). All gates with an identical displacement remain
+  consecutive and retain their original relative order. There is no size limit (memory limit).
 - The tour is solved by Concorde (`pyconcorde`). If pyconcorde is missing, a
   warning is issued and `fast_tsp` is used. Graphs with 4 or fewer nodes, which
   Concorde cannot solve, always use `fast_tsp`, bounded by `tsp_time_limit`
@@ -327,7 +306,7 @@ This differs intentionally from standalone `naive_dag`, which may finish at a ch
   Exactness concerns the layered displacement proxy, not the joint physical
   order/side/load-selection problem.
 
-### 8.3 Layer and reuse rules
+### 7.3 Layer and reuse rules
 
 - A two-qubit DAG layer contains gates with disjoint operands.
 - The CLI completes initial placement before CZ displacement reordering.
@@ -374,9 +353,9 @@ This differs intentionally from standalone `naive_dag`, which may finish at a ch
 - `T_reuse=0` permits identical-load continuation but forbids retaining extra loaded atoms.
 - A larger horizon does not guarantee a monotonically shorter result because the reuse planner is greedy.
 
-### 8.4 Configuration-controlled scheduling
+### 7.4 Configuration-controlled scheduling
 
-`naive_n_dag.schedule_circuit` builds up to two complete layered schedules from
+`schedule_circuit` builds up to two complete layered schedules from
 the same placement, validates and times each with the common model, and
 returns the cheaper (`reuse` on ties):
 
@@ -396,7 +375,7 @@ Within the layered planner:
 
 - `T_reuse` controls legal, cost-tested load retention, including identical-load
   continuation at zero. Returning home when necessary remains part of execution.
-- The side-priced TSP tour orders unique displacements (Section 8.2). Only a
+- The side-priced TSP tour orders unique displacements (Section 7.2). Only a
   failed tour triggers a warning and alignment ordering; there is no
   group-ordering configuration.
 - The side DP always chooses interaction sides. The greedy side ordering was
@@ -407,7 +386,7 @@ Within the layered planner:
   candidate. Planning or validation errors propagate rather than silently
   dropping a candidate.
 
-No no-reuse, alignment-only, or `naive_dag` baseline is built; `individual`
+No no-reuse or alignment-only baseline is built; `individual`
 is the one-atom-at-a-time comparison.
 Concorde is exact for its reduced displacement objective (fast_tsp is a
 heuristic), not the complete physical duration; there is no duration guarantee against uncomputed policies.
@@ -417,36 +396,35 @@ layers to `schedule_circuit`. Otherwise it passes the original extracted layers.
 There is one `schedule_circuit` call and no preprocessing-candidate duration comparison.
 Legal CZ permutations and occurrence counts are checked before physical replay.
 
-## 9. Serialization rules
+## 8. Serialization rules
 
 - `T=0` contains the true initialization.
 - Subsequent printed timestep numbers are consecutive.
 - Every nonempty printed timestep contains either a gate batch or one movement batch.
 - Movement labels are determined by endpoint parity: SLM-to-AOD is `load`, AOD-to-SLM is `unload`, and AOD-to-AOD is `move`.
 - A qubit appears at most once in one movement batch.
-- `naive_dag` emits one moving atom per movement timestep.
-- `naive_n_dag` batches ordinary movements only when they share the required rigid displacement and action kind. Load and unload boundaries remain explicit.
-- The header records `lattice_spacing`; `naive_n_dag` also records the `rydberg_radius` used for pulse separation.
+- Ordinary movements are batched only when they share the required rigid displacement and action kind. Load and unload boundaries remain explicit.
+- The header records `lattice_spacing` and the `rydberg_radius` used for pulse separation.
 - Serialized gate text contains all parameters and measurement destinations needed for independent replay.
 - The serialized `final_time` must equal the duration recomputed from the serialized actions under the applicable common timing model.
 
-## 10. Validation requirements
+## 9. Validation requirements
 
 Before a complete schedule is accepted or written, it must be replayed from its true initialization and checked for:
 
 - Initialization uniqueness, parity, and bounds.
 - Movement continuity and correct action labels.
 - Legal cardinal transfers and legal highway interiors.
-- Active-load ownership and solver-specific one-atom or rigid-group behavior.
+- Active-load ownership and rigid-group behavior (Section 7.2).
 - Vacant movement endpoints and unload destinations.
 - Correct two-qubit interaction geometry.
-- For `naive_n_dag`, no two simultaneous two-qubit gates with atoms strictly inside the Rydberg radius of each other (Section 5.1).
+- No two simultaneous two-qubit gates with atoms strictly inside the Rydberg radius of each other (Section 5.1).
 - Circuit identities, parameters, multiplicities, measurement destinations, and per-qubit order against the SWAP-filtered reference.
 - No emitted SWAPs.
 - No atom remaining active in the AOD at completion.
-- The solver-specific terminal rule: changed valid homes are allowed for standalone `naive_dag`; exact original-home restoration is required for `naive_n_dag` and its accepted adapted candidates.
+- Exact original-home restoration for every accepted candidate (Section 7.1).
 - Agreement between internal events, serialized actions, and reported duration.
 
-## 11. Scope limitations
+## 10. Scope limitations
 
 These rules define the repository's current discrete scheduling model. They do not claim to model arbitrary QASM control flow, finite optical-trap extent, crosstalk beyond the simultaneous-gate Rydberg-radius rule of Section 5.1 (for example, idle atoms near a pulsed pair), analog trajectory intersections away from represented grid points, hardware-specific measurement duration, or finite AOD travel bounds. Such constraints require separate rules and validation before being treated as hardware guarantees.

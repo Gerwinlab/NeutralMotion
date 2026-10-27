@@ -1,6 +1,6 @@
 qasm_file: bv_n14.qasm
-final_time: 2864.122989088464 microsecond
-lattice_spacing: 8.0 micrometer
+final_time: 4755.541409821137 microsecond
+lattice_spacing: 14.999999999999998 micrometer
 random number seed: 0
 T=0
 initialize q[0] -> (6,0); q[1] -> (6,6); q[2] -> (2,4); q[3] -> (0,0); q[4] -> (2,0); q[5] -> (4,0); q[6] -> (2,6); q[7] -> (6,2); q[8] -> (4,6); q[9] -> (0,6); q[10] -> (0,4); q[11] -> (4,2); q[12] -> (0,2); q[13] -> (2,2);

@@ -27,7 +27,10 @@ This installs the package in editable mode and exposes these CLI commands:
 
 ## Repository Layout
 
-- `src/`: the `naive_dag` and `naive_n_dag` packages; `tests/`: the test suite.
+- `src/`: the `naive_dag` and `naive_n_dag` packages, each with its own
+  `Rules.md` and `Scheduler.md` (see
+  [Scheduling Rules And Solver Docs](#scheduling-rules-and-solver-docs));
+  `tests/`: the test suite.
 - `inputs/qasm_files/`: every QASM circuit, grouped by family (`qLDPC/` with its
   `checks/` and `manifest.json`, `bb144/`, `qft/`, `bv/`, `vqe/`, `general/`).
 - `benchmarks/configs/`: scheduler JSONs grouped by family. A config that uses
@@ -79,7 +82,24 @@ QASM barriers are hard scheduling boundaries for the qubits they name. They
 are not printed as physical actions. No gate or measurement on a barrier's
 qubits may move from one side of it to the other, or share a timestep with
 one from the other side; operations on other qubits may cross it. A barrier
-on every qubit (`barrier q;`) is therefore a global boundary.
+on every qubit (`barrier q;`) is therefore a global boundary. `naive_dag`
+widens every barrier to all qubits (see its `Scheduler.md`).
+
+## Scheduling Rules And Solver Docs
+
+Every solver folder in `src/` has two documents:
+
+- `Rules.md`: the solver-independent problem: the device, collisions, legal
+  AOD moves and how to check for row/column crossings, gate conditions
+  (Rydberg radius), circuit preservation, and the timing model.
+- `Scheduler.md`: how that solver tackles it: its coordinate model and
+  collision-avoidance heuristics, circuit preservation details, the
+  scheduling algorithm, serialization, and validation checks.
+
+| Solver | Rules | Scheduler |
+|---|---|---|
+| `naive_dag` | [`src/naive_dag/Rules.md`](src/naive_dag/Rules.md) | [`src/naive_dag/Scheduler.md`](src/naive_dag/Scheduler.md) |
+| `naive_n_dag` | [`src/naive_n_dag/Rules.md`](src/naive_n_dag/Rules.md) | [`src/naive_n_dag/Scheduler.md`](src/naive_n_dag/Scheduler.md) |
 
 ## Config Notes
 
@@ -98,7 +118,7 @@ with an error. The Rydberg radius itself is the constant `RYDBERG_RADIUS = 15
 micrometers` in `src/naive_n_dag/dynamics.py`: `naive_n_dag` splits two-qubit
 gates whose atoms lie strictly inside that radius of each other into separate
 timesteps, each charged `average_two_gate_time + t_switch` (see
-`SCHEDULE_RULES.md` Section 5.1).
+`src/naive_n_dag/Scheduler.md` Section 5.1).
 
 `measurement_time` is optional and defaults to `0 milliseconds`. All
 measurements emitted in the same timestep share one measurement-time charge,

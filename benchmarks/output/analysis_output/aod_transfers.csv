@@ -2,29 +2,29 @@ Benchmark,solver,variant,load_steps,unload_steps,atom_loads,atom_unloads,max_loa
 "[[144,12,12]]",naive_n_dag (FastSA),,62,64,564,564,4,4
 "[[144,12,12]]",naive_n_dag (deterministic),slow,2,2,144,144,1,1
 "[[144,12,12]]",naive_n_dag (deterministic),fast,2,2,144,144,1,1
-BV-14,naive_n_dag (FastSA),,2,2,2,2,1,1
+BV-14,naive_n_dag (FastSA),,1,1,1,1,1,1
 BV-14,naive_n_dag (deterministic),,1,1,1,1,1,1
 BV-50,naive_n_dag (FastSA),,1,1,1,1,1,1
 BV-50,naive_n_dag (deterministic),,1,1,1,1,1,1
 BV-70,naive_n_dag (FastSA),,1,1,1,1,1,1
 BV-70,naive_n_dag (deterministic),,1,1,1,1,1,1
-QFT-18,naive_n_dag (FastSA),,27,23,60,60,5,5
+QFT-18,naive_n_dag (FastSA),,28,23,61,61,5,5
 QFT-18,naive_n_dag (deterministic),,25,23,61,61,5,5
 QFT-29,naive_n_dag (FastSA),,54,53,217,217,8,8
 QFT-29,naive_n_dag (deterministic),,39,39,130,130,8,8
 QFT-63,naive_n_dag (FastSA),,131,128,822,822,16,16
-QFT-63,naive_n_dag (deterministic),,132,133,688,688,16,16
+QFT-63,naive_n_dag (deterministic),,132,133,698,698,17,17
 VQE-30,naive_n_dag (FastSA),,16,16,16,16,1,1
 VQE-30,naive_n_dag (deterministic),,23,23,23,23,1,1
 VQE-50,naive_n_dag (FastSA),,27,27,27,27,1,1
 VQE-50,naive_n_dag (deterministic),,42,42,42,42,1,1
 Adder-18,naive_n_dag (FastSA),,17,25,31,31,4,4
-Adder-18,naive_n_dag (deterministic),slow,24,26,32,32,4,4
+Adder-18,naive_n_dag (deterministic),slow,25,26,32,32,4,4
 Adder-18,naive_n_dag (deterministic),fast,18,26,32,32,4,4
 QV-20,naive_n_dag (FastSA),,6,6,35,35,3,3
 QV-20,naive_n_dag (deterministic),,7,6,36,36,3,3
 Heisenberg-24,naive_n_dag (FastSA),,19,19,85,85,5,5
-Heisenberg-24,naive_n_dag (deterministic),,19,19,77,77,6,6
+Heisenberg-24,naive_n_dag (deterministic),,19,19,79,79,6,6
 QAOA-24,naive_n_dag (FastSA),,15,15,51,51,4,4
 QAOA-24,naive_n_dag (deterministic),,15,15,50,50,4,4
 Random-24,naive_n_dag (FastSA),,39,38,85,85,7,7
@@ -35,23 +35,25 @@ BV-50,PowerMove (storage off),,42,42,43,43,2,2
 BV-50,PowerMove (storage on),,44,44,44,44,2,2
 BV-70,PowerMove (storage off),,68,68,71,71,2,2
 BV-70,PowerMove (storage on),,72,72,72,72,2,2
-QFT-18,PowerMove (storage off),,225,225,336,336,35,35
-QFT-18,PowerMove (storage on),,516,516,808,808,57,57
-QFT-29,PowerMove (storage off),,435,435,774,774,40,40
-QFT-29,PowerMove (storage on),,1071,1071,1851,1851,80,80
+QFT-18,PowerMove (storage off),,222,222,336,336,35,35
+QFT-18,PowerMove (storage on),,492,492,634,634,54,54
+QFT-29,PowerMove (storage off),,465,465,774,774,40,40
+QFT-29,PowerMove (storage on),,1026,1026,1478,1478,70,70
+QFT-63,PowerMove (storage off),,1255,1255,2134,2134,40,40
+QFT-63,PowerMove (storage on),,2705,2705,3951,3951,86,86
 VQE-30,PowerMove (storage off),,29,29,29,29,1,1
 VQE-30,PowerMove (storage on),,58,58,58,58,2,2
 VQE-50,PowerMove (storage off),,49,49,49,49,1,1
 VQE-50,PowerMove (storage on),,98,98,98,98,2,2
 Adder-18,PowerMove (storage off),,195,195,210,210,18,18
-Adder-18,PowerMove (storage on),,268,268,336,336,30,30
-QV-20,PowerMove (storage off),,68,68,201,201,20,20
-QV-20,PowerMove (storage on),,78,78,254,254,20,20
-Heisenberg-24,PowerMove (storage off),,141,141,378,378,31,31
-Heisenberg-24,PowerMove (storage on),,210,210,501,501,32,32
-QAOA-24,PowerMove (storage off),,126,126,226,226,20,20
-QAOA-24,PowerMove (storage on),,197,197,386,386,24,24
-Random-24,PowerMove (storage off),,185,185,244,244,18,18
-Random-24,PowerMove (storage on),,287,287,429,429,25,25
+Adder-18,PowerMove (storage on),,271,271,290,290,22,22
+QV-20,PowerMove (storage off),,64,64,201,201,19,19
+QV-20,PowerMove (storage on),,90,90,250,250,20,20
+Heisenberg-24,PowerMove (storage off),,159,159,390,390,32,32
+Heisenberg-24,PowerMove (storage on),,195,195,446,446,29,29
+QAOA-24,PowerMove (storage off),,128,128,228,228,21,21
+QAOA-24,PowerMove (storage on),,230,230,358,358,24,24
+Random-24,PowerMove (storage off),,188,188,245,245,17,17
+Random-24,PowerMove (storage on),,333,333,425,425,25,25
 "[[144,12,12]]",PowerMove (storage off),,411,411,1031,1031,8,8
-"[[144,12,12]]",PowerMove (storage on),,579,579,2322,2322,12,12
+"[[144,12,12]]",PowerMove (storage on),,720,720,2323,2323,12,12

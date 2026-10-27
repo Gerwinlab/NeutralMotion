@@ -1,6 +1,6 @@
 qasm_file: adder_18.qasm
-final_time: 30550.467089312733 microsecond
-lattice_spacing: 8.0 micrometer
+final_time: 50084.83487088461 microsecond
+lattice_spacing: 14.999999999999998 micrometer
 random number seed: 0
 T=0
 initialize q[0] -> (2,6); q[1] -> (2,8); q[2] -> (0,2); q[3] -> (0,8); q[4] -> (0,16); q[5] -> (0,14); q[6] -> (0,12); q[7] -> (2,10); q[8] -> (2,16); q[9] -> (0,10); q[10] -> (0,6); q[11] -> (2,2); q[12] -> (2,12); q[13] -> (0,4); q[14] -> (2,14); q[15] -> (0,0); q[16] -> (2,0); q[17] -> (2,4);

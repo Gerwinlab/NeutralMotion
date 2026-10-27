@@ -7,12 +7,12 @@
     "qasm_base_dir": "../../../inputs/qasm_files/vqe",
     "transfer_SLM_AOD": "15 microseconds",
     "max_acceleration": "2750 m/s^2",
-    "max_velocity": "10 m/s",
-    "lattice_spacing": "8 micrometers",
+    "max_velocity": "2 m/s",
+    "lattice_spacing": "15 micrometers",
     "average_single_gate_time": "1 microseconds",
     "average_two_gate_time": "0.27 microseconds",
     "t_switch": "1.5 microseconds",
-    "movement_shape": "trapezoidal",
+    "movement_shape": "Cubic_Spline",
     "max_dimension": [
         6,
         5
