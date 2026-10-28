@@ -10,10 +10,10 @@ BV-70,naive_n_dag (FastSA),,1,1,1,1,1,1
 BV-70,naive_n_dag (deterministic),,1,1,1,1,1,1
 QFT-18,naive_n_dag (FastSA),,28,23,61,61,5,5
 QFT-18,naive_n_dag (deterministic),,25,23,61,61,5,5
-QFT-29,naive_n_dag (FastSA),,54,53,217,217,8,8
-QFT-29,naive_n_dag (deterministic),,39,39,130,130,8,8
-QFT-63,naive_n_dag (FastSA),,131,128,822,822,16,16
-QFT-63,naive_n_dag (deterministic),,132,133,698,698,17,17
+QFT-29,naive_n_dag (FastSA),,45,44,177,177,9,9
+QFT-29,naive_n_dag (deterministic),,54,50,187,187,11,11
+QFT-63,naive_n_dag (FastSA),,127,126,435,435,11,11
+QFT-63,naive_n_dag (deterministic),,129,120,483,483,11,11
 VQE-30,naive_n_dag (FastSA),,16,16,16,16,1,1
 VQE-30,naive_n_dag (deterministic),,23,23,23,23,1,1
 VQE-50,naive_n_dag (FastSA),,27,27,27,27,1,1
@@ -21,14 +21,14 @@ VQE-50,naive_n_dag (deterministic),,42,42,42,42,1,1
 Adder-18,naive_n_dag (FastSA),,17,25,31,31,4,4
 Adder-18,naive_n_dag (deterministic),slow,25,26,32,32,4,4
 Adder-18,naive_n_dag (deterministic),fast,18,26,32,32,4,4
-QV-20,naive_n_dag (FastSA),,6,6,35,35,3,3
-QV-20,naive_n_dag (deterministic),,7,6,36,36,3,3
+QV-20,naive_n_dag (FastSA),,6,6,33,33,3,3
+QV-20,naive_n_dag (deterministic),,6,6,38,38,3,3
 Heisenberg-24,naive_n_dag (FastSA),,19,19,85,85,5,5
 Heisenberg-24,naive_n_dag (deterministic),,19,19,79,79,6,6
 QAOA-24,naive_n_dag (FastSA),,15,15,51,51,4,4
 QAOA-24,naive_n_dag (deterministic),,15,15,50,50,4,4
-Random-24,naive_n_dag (FastSA),,39,38,85,85,7,7
-Random-24,naive_n_dag (deterministic),,38,39,84,84,6,6
+Random-24,naive_n_dag (FastSA),,38,37,85,85,7,7
+Random-24,naive_n_dag (deterministic),,37,37,79,79,5,5
 BV-14,PowerMove (storage off),,24,24,25,25,2,2
 BV-14,PowerMove (storage on),,26,26,26,26,2,2
 BV-50,PowerMove (storage off),,42,42,43,43,2,2

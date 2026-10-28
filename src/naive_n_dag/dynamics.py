@@ -1598,7 +1598,7 @@ def validate_schedule(events, homes, config, reference_nodes=None, require_home=
         expected = defaultdict(list)
         commuting, fixed = set(), set()
         for node in reference_nodes:
-            if node.op.name in {"swap", "barrier"}:
+            if node.op.name == "barrier":
                 continue
             if len(node.qargs) not in (1, 2):
                 continue
@@ -1652,8 +1652,6 @@ def _validate_barrier_order(events, reference_nodes):
     occurrences = defaultdict(int)
     operations, barriers = [], []
     for index, node in enumerate(reference_nodes):
-        if node.op.name == "swap":
-            continue
         if node.op.name == "barrier":
             barriers.append((index, op_node_signature(node)[2]))
         elif len(node.qargs) in (1, 2):
@@ -1923,10 +1921,6 @@ def schedule_circuit(layers, singles, qubits, config, reference_nodes=None):
             node for i, layer in enumerate(layers) for node in list(singles[i]) + layer
         ] + list(singles[-1])
     reference_nodes = list(reference_nodes)
-    config["_ancilla_qubits"] = frozenset(
-        q for node in reference_nodes if node.op.name == "reset"
-        for q in op_node_signature(node)[2]
-    )
     candidates = {"reuse": config}
     if list(config["max_dimension"]) != [1, 1]:
         candidates["individual"] = _one_atom_aod(config)

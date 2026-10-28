@@ -7,7 +7,10 @@ import pint
 import pathlib
 import warnings
 from typing import Any, Mapping
-from .dag_helper import load_qasm_to_gate_dag
+from .dag_helper import (
+    ancilla_qubits, dag_with_gate_ops_only, format_qubit_registers, format_transpile,
+    load_qasm_to_dag,
+)
 from .grid import generate_grid
 from .grid import naive_fill
 from .dynamics import schedule_circuit
@@ -106,6 +109,21 @@ def main(
         )
     if not isinstance(config.get("prefer_moving_ancillas", False), bool):
         raise ValueError("prefer_moving_ancillas must be a boolean.")
+    optimization_level = config.get("transpile_optimization_level", 0)
+    if not isinstance(optimization_level, int) or isinstance(optimization_level, bool) or optimization_level not in range(4):
+        raise ValueError("transpile_optimization_level must be 0, 1, 2 or 3.")
+    basis_gates = config.get("transpile_basis_gates")
+    if basis_gates is not None and (
+        not isinstance(basis_gates, list) or not basis_gates or not all(isinstance(g, str) and g for g in basis_gates)
+    ):
+        raise ValueError("transpile_basis_gates must be null or a non-empty list of gate names.")
+    ancilla_registers = config.get("ancilla_registers")
+    if ancilla_registers is not None and (
+        not isinstance(ancilla_registers, list) or not all(isinstance(g, str) and g for g in ancilla_registers)
+    ):
+        raise ValueError("ancilla_registers must be a list of QASM register names.")
+    if config.get("prefer_moving_ancillas", False) and not ancilla_registers:
+        raise ValueError("prefer_moving_ancillas requires ancilla_registers (the QASM's ancilla register names).")
     if "rydberg_radius" in config:
         raise ValueError(
             "Config key 'rydberg_radius' was renamed to 'lattice_spacing' (the SLM trap pitch). "
@@ -134,7 +152,11 @@ def main(
     config["average_two_gate_time"] = config["average_two_gate_time"].to("seconds")
     config["measurement_time"] = config["measurement_time"].to("seconds")
     config["t_switch"] = config["t_switch"].to("seconds")
-    qc = load_qasm_to_gate_dag(qasm_path)
+    dag = load_qasm_to_dag(qasm_path, optimization_level, basis_gates, ancilla_registers or ())
+    qc = dag_with_gate_ops_only(dag)
+    config["_ancilla_qubits"] = ancilla_qubits(dag)
+    if not quiet:
+        print(f"transpile={format_transpile(dag.metadata) or 'off'}")
     grid = generate_grid(dims,config["lattice_spacing"])
     fill_seed = seed if seed is not None else 0
     qubits = naive_fill(grid,num_na,fill_seed,True)
@@ -169,6 +191,8 @@ def main(
         fill_seed= fill_seed,
         events=event_log,
         initial_qubits=qubits,
+        qubit_registers=format_qubit_registers((dag.metadata or {}).get("qubit_registers")),
+        transpile=format_transpile(dag.metadata),
     )
     print(final_time_us)
     print(f"schedule_file={schedule_output}")

@@ -42,11 +42,10 @@ A straight movement segment is judged by its complete interior, not only its end
 
 ## 2. Circuit preservation
 
-- Input SWAP operations are removed while constructing the scheduling DAG.
-- SWAPs must not appear in scheduling layers or emitted schedules.
-- The scheduler may not insert a routing SWAP or replace an omitted SWAP with a decomposition.
-- If a SWAP unexpectedly reaches a layer, it is omitted and the DAG filtering path should be investigated.
-- Circuit comparison is performed against the supported input operation sequence **after SWAP removal**.
+- SWAP operations are ordinary two-qubit gates: they are scheduled and emitted like any other gate (`swap q[a],q[b];`). The solver never removes or adds SWAPs; removing them is left to the user (edit the QASM, or transpile: Qiskit at levels 2-3 removes SWAPs and rewires the measurements).
+- Ancilla status (`ancilla_registers`) is a property of the atom: the qubits of the named QASM registers.
+- Optional Qiskit transpile at load time: `transpile_optimization_level` (0-3, default 0) and `transpile_basis_gates` (a list of gate names, default `null` = gates as written). Level 0 with no basis skips Qiskit entirely, so the circuit is kept exactly as written. Otherwise the transpiled circuit replaces the input for scheduling and for every check below, and the header records `transpile: optimization_level=... basis_gates=...`. Levels 2-3 may delete gates Qiskit judges equal to the identity (QFT-63: controlled phases below about pi/2^19, 3400 -> 2014 two-qubit gates), so the schedule then preserves the transpiled circuit, not the file.
+- Circuit comparison is performed against the prepared operation sequence (after the optional transpile).
 - Every remaining supported one- and two-qubit operation must appear exactly once. No operation may be added, duplicated, or omitted.
 - Gate identity, parameters, measurement destinations, and per-qubit operation order must be preserved.
 - Optional exception for QASM input: `reorder_cz=true` or
@@ -55,7 +54,7 @@ A straight movement segment is judged by its complete interior, not only its end
   Preprocessing preserves every operation occurrence and checks that each
   quantum/classical wire changes only by permutations within consecutive CZ
   runs. It does not cross non-CZ wire boundaries. The movement scheduler then
-  preserves exact per-qubit order against the prepared, SWAP-filtered circuit.
+  preserves exact per-qubit order against the prepared circuit.
   With both passes disabled, original input ordering is retained. The
   displacement option defaults to the value of `reorder_cz`. Both options
   reject conditional gates/control flow and `step_order` input.
@@ -312,8 +311,8 @@ For native candidates, the initial SLM positions are immutable homes.
 - The CLI completes initial placement before CZ displacement reordering.
   Within each reachable commuting block, gates with identical signed
   home-to-partner displacement are collected into the same layer whenever
-  their operands are disjoint. The proxy mover is the reset-identified
-  ancilla when preferred, otherwise the first operand.
+  their operands are disjoint. The proxy mover is the ancilla (a qubit of
+  `ancilla_registers`) when preferred, otherwise the first operand.
 - Each displacement bucket is edge-colored into disjoint matchings, preserving
   repeated occurrences. Bipartite graphs use optimal edge coloring; other
   graphs use greedy coloring. Whole matchings are packed largest-first into
@@ -338,7 +337,7 @@ For native candidates, the initial SLM positions are immutable homes.
 - Grouping decisions use the candidate's actual execution state after any proposed reset.
 - Reuse may execute only gates having exactly one operand in the existing active load.
 - With `prefer_moving_ancillas=true`, a data-ancilla gate may reuse its loaded
-  operand only when that operand is the reset-identified ancilla. New groups
+  operand only when that operand is the ancilla (a qubit of `ancilla_registers`). New groups
   likewise choose the ancilla as mover.
 - A gate whose two operands are both loaded cannot execute until the load has returned and an appropriate load is created.
 - Reuse and reset alternatives are built on independent state copies.
@@ -419,8 +418,7 @@ Before a complete schedule is accepted or written, it must be replayed from its 
 - Vacant movement endpoints and unload destinations.
 - Correct two-qubit interaction geometry.
 - No two simultaneous two-qubit gates with atoms strictly inside the Rydberg radius of each other (Section 5.1).
-- Circuit identities, parameters, multiplicities, measurement destinations, and per-qubit order against the SWAP-filtered reference.
-- No emitted SWAPs.
+- Circuit identities, parameters, multiplicities, measurement destinations, and per-qubit order against the prepared reference.
 - No atom remaining active in the AOD at completion.
 - Exact original-home restoration for every accepted candidate (Section 7.1).
 - Agreement between internal events, serialized actions, and reported duration.

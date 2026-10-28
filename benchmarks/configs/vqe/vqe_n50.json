@@ -13,6 +13,8 @@
     "average_two_gate_time": "0.27 microseconds",
     "t_switch": "1.5 microseconds",
     "movement_shape": "Cubic_Spline",
+    "transpile_optimization_level": 2,
+    "transpile_basis_gates": ["u1", "u2", "u3", "cz", "id"],
     "max_dimension": [
         8,
         7

@@ -41,11 +41,10 @@ A straight movement segment is judged by its complete interior, not only its end
 
 ## 2. Circuit preservation
 
-- Input SWAP operations are removed while constructing the scheduling DAG.
-- SWAPs must not appear in scheduling layers or emitted schedules.
-- The scheduler may not insert a routing SWAP or replace an omitted SWAP with a decomposition.
-- If a SWAP unexpectedly reaches a layer, it is omitted and the DAG filtering path should be investigated.
-- Circuit comparison is performed against the supported input operation sequence **after SWAP removal**.
+- SWAP operations are ordinary two-qubit gates: they are scheduled and emitted like any other gate (`swap q[a],q[b];`). The solver never removes or adds SWAPs; removing them is left to the user (edit the QASM, or transpile: Qiskit at levels 2-3 removes SWAPs and rewires the measurements).
+- Ancilla status (`ancilla_registers`) is a property of the atom: the qubits of the named QASM registers.
+- Optional Qiskit transpile at load time: `transpile_optimization_level` (0-3, default 0) and `transpile_basis_gates` (a list of gate names, default `null` = gates as written). Level 0 with no basis skips Qiskit entirely, so the circuit is kept exactly as written. Otherwise the transpiled circuit replaces the input for scheduling and for every check below, and the header records `transpile: optimization_level=... basis_gates=...`. Levels 2-3 may delete gates Qiskit judges equal to the identity (QFT-63: controlled phases below about pi/2^19, 3400 -> 2014 two-qubit gates), so the schedule then preserves the transpiled circuit, not the file.
+- Circuit comparison is performed against the prepared operation sequence (after the optional transpile).
 - Every remaining supported one- and two-qubit operation must appear exactly once. No operation may be added, duplicated, or omitted.
 - Gate identity, parameters, measurement destinations, and per-qubit operation order must be preserved.
 - Operations on disjoint qubits may be reordered or emitted in the same timestep when the scheduler's batching rules permit it.
@@ -53,9 +52,10 @@ A straight movement segment is judged by its complete interior, not only its end
 - Simultaneous gates must have disjoint operands.
 - Measurements retain the classical register and destination, for example
   `measure q[2] -> c_x[5];`. Equal local indices in different registers remain distinct.
-- Multiple quantum registers are not flattened: qubits are identified by
-  their local index, so the QASM input should declare a single quantum
-  register. Classical registers are kept as written.
+- A QASM may declare several quantum registers. The loader numbers their qubits
+  globally in declaration order (`qreg data[144]; qreg ax[72];` gives `ax[i] =
+  q[144 + i]`), and the schedule writes `q[...]` with a `qubit_registers:`
+  header line recording the mapping. Classical registers are kept as written.
 - Barriers are scheduling metadata and are not emitted as physical operations.
   When the DAG is built every barrier is widened to all qubits, so each
   barrier is a global boundary: every operation before it is emitted before
@@ -179,7 +179,7 @@ Candidate schedules may be compared only when timed under the same model and fro
 
 - If the next two-qubit gate uses the currently loaded atom, that atom remains in the AOD.
 - Exception: with `prefer_moving_ancillas=true`, a loaded data atom returns
-  before a data-ancilla gate so that the reset-identified ancilla can move.
+  before a data-ancilla gate so that the ancilla (a qubit of `ancilla_registers`) can move.
 - It must not be unloaded and immediately loaded again for that next gate.
 - Intervening one-qubit operations do not cancel this rule.
 - The atom may move through legal parity routes from its current interaction site to the next partner.
@@ -239,8 +239,7 @@ Before a complete schedule is accepted or written, it must be replayed from its 
 - With `prefer_moving_ancillas=true`, the ancilla operand of each data-ancilla gate is the mover.
 - Vacant movement endpoints and unload destinations.
 - Correct two-qubit interaction geometry.
-- Circuit identities, parameters, multiplicities, measurement destinations, and per-qubit order against the SWAP-filtered reference.
-- No emitted SWAPs.
+- Circuit identities, parameters, multiplicities, measurement destinations, and per-qubit order against the prepared reference.
 - No operation crossing a QASM barrier (Section 2).
 - No atom remaining active in the AOD at completion.
 - The terminal rule: atoms may finish at changed valid homes (Section 7.3).

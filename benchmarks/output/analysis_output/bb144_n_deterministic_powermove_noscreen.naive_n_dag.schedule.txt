@@ -1,5 +1,6 @@
 solver: naive_n_dag
 qasm_file: bb_n144_k12_d12_cz_syndrome.qasm
+qubit_registers: data=q[0:144] ax=q[144:216] az=q[216:288]
 final_time: 14136.285697330724 microsecond
 lattice_spacing: 14.999999999999998 micrometer
 rydberg_radius: 15 micrometer

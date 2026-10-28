@@ -15,6 +15,7 @@
     "reorder_cz": true,
     "movement_shape": "Cubic_Spline",
     "prefer_moving_ancillas": true,
+    "ancilla_registers": ["ax", "az"],
     "max_dimension": [
         5,
         5

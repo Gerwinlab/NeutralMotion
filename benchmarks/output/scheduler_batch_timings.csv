@@ -1,42 +1,42 @@
 solver,config_json,qasm_arg,Tcomp (s),output_file,Texec (µs),Benchmark
-Enola,,bv_n14.qasm,669.48,,5583.98,BV-14
-Enola,,bv_n50.qasm,1710.91,,10118.96,BV-50
-Enola,,bv_n70.qasm,4334.5,,17620.11,BV-70
-Enola,,qft_n18_transpiled.qasm,10917.8,,108173.62,QFT-18
-Enola,,qft_n29_transpiled.qasm,24116,,239150,QFT-29
-Enola,,vqe_n30.qasm,57.62,,5436.18,VQE-30
-Enola,,vqe_n50.qasm,56.58,,10196.5,VQE-50
-Enola,script.py,bb144_bivariate_bicycle_cz.qasm,258.15,,742617.95,"[[144,12,12]]"
-Enola,benchmarks/powermove_script.py,adder_18.qasm,1107.07,,70243.67,Adder-18
-Enola,benchmarks/powermove_script.py,qv_20.qasm,922.72,,85328.76,QV-20
-Enola,benchmarks/powermove_script.py,heisenberg_24.qasm,2131.32,,159765.88,Heisenberg-24
-Enola,benchmarks/powermove_script.py,qaoa_24.qasm,1053.43,,81559.2,QAOA-24
-Enola,benchmarks/powermove_script.py,random_24.qasm,1265.0,,117558.58,Random-24
-PowerMove,benchmarks/powermove_script.py,bv_n14.qasm,16.96,,5311.72,BV-14
-PowerMove,benchmarks/powermove_script.py,bv_n50.qasm,11.03,,10274.36,BV-50
-PowerMove,benchmarks/powermove_script.py,bv_n70.qasm,12.34,,18351.47,BV-70
-PowerMove,benchmarks/powermove_script.py,qft_n18_transpiled.qasm,180.23,,44994.16,QFT-18
-PowerMove,benchmarks/powermove_script.py,qft_n29_transpiled.qasm,276.12,,90691.34,QFT-29
-PowerMove,benchmarks/powermove_script.py,vqe_n30.qasm,17.53,,5838.65,VQE-30
-PowerMove,benchmarks/powermove_script.py,vqe_n50.qasm,18.95,,10767.98,VQE-50
-PowerMove,benchmarks/powermove_script.py,bb_n144_k12_d12_cz_syndrome.qasm,49.07,,215414.19,"[[144,12,12]]"
-PowerMove,benchmarks/powermove_script.py,adder_18.qasm,80.78,,45172.66,Adder-18
-PowerMove,benchmarks/powermove_script.py,qv_20.qasm,98.46,,13796.85,QV-20
-PowerMove,benchmarks/powermove_script.py,heisenberg_24.qasm,159.51,,28000.49,Heisenberg-24
-PowerMove,benchmarks/powermove_script.py,qaoa_24.qasm,77.72,,28952.84,QAOA-24
-PowerMove,benchmarks/powermove_script.py,random_24.qasm,81.34,,49678.02,Random-24
-PowerMove,benchmarks/powermove_script.py,qft_n63_transpiled.qasm,398.17,,297422.49,QFT-63
-PowerMove (storage on),benchmarks/powermove_script.py,bv_n14.qasm,16.62,,10074.87,BV-14
-PowerMove (storage on),benchmarks/powermove_script.py,bv_n50.qasm,11.86,,21525.99,BV-50
-PowerMove (storage on),benchmarks/powermove_script.py,bv_n70.qasm,12.59,,36295.72,BV-70
-PowerMove (storage on),benchmarks/powermove_script.py,qft_n18_transpiled.qasm,176.65,,274581.05,QFT-18
-PowerMove (storage on),benchmarks/powermove_script.py,qft_n29_transpiled.qasm,278.13,,624525.24,QFT-29
-PowerMove (storage on),benchmarks/powermove_script.py,vqe_n30.qasm,17.94,,25995.29,VQE-30
-PowerMove (storage on),benchmarks/powermove_script.py,vqe_n50.qasm,18.36,,47255.65,VQE-50
-PowerMove (storage on),benchmarks/powermove_script.py,bb_n144_k12_d12_cz_syndrome.qasm,48.06,,630812.93,"[[144,12,12]]"
-PowerMove (storage on),benchmarks/powermove_script.py,adder_18.qasm,82.92,,150894.49,Adder-18
-PowerMove (storage on),benchmarks/powermove_script.py,qv_20.qasm,100.1,,39301.94,QV-20
-PowerMove (storage on),benchmarks/powermove_script.py,heisenberg_24.qasm,153.72,,88215.93,Heisenberg-24
-PowerMove (storage on),benchmarks/powermove_script.py,qaoa_24.qasm,81.56,,127451.92,QAOA-24
-PowerMove (storage on),benchmarks/powermove_script.py,random_24.qasm,83.48,,187194.01,Random-24
-PowerMove (storage on),benchmarks/powermove_script.py,qft_n63_transpiled.qasm,380.16,,1841235.2,QFT-63
+Enola,benchmarks/powermove_script.py,bv_n14.qasm,296.76,,11992.65,BV-14
+Enola,benchmarks/powermove_script.py,bv_n50.qasm,661.55,,21931.46,BV-50
+Enola,benchmarks/powermove_script.py,bv_n70.qasm,1527.59,,38728.01,BV-70
+Enola,benchmarks/powermove_script.py,qft_n18_transpiled.qasm,4332.37,,248766.15,QFT-18
+Enola,benchmarks/powermove_script.py,qft_n29_transpiled.qasm,10050.22,,572503.81,QFT-29
+Enola,benchmarks/powermove_script.py,vqe_n30.qasm,280.16,,26691.98,VQE-30
+Enola,benchmarks/powermove_script.py,vqe_n50.qasm,477.61,,46648.89,VQE-50
+Enola,benchmarks/powermove_script.py,bb_n144_k12_d12_cz_syndrome.qasm,355.04,,750999.28,"[[144,12,12]]"
+Enola,benchmarks/powermove_script.py,adder_18.qasm,2792.1,,113381.22,Adder-18
+Enola,benchmarks/powermove_script.py,qv_20.qasm,772.0,,106910.61,QV-20
+Enola,benchmarks/powermove_script.py,heisenberg_24.qasm,3251.73,,213841.09,Heisenberg-24
+Enola,benchmarks/powermove_script.py,qaoa_24.qasm,998.78,,97353.43,QAOA-24
+Enola,benchmarks/powermove_script.py,random_24.qasm,1646.63,,132233.37,Random-24
+PowerMove,benchmarks/powermove_script.py,bv_n14.qasm,11.83,,6863.24,BV-14
+PowerMove,benchmarks/powermove_script.py,bv_n50.qasm,9.13,,12715.18,BV-50
+PowerMove,benchmarks/powermove_script.py,bv_n70.qasm,10.64,,24009.62,BV-70
+PowerMove,benchmarks/powermove_script.py,qft_n18_transpiled.qasm,138.06,,59445.19,QFT-18
+PowerMove,benchmarks/powermove_script.py,qft_n29_transpiled.qasm,208.6,,111899.61,QFT-29
+PowerMove,benchmarks/powermove_script.py,vqe_n30.qasm,12.65,,7053.81,VQE-30
+PowerMove,benchmarks/powermove_script.py,vqe_n50.qasm,15.03,,13521.17,VQE-50
+PowerMove,benchmarks/powermove_script.py,bb_n144_k12_d12_cz_syndrome.qasm,38.08,,274776.53,"[[144,12,12]]"
+PowerMove,benchmarks/powermove_script.py,adder_18.qasm,60.85,,52455.42,Adder-18
+PowerMove,benchmarks/powermove_script.py,qv_20.qasm,73.95,,18248.56,QV-20
+PowerMove,benchmarks/powermove_script.py,heisenberg_24.qasm,135.62,,37779.41,Heisenberg-24
+PowerMove,benchmarks/powermove_script.py,qaoa_24.qasm,63.84,,35650.26,QAOA-24
+PowerMove,benchmarks/powermove_script.py,random_24.qasm,63.88,,66172.74,Random-24
+PowerMove,benchmarks/powermove_script.py,qft_n63_transpiled.qasm,298.45,,371838.46,QFT-63
+PowerMove (storage on),benchmarks/powermove_script.py,bv_n14.qasm,12.68,,12677.71,BV-14
+PowerMove (storage on),benchmarks/powermove_script.py,bv_n50.qasm,7.97,,27019.92,BV-50
+PowerMove (storage on),benchmarks/powermove_script.py,bv_n70.qasm,9.87,,45356.89,BV-70
+PowerMove (storage on),benchmarks/powermove_script.py,qft_n18_transpiled.qasm,139.09,,336017.95,QFT-18
+PowerMove (storage on),benchmarks/powermove_script.py,qft_n29_transpiled.qasm,209.85,,761763.63,QFT-29
+PowerMove (storage on),benchmarks/powermove_script.py,vqe_n30.qasm,12.74,,31841.85,VQE-30
+PowerMove (storage on),benchmarks/powermove_script.py,vqe_n50.qasm,13.38,,58397.67,VQE-50
+PowerMove (storage on),benchmarks/powermove_script.py,bb_n144_k12_d12_cz_syndrome.qasm,36.9,,759326.27,"[[144,12,12]]"
+PowerMove (storage on),benchmarks/powermove_script.py,adder_18.qasm,58.85,,183054.57,Adder-18
+PowerMove (storage on),benchmarks/powermove_script.py,qv_20.qasm,78.4,,62967.13,QV-20
+PowerMove (storage on),benchmarks/powermove_script.py,heisenberg_24.qasm,137.95,,104191.84,Heisenberg-24
+PowerMove (storage on),benchmarks/powermove_script.py,qaoa_24.qasm,57.97,,160355.43,QAOA-24
+PowerMove (storage on),benchmarks/powermove_script.py,random_24.qasm,62.3,,235986.92,Random-24
+PowerMove (storage on),benchmarks/powermove_script.py,qft_n63_transpiled.qasm,312.96,,2259610.74,QFT-63

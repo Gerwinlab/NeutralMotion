@@ -15,8 +15,10 @@ from naive_n_dag.grid import Fastsa_Fill, generate_grid, initial_layout_fill, na
 from naive_n_dag.deterministic_placement import deterministic_fill, validate_options
 from naive_n_dag.placement_cost import COST_FUNCTION_REMOVED
 from naive_n_dag.dag_helper import (
+    ancilla_qubits,
     dag_from_txt_auto,
     format_qubit_registers,
+    format_transpile,
     load_qasm_to_two_qubit_dag_with_single_qubit_context,
     reorder_cz_layers_by_displacement,
 )
@@ -138,6 +140,33 @@ def _resolve_qasm_file(config: Mapping[str, Any], qasm_file: PathLike) -> pathli
     return (pathlib.Path(base_dir_value) / qasm_path).resolve()
 
 
+def _validate_ancilla_registers(config: Mapping[str, Any]) -> None:
+    """``ancilla_registers``: QASM register names; required by ``prefer_moving_ancillas``."""
+    names = config.get("ancilla_registers")
+    if names is not None and (
+        not isinstance(names, list) or not all(isinstance(name, str) and name for name in names)
+    ):
+        raise ValueError("ancilla_registers must be a list of QASM register names.")
+    if config.get("prefer_moving_ancillas", False) and not names:
+        raise ValueError("prefer_moving_ancillas requires ancilla_registers (the QASM's ancilla register names).")
+    if names and config.get("step_order") is not None:
+        raise ValueError("ancilla_registers require QASM input, not step_order.")
+
+
+def _validate_transpile_options(config: Mapping[str, Any]) -> None:
+    """Check ``transpile_optimization_level`` (0-3) and ``transpile_basis_gates`` (gate names or null)."""
+    level = config.get("transpile_optimization_level", 0)
+    if not isinstance(level, int) or isinstance(level, bool) or level not in range(4):
+        raise ValueError("transpile_optimization_level must be 0, 1, 2 or 3.")
+    basis = config.get("transpile_basis_gates")
+    if basis is not None and (
+        not isinstance(basis, list) or not basis or not all(isinstance(g, str) and g for g in basis)
+    ):
+        raise ValueError("transpile_basis_gates must be null or a non-empty list of gate names.")
+    if (level or basis is not None) and config.get("step_order") is not None:
+        raise ValueError("transpile options require QASM input, not step_order.")
+
+
 def _validate_required_config(config: Mapping[str, Any]) -> None:
     """Validate required scheduler config keys and core value constraints."""
     _reject_renamed_keys(config)
@@ -147,6 +176,8 @@ def _validate_required_config(config: Mapping[str, Any]) -> None:
         raise ValueError("reorder_cz_by_displacement must be a boolean.")
     if not isinstance(config.get("prefer_moving_ancillas", False), bool):
         raise ValueError("prefer_moving_ancillas must be a boolean.")
+    _validate_ancilla_registers(config)
+    _validate_transpile_options(config)
     if config.get("reorder_cz", False) and config.get("step_order") is not None:
         raise ValueError("reorder_cz requires QASM input with full gate context, not step_order.")
     if config.get("reorder_cz_by_displacement", config.get("reorder_cz", False)) and config.get("step_order") is not None:
@@ -336,9 +367,14 @@ def main(
         two_qubit_dag, single_layers, reference_nodes = load_qasm_to_two_qubit_dag_with_single_qubit_context(
             qasm_path, reorder_cz=False,
             return_reference_nodes=True,
+            optimization_level=config.get("transpile_optimization_level", 0),
+            basis_gates=config.get("transpile_basis_gates"),
+            ancilla_registers=config.get("ancilla_registers") or (),
         )
+        config["_ancilla_qubits"] = ancilla_qubits(two_qubit_dag)
         if not quiet:
             print(f"reorder_cz={config.get('reorder_cz', False)}")
+            print(f"transpile={format_transpile(two_qubit_dag.metadata) or 'off'}")
     else:
         two_qubit_dag, single_layers = dag_from_txt_auto(source_path)
     reduced_layers = list(two_qubit_dag.layers())
@@ -499,6 +535,7 @@ def main(
         qubit_registers=format_qubit_registers(
             two_qubit_dag.metadata.get("qubit_registers") if two_qubit_dag.metadata else None
         ),
+        transpile=format_transpile(two_qubit_dag.metadata),
     )
 
     if not quiet:

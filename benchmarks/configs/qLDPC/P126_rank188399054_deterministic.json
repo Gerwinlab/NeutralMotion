@@ -19,6 +19,7 @@
     ],
     "fill_strategy": "deterministic",
     "prefer_moving_ancillas": true,
+    "ancilla_registers": ["ax", "az"],
     "reorder_cz": true,
     "alignment_conc": -1,
     "T_reuse": 3,

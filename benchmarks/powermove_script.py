@@ -37,7 +37,7 @@ import sys
 import time
 
 import networkx
-from qiskit import QuantumCircuit, transpile
+from qiskit import QuantumCircuit, QuantumRegister, transpile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
@@ -115,6 +115,11 @@ def _track_stages(gate_stages: list, loads: collections.Counter):
 def load_cz_blocks(qasm_path: str):
     """Transpile the QASM to the artifacts' basis; return (num_qubits, CZ blocks)."""
     circ = QuantumCircuit.from_qasm_file(qasm_path)
+    # get_cz_blocks reads register-local q._index, so give it one register (global order).
+    flat = QuantumCircuit(QuantumRegister(circ.num_qubits, "q"), *circ.cregs)
+    for inst in circ.data:
+        flat.append(inst.operation, [flat.qubits[circ.find_bit(q).index] for q in inst.qubits], inst.clbits)
+    circ = flat
     test_circuit = transpile(
         circ,
         basis_gates=["u1", "u2", "u3", "cz", "id"],

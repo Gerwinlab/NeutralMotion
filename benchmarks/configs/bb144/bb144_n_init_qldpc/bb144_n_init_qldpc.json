@@ -24,6 +24,7 @@
     "alignment_conc": -1,
     "T_reuse": "Inf",
     "prefer_moving_ancillas": true,
+    "ancilla_registers": ["ax", "az"],
     "tour_ordering": "tsp_gadget",
     "concorde_time_limit": 5.0,
     "tsp_time_limit": 0.5

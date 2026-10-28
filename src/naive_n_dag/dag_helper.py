@@ -12,13 +12,12 @@ from fractions import Fraction
 from pathlib import Path
 import re
 
-from qiskit import QuantumCircuit, QuantumRegister
+from qiskit import QuantumCircuit, QuantumRegister, transpile
 from qiskit.converters import circuit_to_dag
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.dagcircuit.dagnode import DAGOpNode
 
 from qiskit.circuit.library.standard_gates import CXGate, CZGate
-from qiskit.circuit.library.standard_gates import SwapGate
 
 
 def load_qasm_to_circuit(qasm_path: str | Path) -> QuantumCircuit:
@@ -26,9 +25,44 @@ def load_qasm_to_circuit(qasm_path: str | Path) -> QuantumCircuit:
     return QuantumCircuit.from_qasm_file(str(qasm_path))
 
 
-def load_qasm_to_dag(qasm_path: str | Path) -> DAGCircuit:
-    """Load a QASM file as a DAGCircuit with one quantum register (see flatten_quantum_registers)."""
-    circuit = load_qasm_to_circuit(qasm_path)
+def ancilla_indices(circuit: QuantumCircuit, names) -> frozenset[int]:
+    """Global indices of the qubits in the QASM registers ``names`` (``ancilla_registers``)."""
+    registers = {register.name: register for register in circuit.qregs}
+    missing = sorted(set(names) - registers.keys())
+    if missing:
+        raise ValueError(f"ancilla_registers {missing} are not declared in the QASM (registers: {sorted(registers)}).")
+    return frozenset(circuit.find_bit(q).index for name in names for q in registers[name])
+
+
+def prepare_circuit(
+    circuit: QuantumCircuit, optimization_level: int = 0, basis_gates: list[str] | None = None,
+    ancilla_registers=(),
+) -> QuantumCircuit:
+    """Transpile unless ``optimization_level`` is 0 with no basis; record ancillas.
+
+    Level 0 without a basis would only reorder independent gates, so the
+    circuit is kept as written. Transpile settings go to
+    ``metadata["transpile"]`` and the qubits of ``ancilla_registers`` to
+    ``metadata["ancilla_qubits"]``.
+    """
+    ancillas = ancilla_indices(circuit, ancilla_registers)
+    metadata = dict(circuit.metadata or {})
+    if optimization_level or basis_gates is not None:
+        circuit = transpile(circuit, basis_gates=basis_gates,
+                            optimization_level=optimization_level, seed_transpiler=0)
+        metadata["transpile"] = (optimization_level, basis_gates)
+    if ancillas:
+        metadata["ancilla_qubits"] = sorted(ancillas)
+    circuit.metadata = metadata
+    return circuit
+
+
+def load_qasm_to_dag(
+    qasm_path: str | Path, optimization_level: int = 0, basis_gates: list[str] | None = None,
+    ancilla_registers=(),
+) -> DAGCircuit:
+    """Load a prepared QASM circuit (``prepare_circuit``) as a DAG with one quantum register."""
+    circuit = prepare_circuit(load_qasm_to_circuit(qasm_path), optimization_level, basis_gates, ancilla_registers)
     return flatten_quantum_registers(circuit_to_dag(circuit))
 
 
@@ -75,16 +109,27 @@ def format_qubit_registers(layout) -> str | None:
     return " ".join(f"{name}=q[{start}:{start + size}]" for name, start, size in layout)
 
 
+def ancilla_qubits(dag: DAGCircuit) -> frozenset[int]:
+    """The qubits of ``ancilla_registers`` recorded by ``prepare_circuit`` (they keep the role all circuit)."""
+    return frozenset((dag.metadata or {}).get("ancilla_qubits", ()))
+
+
+def format_transpile(metadata) -> str | None:
+    """``optimization_level=2 basis_gates=u3,cz`` when ``prepare_circuit`` transpiled, else None."""
+    if not metadata or "transpile" not in metadata:
+        return None
+    level, basis = metadata["transpile"]
+    return f"optimization_level={level} basis_gates={','.join(basis) if basis else 'as written'}"
+
+
 def reference_op_nodes(dag: DAGCircuit) -> list[DAGOpNode]:
-    """Source-ordered op nodes with SWAPs removed; barriers keep their own qubits.
+    """Source-ordered op nodes; barriers keep their own qubits.
 
     A barrier orders only the qubits it names (a full-width barrier names
     them all), so it is copied as written, never widened.
     """
     gate_only = dag.copy_empty_like()
     for node in sorted(dag.op_nodes(), key=lambda item: item._node_id):
-        if isinstance(node.op, SwapGate):
-            continue
         gate_only.apply_operation_back(node.op, node.qargs, node.cargs)
     return list(gate_only.op_nodes())
 
@@ -203,9 +248,6 @@ def build_two_qubit_only_dag_with_single_qubit_context(
     single_layers: list[list[DAGOpNode]] = [[]]
 
     for node in sorted(dag.op_nodes(), key=lambda item: item._node_id):
-        if isinstance(node.op, SwapGate):
-            continue
-
         if node.op.name == "barrier":
             fenced = [extract_index_from_bit(qubit) for qubit in node.qargs]
             two_qubit_dag.apply_operation_back(node.op, node.qargs, [])
@@ -444,8 +486,7 @@ def reorder_cz_layers_by_displacement(reference_nodes, homes, config):
     if reference_nodes is None:
         raise ValueError("Displacement reordering requires full circuit context.")
     original = list(reference_nodes)
-    ancillas = {q for node in original if node.op.name == "reset"
-                for q in op_node_signature(node)[2]}
+    ancillas = config.get("_ancilla_qubits", frozenset())
     layers, singles, reordered = [], [[]], []
 
     def append_layer(layer):
@@ -491,10 +532,10 @@ def reorder_cz_layers_by_displacement(reference_nodes, homes, config):
                     append_layer([])
                 singles[-1].append(node)
                 reordered.append(node)
-            elif len(node.qargs) == 2 and node.op.name != "swap":
+            elif len(node.qargs) == 2:
                 append_layer([node])
             else:
-                raise ValueError("Displacement reordering requires a SWAP-filtered 1Q/2Q circuit.")
+                raise ValueError("Displacement reordering requires a 1Q/2Q circuit.")
     _validate_cz_reordering(original, reordered)
     return layers, singles, reordered
 
@@ -527,17 +568,18 @@ def reorder_commuting_cz_blocks(dag: DAGCircuit) -> DAGCircuit:
 def load_qasm_to_two_qubit_dag_with_single_qubit_context(
     qasm_path: str | Path, *, reorder_cz: bool = False,
     return_reference_nodes: bool = False,
+    optimization_level: int = 0, basis_gates: list[str] | None = None, ancilla_registers=(),
 ):
     """Prepare 2Q DAG/context, optionally reordering CZs before extraction.
 
     Default return remains ``(two_qubit_dag, single_layers)``. With
     ``return_reference_nodes=True``, a third item contains the full prepared
-    SWAP-filtered reference for strict schedule validation. Color order becomes
+    reference for strict schedule validation. Color order becomes
     wire order; subsequent DAG layering may compact independent color groups.
     Keep the original full DAG and context if the proposed ordering increases
     extracted two-qubit depth. Equal-depth proposals are accepted.
     """
-    dag = load_qasm_to_dag(qasm_path)
+    dag = load_qasm_to_dag(qasm_path, optimization_level, basis_gates, ancilla_registers)
     result = build_two_qubit_only_dag_with_single_qubit_context(dag)
     if reorder_cz:
         proposed_dag = reorder_commuting_cz_blocks(dag)

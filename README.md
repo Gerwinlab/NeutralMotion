@@ -28,7 +28,7 @@ This installs the package in editable mode and exposes these CLI commands:
 ## Repository Layout
 
 - `src/`: the `naive_dag` and `naive_n_dag` packages, each with its own
-  `Rules.md` and `Scheduler.md` (see
+  `Rules.md` and scheduler doc (`Scheduler_ND.md`, `Scheduler_NND.md`; see
   [Scheduling Rules And Solver Docs](#scheduling-rules-and-solver-docs));
   `tests/`: the test suite.
 - `inputs/qasm_files/`: every QASM circuit, grouped by family (`qLDPC/` with its
@@ -83,7 +83,8 @@ are not printed as physical actions. No gate or measurement on a barrier's
 qubits may move from one side of it to the other, or share a timestep with
 one from the other side; operations on other qubits may cross it. A barrier
 on every qubit (`barrier q;`) is therefore a global boundary. `naive_dag`
-widens every barrier to all qubits (see its `Scheduler.md`).
+widens every barrier to all qubits (see
+[`src/naive_dag/Scheduler_ND.md`](src/naive_dag/Scheduler_ND.md)).
 
 ## Scheduling Rules And Solver Docs
 
@@ -92,14 +93,14 @@ Every solver folder in `src/` has two documents:
 - `Rules.md`: the solver-independent problem: the device, collisions, legal
   AOD moves and how to check for row/column crossings, gate conditions
   (Rydberg radius), circuit preservation, and the timing model.
-- `Scheduler.md`: how that solver tackles it: its coordinate model and
+- `Scheduler_ND.md` (`naive_dag`) or `Scheduler_NND.md` (`naive_n_dag`): how that solver tackles it: its coordinate model and
   collision-avoidance heuristics, circuit preservation details, the
   scheduling algorithm, serialization, and validation checks.
 
 | Solver | Rules | Scheduler |
 |---|---|---|
-| `naive_dag` | [`src/naive_dag/Rules.md`](src/naive_dag/Rules.md) | [`src/naive_dag/Scheduler.md`](src/naive_dag/Scheduler.md) |
-| `naive_n_dag` | [`src/naive_n_dag/Rules.md`](src/naive_n_dag/Rules.md) | [`src/naive_n_dag/Scheduler.md`](src/naive_n_dag/Scheduler.md) |
+| `naive_dag` | [`src/naive_dag/Rules.md`](src/naive_dag/Rules.md) | [`src/naive_dag/Scheduler_ND.md`](src/naive_dag/Scheduler_ND.md) |
+| `naive_n_dag` | [`src/naive_n_dag/Rules.md`](src/naive_n_dag/Rules.md) | [`src/naive_n_dag/Scheduler_NND.md`](src/naive_n_dag/Scheduler_NND.md) |
 
 ## Config Notes
 
@@ -118,7 +119,7 @@ with an error. The Rydberg radius itself is the constant `RYDBERG_RADIUS = 15
 micrometers` in `src/naive_n_dag/dynamics.py`: `naive_n_dag` splits two-qubit
 gates whose atoms lie strictly inside that radius of each other into separate
 timesteps, each charged `average_two_gate_time + t_switch` (see
-`src/naive_n_dag/Scheduler.md` Section 5.1).
+[`src/naive_n_dag/Scheduler_NND.md`](src/naive_n_dag/Scheduler_NND.md) Section 5.1).
 
 `measurement_time` is optional and defaults to `0 milliseconds`. All
 measurements emitted in the same timestep share one measurement-time charge,
@@ -130,10 +131,28 @@ Scheduling behavior flags:
   velocity-limited acceleration profile. `Cubic_Spline` uses
   `sqrt(6 * delta_x / acceleration) + sqrt(6 * delta_y / acceleration)`, with
   physical axis distances in meters.
+- `ancilla_registers`: list of the QASM's ancilla register names, e.g.
+  `["ax", "az"]`. Every qubit of those registers is an ancilla; a name the QASM
+  does not declare is an error. The qLDPC QASMs declare `data`, `ax` and `az`
+  (P126/P254: `l`, `r`, `ax`, `az`).
 - `prefer_moving_ancillas`: optional boolean, default `false`. When `true`, a
-  two-qubit gate with exactly one reset-identified ancilla always moves that
-  ancilla instead of its data-qubit partner. If neither or both operands are
-  identified as ancillas, the normal mover heuristic is used.
+  two-qubit gate with exactly one ancilla (from `ancilla_registers`, which is
+  then required) always moves that ancilla instead of its data-qubit partner.
+  If neither or both operands are ancillas, the normal mover heuristic is used.
+- `transpile_optimization_level`: optional, `0`-`3`, default `0`. Runs the
+  QASM through Qiskit's `transpile` at this level before anything else, in
+  both solvers. Level 0 with no basis leaves the circuit as written. Levels 2-3
+  can delete near-identity gates (QFT-63: 3400 -> 2014 two-qubit gates), and the
+  schedule then preserves the transpiled circuit.
+- `transpile_basis_gates`: optional list of gate names, default `null` (gates
+  as written). PowerMove uses `["u1", "u2", "u3", "cz", "id"]`. Settings in use
+  are written to the schedule header as `transpile: ...`.
+- SWAPs are scheduled as ordinary two-qubit gates (`swap q[a],q[b];`, charged
+  one two-qubit pulse like any gate left as written). Whether a SWAP is needed
+  is up to the user: remove it from the QASM, let the transpile remove it
+  (Qiskit at levels 2-3 removes SWAPs and rewires the measurements), or set a
+  CZ basis so it is charged as the CZs it decomposes into. End-of-circuit SWAPs
+  such as the QFT bit reversal can also be undone in data analysis.
 - `max_dimension`: the AOD size `[rows, cols]` in atoms. `naive_n_dag` always
   moves several atoms in one AOD load when this size (and `alignment_conc`)
   allow; set it to `[1, 1]` to move one atom at a time. The old `parallel` key
@@ -199,7 +218,7 @@ partitions or prove globally minimum physical duration.
 - `reorder_cz`: optional boolean, default `false`. After initial placement
   (including FastSA), the CLI swaps commuting, unconditional CZ gates to put
   equal signed home-to-partner displacements on the same explicit 2Q layer.
-  Reset-identified ancilla preference determines the proxy mover when enabled;
+  Ancilla preference (`ancilla_registers`) determines the proxy mover when enabled;
   otherwise the first operand is used. Shared-operand gates and repeated
   occurrences remain in separate layers. Non-CZ wire dependencies, classical
   destinations, and barrier boundaries (on the barrier's qubits) are preserved.
@@ -230,7 +249,7 @@ PYTHONPATH=src python -m naive_n_dag benchmarks/configs/bb144/bb144_n_init_qldpc
 For the Python loader, pass `reorder_cz=True` to
 `load_qasm_to_two_qubit_dag_with_single_qubit_context`. The default two-item return
 is unchanged. `return_reference_nodes=True` additionally returns the full
-prepared, SWAP-filtered circuit for strict schedule replay. Preprocessing checks
+prepared circuit for strict schedule replay. Preprocessing checks
 operation occurrences and non-CZ wire boundaries against the original circuit;
 motion validation then checks exact wire order against this prepared reference.
 The CLI performs placement-aware reordering only after placement, using

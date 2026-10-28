@@ -22,6 +22,7 @@
     "T_reuse": 3,
     "reorder_cz": true,
     "prefer_moving_ancillas": true,
+    "ancilla_registers": ["ax", "az"],
     "Fastsa_fill": {
         "stage1_iterations": 2,
         "stage2_iterations": 100,

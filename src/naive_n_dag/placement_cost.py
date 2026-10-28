@@ -133,10 +133,7 @@ class TimeCost:
         )
 
         prefer = bool(config.get("prefer_moving_ancillas", False))
-        ancillas = set()
-        if reference_nodes is not None:
-            ancillas = {extract_index_from_bit(q) for node in reference_nodes
-                        if node.op.name == "reset" for q in node.qargs}
+        ancillas = config.get("_ancilla_qubits", frozenset())
 
         def fixed_mover(a, b):
             """The router's mover when it is forced: the gate's only ancilla."""
@@ -163,7 +160,7 @@ class TimeCost:
                     self.units.append(("section", gates, fixed, bucket, list(nodes)))
                 else:
                     node = nodes[0]
-                    if len(node.qargs) == 2 and node.op.name not in ("barrier", "swap"):
+                    if len(node.qargs) == 2 and node.op.name != "barrier":
                         a, b = (extract_index_from_bit(q) for q in node.qargs)
                         self.units.append(("layer", [(a, b)], [fixed_mover(a, b)]))
         # Operands per gate as small ints (one per distinct Qubit object, so

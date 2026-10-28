@@ -41,5 +41,6 @@
     "tour_ordering": "tsp_gadget",
     "concorde_time_limit": 5.0,
     "prefer_moving_ancillas": true,
+    "ancilla_registers": ["ax", "az"],
     "tsp_time_limit": 0.5
 }

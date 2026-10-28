@@ -76,7 +76,7 @@ def collect_single_qubit_gate_block(ops: list[DAGOpNode], start_index: int) -> t
     """Collect contiguous 1Q gates and pack them into disjoint-qubit time layers.
 
     The scan starts at ``start_index`` and stops before the next 2Q gate.
-    SWAPs are skipped; a barrier keeps later gates out of earlier layers.
+    A barrier keeps later gates out of earlier layers.
     Returns:
     - A list of gate lines, one line per time layer.
     - The index where scanning stopped.
@@ -89,9 +89,6 @@ def collect_single_qubit_gate_block(ops: list[DAGOpNode], start_index: int) -> t
     i = start_index
     while i < len(ops):
         gate_name, gate_params, qubit_ids = op_node_signature(ops[i])
-        if gate_name == "swap":
-            i += 1
-            continue
         if gate_name == "barrier":
             barrier_floor = len(layers)
             i += 1
@@ -162,6 +159,8 @@ def write_timed_schedule(
     fill_seed:int,
     events: Iterable[ScheduleEvent],
     initial_qubits: Iterable[Qubit] | None = None,
+    qubit_registers: str | None = None,
+    transpile: str | None = None,
 ) -> None:
     """Write the textual schedule with optional initialization and timed events.
 
@@ -170,8 +169,12 @@ def write_timed_schedule(
     are omitted.
     """
     out_path = Path(output_path)
-    lines: list[str] = [
-        f"qasm_file: {qasm_filename}",
+    lines: list[str] = [f"qasm_file: {qasm_filename}"]
+    if qubit_registers:
+        lines.append(f"qubit_registers: {qubit_registers}")
+    if transpile:
+        lines.append(f"transpile: {transpile}")
+    lines += [
         f"final_time: {final_time}",
         f"lattice_spacing: {lattice_spacing}",
         f"random number seed: {fill_seed}"

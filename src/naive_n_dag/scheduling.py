@@ -248,6 +248,7 @@ def write_timed_schedule(
     initial_qubits: Iterable[Qubit] | None = None,
     rydberg_radius: str | None = None,
     qubit_registers: str | None = None,
+    transpile: str | None = None,
 ) -> None:
     """Write the textual schedule: a header, an optional ``T=0`` initialization,
     then one timestep per gate event or per batch of moves.
@@ -257,6 +258,7 @@ def write_timed_schedule(
 
     ``qubit_registers`` (``l=q[0:63] r=q[63:126] ...``) records how a
     multi-register QASM's qubits were numbered; the schedule uses ``q[i]``.
+    ``transpile`` records the Qiskit transpile settings.
     """
     out_path = Path(output_path)
     lines: list[str] = [
@@ -265,6 +267,8 @@ def write_timed_schedule(
     ]
     if qubit_registers:
         lines.append(f"qubit_registers: {qubit_registers}")
+    if transpile:
+        lines.append(f"transpile: {transpile}")
     lines += [
         f"final_time: {final_time}",
         f"lattice_spacing: {lattice_spacing}",

@@ -1,6 +1,7 @@
 solver: naive_n_dag
 qasm_file: bv_n14.qasm
-final_time: 3736.675655905893 microsecond
+transpile: optimization_level=2 basis_gates=u1,u2,u3,cz,id
+final_time: 3669.175655905893 microsecond
 lattice_spacing: 14.999999999999998 micrometer
 rydberg_radius: 15 micrometer
 random number seed: 0
@@ -8,144 +9,88 @@ random number seed: 0
 T=0
 initialize q[0] -> (6,2); q[1] -> (0,2); q[2] -> (2,4); q[3] -> (2,2); q[4] -> (6,0); q[5] -> (6,4); q[6] -> (6,6); q[7] -> (4,2); q[8] -> (0,4); q[9] -> (0,6); q[10] -> (2,0); q[11] -> (2,6); q[12] -> (4,6); q[13] -> (4,4);
 T=1
-rz(pi/2) q[0]; rz(pi/2) q[1]; rz(pi/2) q[2]; rz(pi/2) q[3]; rz(pi/2) q[4]; rz(pi/2) q[5]; rz(pi/2) q[6]; rz(pi/2) q[7]; rz(pi/2) q[8]; rz(pi/2) q[9]; rz(pi/2) q[10]; rz(pi/2) q[11]; rz(pi/2) q[12]; rz(pi/2) q[13];
+u2(pi/2, -pi) q[0]; u2(pi/2, -pi) q[1]; u2(pi/2, -pi) q[2]; u2(pi/2, -pi) q[3]; u2(pi/2, -pi) q[4]; u2(pi/2, -pi) q[5]; u2(pi/2, -pi) q[6]; u2(pi/2, -pi) q[7]; u2(pi/2, -pi) q[8]; u2(pi/2, -pi) q[9]; u2(pi/2, -pi) q[10]; u2(pi/2, -pi) q[11]; u2(pi/2, -pi) q[12]; u3(pi, 0, -pi) q[13];
 T=2
-sx q[0]; sx q[1]; sx q[2]; sx q[3]; sx q[4]; sx q[5]; sx q[6]; sx q[7]; sx q[8]; sx q[9]; sx q[10]; sx q[11]; sx q[12]; sx q[13];
-T=3
-rz(pi/2) q[0]; rz(pi/2) q[1]; rz(pi/2) q[2]; rz(pi/2) q[3]; rz(pi/2) q[4]; rz(pi/2) q[5]; rz(pi/2) q[6]; rz(pi/2) q[7]; rz(pi/2) q[8]; rz(pi/2) q[9]; rz(pi/2) q[10]; rz(pi/2) q[11]; rz(pi/2) q[12]; rz(-pi/2) q[13];
-T=4
 load q[13] -> (4,4) : (4,3)
-T=5
+T=3
 move q[13] (4,3) : (6,3)
+T=4
+cz q[0],q[13];
+T=5
+u2(0, pi/2) q[0];
 T=6
-cx q[0],q[13];
-T=7
-rz(pi/2) q[0];
-T=8
-sx q[0];
-T=9
-rz(pi/2) q[0];
-T=10
 move q[13] (6,3) : (0,3)
-T=11
-cx q[1],q[13];
-T=12
-rz(pi/2) q[1];
-T=13
-sx q[1];
-T=14
-rz(pi/2) q[1];
-T=15
+T=7
+cz q[1],q[13];
+T=8
+u2(0, pi/2) q[1];
+T=9
 move q[13] (0,3) : (2,3)
-T=16
-cx q[2],q[13];
-T=17
-rz(pi/2) q[2];
-T=18
-sx q[2];
-T=19
-rz(pi/2) q[2];
-T=20
-cx q[3],q[13];
-T=21
-rz(pi/2) q[3];
-T=22
-sx q[3];
-T=23
-rz(pi/2) q[3];
-T=24
+T=10
+cz q[2],q[13];
+T=11
+u2(0, pi/2) q[2];
+T=12
+cz q[3],q[13];
+T=13
+u2(0, pi/2) q[3];
+T=14
 move q[13] (2,3) : (5,3)
-T=25
+T=15
 move q[13] (5,3) : (5,0)
-T=26
-cx q[4],q[13];
-T=27
-rz(pi/2) q[4];
-T=28
-sx q[4];
-T=29
-rz(pi/2) q[4];
-T=30
+T=16
+cz q[4],q[13];
+T=17
+u2(0, pi/2) q[4];
+T=18
 move q[13] (5,0) : (5,4)
-T=31
-cx q[5],q[13];
-T=32
-rz(pi/2) q[5];
-T=33
-sx q[5];
-T=34
-rz(pi/2) q[5];
-T=35
+T=19
+cz q[5],q[13];
+T=20
+u2(0, pi/2) q[5];
+T=21
 move q[13] (5,4) : (5,6)
-T=36
-cx q[6],q[13];
-T=37
-rz(pi/2) q[6];
-T=38
-sx q[6];
-T=39
-rz(pi/2) q[6];
-T=40
+T=22
+cz q[6],q[13];
+T=23
+u2(0, pi/2) q[6];
+T=24
 move q[13] (5,6) : (5,2)
-T=41
-cx q[7],q[13];
-T=42
-rz(pi/2) q[7];
-T=43
-sx q[7];
-T=44
-rz(pi/2) q[7];
-T=45
+T=25
+cz q[7],q[13];
+T=26
+u2(0, pi/2) q[7];
+T=27
 move q[13] (5,2) : (5,5)
-T=46
+T=28
 move q[13] (5,5) : (0,5)
-T=47
-cx q[8],q[13];
-T=48
-rz(pi/2) q[8];
-T=49
-sx q[8];
-T=50
-rz(pi/2) q[8];
-T=51
-cx q[9],q[13];
-T=52
-rz(pi/2) q[9];
-T=53
-sx q[9];
-T=54
-rz(pi/2) q[9];
-T=55
+T=29
+cz q[8],q[13];
+T=30
+u2(0, pi/2) q[8];
+T=31
+cz q[9],q[13];
+T=32
+u2(0, pi/2) q[9];
+T=33
 move q[13] (0,5) : (3,5)
-T=56
+T=34
 move q[13] (3,5) : (3,0)
-T=57
-cx q[10],q[13];
-T=58
-rz(pi/2) q[10];
-T=59
-sx q[10];
-T=60
-rz(pi/2) q[10];
-T=61
+T=35
+cz q[10],q[13];
+T=36
+u2(0, pi/2) q[10];
+T=37
 move q[13] (3,0) : (3,6)
-T=62
-cx q[11],q[13];
-T=63
-rz(pi/2) q[11];
-T=64
-sx q[11];
-T=65
-rz(pi/2) q[11];
-T=66
-cx q[12],q[13];
-T=67
-rz(pi/2) q[12];
-T=68
-sx q[12];
-T=69
-rz(pi/2) q[12];
-T=70
+T=38
+cz q[11],q[13];
+T=39
+u2(0, pi/2) q[11];
+T=40
+cz q[12],q[13];
+T=41
+u2(0, pi/2) q[12]; u2(0, pi) q[13];
+T=42
 move q[13] (3,6) : (3,4)
-T=71
+T=43
 unload q[13] -> (3,4) : (4,4)

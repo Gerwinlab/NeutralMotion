@@ -183,17 +183,17 @@ def gate_qubit_ids(ops: list[DAGOpNode], gate_index: int) -> list[int]:
 def gate_qubits(ops, gate_index, qubits):
     """The two Qubit objects of a 2Q gate, or ``[None, None]`` for any other op."""
     ids = gate_qubit_ids(ops, gate_index)
-    if len(ids) != 2 or ops[gate_index].op.name in ('swap', 'barrier'):
+    if len(ids) != 2 or ops[gate_index].op.name == 'barrier':
         return [None, None]
     mapping = {q.id: q for q in qubits}
     return [mapping[q] for q in ids]
 
 
 def find_next_two_qubit_gate(ops, start_index):
-    """Index of the first 2Q gate (not SWAP or barrier) after ``start_index``, or None."""
+    """Index of the first 2Q gate (not a barrier) after ``start_index``, or None."""
     return next((i for i in range(start_index + 1, len(ops))
                  if len(ops[i].qargs) == 2
-                 and ops[i].op.name not in ('swap', 'barrier')), None)
+                 and ops[i].op.name != 'barrier'), None)
 
 
 def _future_pairs(ops, gate_index, mover, config):
@@ -204,7 +204,7 @@ def _future_pairs(ops, gate_index, mover, config):
         raise ValueError('Relocation lookahead limits must be positive.')
     pairs, uses = [], 0
     for node in ops[gate_index + 1:]:
-        if len(node.qargs) != 2 or node.op.name in ('swap', 'barrier'):
+        if len(node.qargs) != 2 or node.op.name == 'barrier':
             continue
         pair = tuple(op_node_signature(node)[2])
         pairs.append(pair)
@@ -381,7 +381,7 @@ def best_path_for_gate(ops, gate_index, qubits, grid, config, T):
 
 
 def validate_schedule(events, initial, config, reference_nodes):
-    """Replay one-AOD legality and SWAP-filtered wire order; allow changed homes.
+    """Replay one-AOD legality and per-qubit wire order; allow changed homes.
 
     Raises ``ValueError`` on any violation and returns the final positions.
     """
@@ -413,8 +413,8 @@ def validate_schedule(events, initial, config, reference_nodes):
                     continue
                 ids = list(map(int, re.findall(r'q\[(\d+)\]', statement)))
                 if (not ids or len(set(ids)) != len(ids) or used.intersection(ids)
-                        or not set(ids) <= positions.keys() or statement.startswith('swap ')):
-                    raise ValueError('Invalid or overlapping gate operands, or an emitted SWAP.')
+                        or not set(ids) <= positions.keys()):
+                    raise ValueError('Invalid or overlapping gate operands.')
                 used.update(ids)
                 if len(ids) == 2:
                     if active not in ids or sum(abs(a-b) for a,b in zip(positions[ids[0]], positions[ids[1]])) != 1:
@@ -456,7 +456,7 @@ def validate_schedule(events, initial, config, reference_nodes):
     _validate_barrier_order(events, reference_nodes)
     expected = defaultdict(list)
     for node in reference_nodes:
-        if node.op.name in ('swap', 'barrier'):
+        if node.op.name == 'barrier':
             continue
         if len(node.qargs) not in (1, 2):
             raise ValueError('Unsupported reference operation.')
@@ -471,8 +471,6 @@ def _validate_barrier_order(events, reference_nodes):
     """Require every emitted operation to remain in its QASM barrier epoch."""
     epochs = [defaultdict(int)]
     for node in reference_nodes:
-        if node.op.name == 'swap':
-            continue
         if node.op.name == 'barrier':
             epochs.append(defaultdict(int))
         elif len(node.qargs) in (1, 2):
@@ -512,11 +510,6 @@ def schedule_circuit(ops, qubits, config):
     required unload returns to the previous home or uses relocation lookahead.
     """
     config = dict(config)
-    ops = [n for n in ops if n.op.name != 'swap']
-    config['_ancilla_qubits'] = frozenset(
-        q for node in ops if node.op.name == 'reset'
-        for q in op_node_signature(node)[2]
-    )
     initial = {q.id: q.grid_position() for q in qubits}
     plans = {}
     modes = [('previous_home', False)]
