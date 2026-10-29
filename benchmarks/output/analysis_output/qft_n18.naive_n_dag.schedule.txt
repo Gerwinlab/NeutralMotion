@@ -1,7 +1,6 @@
 solver: naive_n_dag
 qasm_file: qft_n18_transpiled.qasm
 transpile: optimization_level=2 basis_gates=u1,u2,u3,cz,id
-swap_relabel: q[0]->q[17] q[1]->q[16] q[2]->q[15] q[3]->q[14] q[4]->q[13] q[5]->q[12] q[6]->q[11] q[7]->q[10] q[8]->q[9] q[9]->q[8] q[10]->q[7] q[11]->q[6] q[12]->q[5] q[13]->q[4] q[14]->q[3] q[15]->q[2] q[16]->q[1] q[17]->q[0]
 final_time: 58423.317912926985 microsecond
 lattice_spacing: 14.999999999999998 micrometer
 rydberg_radius: 15 micrometer
@@ -1093,15 +1092,6 @@ T=541
 cz q[17],q[16];
 T=542
 u2(pi/4, -pi) q[16]; u2(0, pi/2) q[17];
-// swap q[8],q[9] removed (relabel): from here written q[8] runs on q[9] and written q[9] on q[8]
-// swap q[7],q[10] removed (relabel): from here written q[7] runs on q[10] and written q[10] on q[7]
-// swap q[6],q[11] removed (relabel): from here written q[6] runs on q[11] and written q[11] on q[6]
-// swap q[5],q[12] removed (relabel): from here written q[5] runs on q[12] and written q[12] on q[5]
-// swap q[4],q[13] removed (relabel): from here written q[4] runs on q[13] and written q[13] on q[4]
-// swap q[3],q[14] removed (relabel): from here written q[3] runs on q[14] and written q[14] on q[3]
-// swap q[2],q[15] removed (relabel): from here written q[2] runs on q[15] and written q[15] on q[2]
-// swap q[1],q[16] removed (relabel): from here written q[1] runs on q[16] and written q[16] on q[1]
-// swap q[0],q[17] removed (relabel): from here written q[0] runs on q[17] and written q[17] on q[0]
 T=543
 measure q[17] -> meas[0]; measure q[16] -> meas[1]; measure q[15] -> meas[2]; measure q[14] -> meas[3]; measure q[13] -> meas[4]; measure q[12] -> meas[5]; measure q[11] -> meas[6]; measure q[10] -> meas[7]; measure q[9] -> meas[8]; measure q[8] -> meas[9]; measure q[7] -> meas[10]; measure q[6] -> meas[11]; measure q[5] -> meas[12]; measure q[4] -> meas[13]; measure q[3] -> meas[14]; measure q[2] -> meas[15]; measure q[1] -> meas[16]; measure q[0] -> meas[17];
 T=544

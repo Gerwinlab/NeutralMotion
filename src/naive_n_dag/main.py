@@ -31,7 +31,6 @@ from naive_n_dag.scheduling import (
     write_timed_schedule,
 )
 import pint
-#TODO: Update the version, AI Usage for this version, and the readme to reflect the new changes. Make sure all examples work properly.
 #TODO: Make a new function or runable command that reads movements and the unload/load to calculate to measure of fidelity and loss.
 PathLike = str | pathlib.Path
 ureg = pint.UnitRegistry()
@@ -486,8 +485,6 @@ def main(
             )
         for name, duration in schedule.candidate_times.items():
             print(f"candidate_{name}_time={duration.to('microseconds')}")
-        for name, reason in schedule.rejected_candidates.items():
-            print(f"rejected_candidate_{name}={reason}")
 
     final_time_us = time.to("microseconds")
 

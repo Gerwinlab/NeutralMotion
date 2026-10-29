@@ -1,8 +1,7 @@
 """Deterministic initial placement: ``fill_strategy: "deterministic"``.
 
-Ported from the collaborator's (Munson's) deterministic minimiser of the
-FastSA objective. It minimises the same cost FastSA anneals, F_time
-(placement_cost.py), on the same two-qubit DAG, but with no random numbers:
+It minimises F_time (placement_cost.py), the cost FastSA anneals, on the
+same two-qubit DAG, but with no random numbers:
 
   0. presolve   closed forms for star and path circuits
   1. seeds      interaction-graph orders laid along geometric paths, layouts
@@ -12,14 +11,12 @@ FastSA objective. It minimises the same cost FastSA anneals, F_time
   2. search     best-first multistart over the seeds, each descended by a
                 variable neighbourhood descent (swap/relocate moves with
                 candidate lists, and layer-guided moves)
-  3. screening  optional (``schedule_screen``): the result plus the best
-                seeds go back to ``main``, which schedules them and keeps the
-                fastest (see run_deterministic_placement)
+  3. screening  optional (``schedule_screen``): the result, the default-pool
+                pick and the best seeds go back to ``main``, which schedules
+                them and keeps the fastest (see _screen_candidates)
 
 Every search evaluation is counted against ``budget``. Ties are broken by
-index, so a run is reproducible. Only the placement path is ported: the
-original's analysis pool, antiparallel screen and disabled neighbourhoods
-(ejection chains, subgroup tilings) are left out.
+index, so a run is reproducible.
 
 Layouts here are lists indexed by qubit of ``(row, col)`` SLM *site* indices
 in ``0..R-1 x 0..C-1``; grid coordinates are ``(2*row, 2*col)``.
@@ -76,8 +73,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     # result and the current-code pick always are).
     "screen_final": 3,
     # Layout JSON files ([row, col] site per qubit, as initial_layout) added
-    # to the seed pool. They start the search from a known layout, so the
-    # result reports it in origin_seed. Empty: every seed is constructed.
+    # to the seed pool as "given:<file>". Empty: every seed is constructed.
     "seed_layouts": [],
     # Diversity veto: skip a seed whose sites differ in fewer than this many
     # qubits from a layout already descended (or a descent's end point).
@@ -618,8 +614,8 @@ def _presentations(group_info):
     return out
 
 
-# Cap on all-pair torus seeds. A cap of 12,000 would cut off bb144's best
-# torus seed on a 30x30 array (it is about the 13,000th generated).
+# Cap on torus seeds (binding only with torus_all_pairs). A cap of 12,000 would
+# cut off bb144's best torus seed on a 30x30 array (about the 13,000th generated).
 _TORUS_ALL_PAIRS_CAP = 50_000
 
 
@@ -655,6 +651,7 @@ def _symmetry_seeds(g: _BlockGraph, n, R, C, all_pairs=False, cap=_TORUS_ALL_PAI
     One generator pair per shape by default; with ``all_pairs`` every pair
     (``_generator_pairs``), at most ``cap`` layouts. The pair changes which
     group elements share a row, and on bb144 the best pair is not the first.
+    Returns ``(seeds, group order or None)``.
     """
     translations = _find_translations(g)
     info = _free_abelian_subgroup(g, translations) if translations else None
@@ -886,10 +883,9 @@ def _product_factor_orders(nv, edges, move_seconds, top_k=4):
 
     A path factor has one order, along the path. Otherwise every order is
     scored when ``nv <= _PRODUCT_ENUMERATION_MAX``, else the spectral,
-    reverse Cuthill-McKee and identity orders. The score: the bipartite
-    factor's edges (bit -> check) give signed
-    spans under an order, and each distinct span costs one move of that many
-    trap steps. Returns [] when the factor is not bipartite.
+    reverse Cuthill-McKee and identity orders. Score: each distinct signed span
+    of the factor's edges (side 0 -> side 1 of its 2-colouring) costs one move
+    of that many trap steps. Returns [] when the factor is not bipartite.
     """
     path = _linear_order(nv, edges)
     adjacency = [[] for _ in range(nv)]
@@ -1215,7 +1211,7 @@ def _multistart(evaluate: _Evaluator, ranked, R, C, adjacency, layer_pairs, opti
 # ---------------------------------------------------------------------------
 
 def _program_operations(two_qubit_dag, reference_nodes):
-    """(name, qubit ids) in program order, for block-labelled symmetry discovery."""
+    """(name, qubit ids) in program order (topological without reference_nodes), for symmetry discovery."""
     nodes = reference_nodes if reference_nodes is not None else two_qubit_dag.topological_op_nodes()
     for node in nodes:
         yield node.op.name, tuple(extract_index_from_bit(q) for q in node.qargs)
@@ -1234,8 +1230,9 @@ def run_deterministic_placement(
     """Minimise F_time deterministically; see the module docstring.
 
     ``reference_nodes`` (program-order op nodes, as ``main`` loads them) give
-    symmetry discovery its gate blocks; without them the two-qubit DAG is
-    used as one block. ``config`` supplies the physics F_time needs. ``cost``
+    symmetry discovery its gate blocks and F_time its reorder_cz sections;
+    without them blocks come from the two-qubit DAG (only barriers split
+    them). ``config`` supplies the physics F_time needs. ``cost``
     substitutes any object with ``evaluate``, ``layer_pairs`` and
     ``star_distance`` (Legacy/cost_fidelity.py passes the legacy F from
     Legacy/legacy_f.py); ``config`` is then not needed.
@@ -1322,7 +1319,7 @@ def run_deterministic_placement(
 
 
 def _trap_move_seconds(config):
-    """Seconds of a straight move of k trap steps (2k grid steps); k itself when no physics is given."""
+    """``k -> seconds`` of a straight move of k trap steps (2k grid steps); ``float`` (k itself) without config."""
     if config is None:
         return float
     from .dynamics import _motion_parameters, _step_seconds

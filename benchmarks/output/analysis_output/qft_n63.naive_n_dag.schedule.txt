@@ -1,7 +1,6 @@
 solver: naive_n_dag
 qasm_file: qft_n63_transpiled.qasm
 transpile: optimization_level=2 basis_gates=u1,u2,u3,cz,id
-swap_relabel: q[0]->q[62] q[1]->q[61] q[2]->q[60] q[3]->q[59] q[4]->q[58] q[5]->q[57] q[6]->q[56] q[7]->q[55] q[8]->q[54] q[9]->q[53] q[10]->q[52] q[11]->q[51] q[12]->q[50] q[13]->q[49] q[14]->q[48] q[15]->q[47] q[16]->q[46] q[17]->q[45] q[18]->q[44] q[19]->q[43] q[20]->q[42] q[21]->q[41] q[22]->q[40] q[23]->q[39] q[24]->q[38] q[25]->q[37] q[26]->q[36] q[27]->q[35] q[28]->q[34] q[29]->q[33] q[30]->q[32] q[32]->q[30] q[33]->q[29] q[34]->q[28] q[35]->q[27] q[36]->q[26] q[37]->q[25] q[38]->q[24] q[39]->q[23] q[40]->q[22] q[41]->q[21] q[42]->q[20] q[43]->q[19] q[44]->q[18] q[45]->q[17] q[46]->q[16] q[47]->q[15] q[48]->q[14] q[49]->q[13] q[50]->q[12] q[51]->q[11] q[52]->q[10] q[53]->q[9] q[54]->q[8] q[55]->q[7] q[56]->q[6] q[57]->q[5] q[58]->q[4] q[59]->q[3] q[60]->q[2] q[61]->q[1] q[62]->q[0]
 final_time: 529530.1586237992 microsecond
 lattice_spacing: 14.999999999999998 micrometer
 rydberg_radius: 15 micrometer
@@ -8567,37 +8566,6 @@ T=4278
 cz q[62],q[61];
 T=4279
 u2(pi/4, -pi) q[61]; u2(0, pi/2) q[62];
-// swap q[30],q[32] removed (relabel): from here written q[30] runs on q[32] and written q[32] on q[30]
-// swap q[29],q[33] removed (relabel): from here written q[29] runs on q[33] and written q[33] on q[29]
-// swap q[28],q[34] removed (relabel): from here written q[28] runs on q[34] and written q[34] on q[28]
-// swap q[27],q[35] removed (relabel): from here written q[27] runs on q[35] and written q[35] on q[27]
-// swap q[26],q[36] removed (relabel): from here written q[26] runs on q[36] and written q[36] on q[26]
-// swap q[25],q[37] removed (relabel): from here written q[25] runs on q[37] and written q[37] on q[25]
-// swap q[24],q[38] removed (relabel): from here written q[24] runs on q[38] and written q[38] on q[24]
-// swap q[23],q[39] removed (relabel): from here written q[23] runs on q[39] and written q[39] on q[23]
-// swap q[22],q[40] removed (relabel): from here written q[22] runs on q[40] and written q[40] on q[22]
-// swap q[21],q[41] removed (relabel): from here written q[21] runs on q[41] and written q[41] on q[21]
-// swap q[20],q[42] removed (relabel): from here written q[20] runs on q[42] and written q[42] on q[20]
-// swap q[19],q[43] removed (relabel): from here written q[19] runs on q[43] and written q[43] on q[19]
-// swap q[18],q[44] removed (relabel): from here written q[18] runs on q[44] and written q[44] on q[18]
-// swap q[17],q[45] removed (relabel): from here written q[17] runs on q[45] and written q[45] on q[17]
-// swap q[16],q[46] removed (relabel): from here written q[16] runs on q[46] and written q[46] on q[16]
-// swap q[15],q[47] removed (relabel): from here written q[15] runs on q[47] and written q[47] on q[15]
-// swap q[14],q[48] removed (relabel): from here written q[14] runs on q[48] and written q[48] on q[14]
-// swap q[13],q[49] removed (relabel): from here written q[13] runs on q[49] and written q[49] on q[13]
-// swap q[12],q[50] removed (relabel): from here written q[12] runs on q[50] and written q[50] on q[12]
-// swap q[11],q[51] removed (relabel): from here written q[11] runs on q[51] and written q[51] on q[11]
-// swap q[10],q[52] removed (relabel): from here written q[10] runs on q[52] and written q[52] on q[10]
-// swap q[9],q[53] removed (relabel): from here written q[9] runs on q[53] and written q[53] on q[9]
-// swap q[8],q[54] removed (relabel): from here written q[8] runs on q[54] and written q[54] on q[8]
-// swap q[7],q[55] removed (relabel): from here written q[7] runs on q[55] and written q[55] on q[7]
-// swap q[6],q[56] removed (relabel): from here written q[6] runs on q[56] and written q[56] on q[6]
-// swap q[5],q[57] removed (relabel): from here written q[5] runs on q[57] and written q[57] on q[5]
-// swap q[4],q[58] removed (relabel): from here written q[4] runs on q[58] and written q[58] on q[4]
-// swap q[3],q[59] removed (relabel): from here written q[3] runs on q[59] and written q[59] on q[3]
-// swap q[2],q[60] removed (relabel): from here written q[2] runs on q[60] and written q[60] on q[2]
-// swap q[1],q[61] removed (relabel): from here written q[1] runs on q[61] and written q[61] on q[1]
-// swap q[0],q[62] removed (relabel): from here written q[0] runs on q[62] and written q[62] on q[0]
 T=4280
 measure q[62] -> meas[0]; measure q[61] -> meas[1]; measure q[60] -> meas[2]; measure q[59] -> meas[3]; measure q[58] -> meas[4]; measure q[57] -> meas[5]; measure q[56] -> meas[6]; measure q[55] -> meas[7]; measure q[54] -> meas[8]; measure q[53] -> meas[9]; measure q[52] -> meas[10]; measure q[51] -> meas[11]; measure q[50] -> meas[12]; measure q[49] -> meas[13]; measure q[48] -> meas[14]; measure q[47] -> meas[15]; measure q[46] -> meas[16]; measure q[45] -> meas[17]; measure q[44] -> meas[18]; measure q[43] -> meas[19]; measure q[42] -> meas[20]; measure q[41] -> meas[21]; measure q[40] -> meas[22]; measure q[39] -> meas[23]; measure q[38] -> meas[24]; measure q[37] -> meas[25]; measure q[36] -> meas[26]; measure q[35] -> meas[27]; measure q[34] -> meas[28]; measure q[33] -> meas[29]; measure q[32] -> meas[30]; measure q[31] -> meas[31]; measure q[30] -> meas[32]; measure q[29] -> meas[33]; measure q[28] -> meas[34]; measure q[27] -> meas[35]; measure q[26] -> meas[36]; measure q[25] -> meas[37]; measure q[24] -> meas[38]; measure q[23] -> meas[39]; measure q[22] -> meas[40]; measure q[21] -> meas[41]; measure q[20] -> meas[42]; measure q[19] -> meas[43]; measure q[18] -> meas[44]; measure q[17] -> meas[45]; measure q[16] -> meas[46]; measure q[15] -> meas[47]; measure q[14] -> meas[48]; measure q[13] -> meas[49]; measure q[12] -> meas[50]; measure q[11] -> meas[51]; measure q[10] -> meas[52]; measure q[9] -> meas[53]; measure q[8] -> meas[54]; measure q[7] -> meas[55]; measure q[6] -> meas[56]; measure q[5] -> meas[57]; measure q[4] -> meas[58]; measure q[3] -> meas[59]; measure q[2] -> meas[60]; measure q[1] -> meas[61]; measure q[0] -> meas[62];
 T=4281

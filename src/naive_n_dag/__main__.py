@@ -20,13 +20,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "qasm_file",
-        help="QASM filename or path (resolved relative to qasm_base_dir in the JSON).",
+        help="QASM path; if not found as given, resolved against qasm_base_dir/qasm_dir in the JSON. "
+             "Ignored when the config sets step_order.",
     )
     parser.add_argument(
         "schedule_output_dir",
         nargs="?",
         default=None,
-        help="Optional directory to write <config_stem>.schedule.txt. Relative paths are resolved from the current working directory.",
+        help="Directory for the schedule (default: next to the config). Relative paths are resolved "
+             "from the current working directory.",
     )
     parser.add_argument(
         "--dump-config",
@@ -42,12 +44,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--seed",
         type=int,
         default=None,
-        help="Random seed override for random fill. Defaults to 0.",
+        help="Seed for fill_strategy random/fastsa (default 0); recorded in the schedule header.",
     )
     parser.add_argument(
         "--output-name",
         default=None,
-        help="Optional output schedule filename. Defaults to <config_stem>.schedule.txt.",
+        help="Schedule filename (.schedule.txt appended unless it ends in .txt). "
+             "Default <config_stem>.schedule.txt.",
     )
     parser.add_argument(
         "--log",

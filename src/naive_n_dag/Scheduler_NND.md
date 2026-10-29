@@ -9,7 +9,7 @@ Implementation references:
 
 - [Dynamics and scheduling](dynamics.py)
 - [DAG preparation](dag_helper.py)
-- [TSP gadget](tsp_gadget.py) (see `resources/TSP_GADGET.md`)
+- [TSP gadget](tsp_gadget.py)
 
 ## 1. Coordinate model
 

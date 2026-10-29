@@ -1,7 +1,9 @@
 """Circuit loading and preparation for the scheduler.
 
-QASM and timestep-text loaders, the two-qubit DAG with its single-qubit
-context, schedule-line formatting, and the commuting-CZ re-layering.
+QASM and timestep-text loaders, circuit preparation (optional transpile,
+ancilla registers, register flattening), the two-qubit DAG with its
+single-qubit context, schedule-line formatting, and the commuting-CZ
+re-layering.
 """
 
 from __future__ import annotations
@@ -67,15 +69,11 @@ def load_qasm_to_dag(
 
 
 def flatten_quantum_registers(dag: DAGCircuit) -> DAGCircuit:
-    """Merge several quantum registers into one register ``q``, in declaration order.
+    """Merge quantum registers into one register ``q`` in declaration order (``reg[i]`` -> ``q[start + i]``).
 
-    The solver identifies a qubit by its index (``extract_index_from_bit``),
-    which is local to its register, so ``l[5]`` and ``r[5]`` would collide.
-    Qubit ``reg[i]`` becomes ``q[start + i]``, where ``start`` is the number
-    of qubits declared before ``reg``: Qiskit's global bit index. Classical
-    registers are kept, so measurements still name their own register
-    (``measure q[126] -> sx[0];``). ``metadata["qubit_registers"]`` records
-    ``(name, start, size)`` per original register for the schedule header.
+    ``extract_index_from_bit`` reads register-local indices, so ``l[5]`` and
+    ``r[5]`` would collide otherwise. Classical registers are kept;
+    ``(name, start, size)`` per register goes to ``metadata["qubit_registers"]``.
     A DAG with at most one quantum register is returned unchanged.
     """
     registers = list(dag.qregs.values())
@@ -110,7 +108,7 @@ def format_qubit_registers(layout) -> str | None:
 
 
 def ancilla_qubits(dag: DAGCircuit) -> frozenset[int]:
-    """The qubits of ``ancilla_registers`` recorded by ``prepare_circuit`` (they keep the role all circuit)."""
+    """The qubits of ``ancilla_registers`` recorded by ``prepare_circuit`` (fixed for the whole circuit)."""
     return frozenset((dag.metadata or {}).get("ancilla_qubits", ()))
 
 
@@ -260,6 +258,11 @@ def build_two_qubit_only_dag_with_single_qubit_context(
             continue
 
         num_qargs = len(node.qargs)
+        if num_qargs not in (1, 2):
+            raise ValueError(
+                f"Only one- and two-qubit operations are supported; got {node.op.name} on {num_qargs} qubits. "
+                'Set transpile_basis_gates (e.g. ["u3", "cz"]) to decompose it.'
+            )
         if num_qargs == 2:
             q0 = extract_index_from_bit(node.qargs[0])
             q1 = extract_index_from_bit(node.qargs[1])
@@ -426,9 +429,9 @@ def _validate_cz_reordering(original, reordered):
 
 
 def _commuting_cz_sections(reference_nodes):
-    """Yield non-CZ operations and reachable CZ blocks without crossing barriers.
+    """Yield ``(is_cz, nodes)``: single non-CZ ops, and CZ blocks reachable without crossing a non-CZ op on their wires.
 
-    A barrier is an operation on the qubits it names, so it fences those
+    A barrier is a non-CZ op on the qubits it names, so it fences those
     qubits only; CZs on other qubits may be grouped across it.
     """
     original = list(reference_nodes)
@@ -570,14 +573,11 @@ def load_qasm_to_two_qubit_dag_with_single_qubit_context(
     return_reference_nodes: bool = False,
     optimization_level: int = 0, basis_gates: list[str] | None = None, ancilla_registers=(),
 ):
-    """Prepare 2Q DAG/context, optionally reordering CZs before extraction.
+    """Return ``(two_qubit_dag, single_layers[, reference_nodes])`` for a prepared QASM circuit.
 
-    Default return remains ``(two_qubit_dag, single_layers)``. With
-    ``return_reference_nodes=True``, a third item contains the full prepared
-    reference for strict schedule validation. Color order becomes
-    wire order; subsequent DAG layering may compact independent color groups.
-    Keep the original full DAG and context if the proposed ordering increases
-    extracted two-qubit depth. Equal-depth proposals are accepted.
+    ``reference_nodes`` (with ``return_reference_nodes``) is the full prepared
+    circuit for strict schedule validation. ``reorder_cz`` colours commuting
+    CZ blocks first and keeps that order unless it increases two-qubit depth.
     """
     dag = load_qasm_to_dag(qasm_path, optimization_level, basis_gates, ancilla_registers)
     result = build_two_qubit_only_dag_with_single_qubit_context(dag)

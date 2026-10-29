@@ -117,7 +117,7 @@ def greedy_max_parallel(
     grid_shape: tuple[int, int],
 ) -> dict[int, tuple[int, int]]:
     """
-    For one layer, align gate vectors to the most common vector direction.
+    For one layer, move gates toward the layer's most common displacement (shortest on ties).
 
     Coordinates are (col, row). Moves are bounded to the configured grid.
     If a target site is occupied, this implementation swaps the two qubits.
@@ -237,20 +237,11 @@ def run_fastsa(
     any object with ``evaluate_positions`` (Legacy/cost_fidelity.py passes
     the legacy F from Legacy/legacy_f.py).
 
-    The cost is normalised before annealing, as Fast-SA prescribes (Chen &
-    Chang 2006): it is divided by the mean magnitude of the cost over the
-    start layout and stage 1's random layouts, so a random layout scores about
-    1 whatever the cost function or circuit. This matters because the
-    schedule is not scale-free -- ``t1`` is proportional to the cost and
-    ``T = t1 * <delta> / (n c)`` to its square -- so without it the cost's
-    units would act as a hidden temperature knob. With it,
-    ``initial_accept_prob`` (P), ``c`` and ``stage3_temperature_threshold``
-    mean the same thing on every circuit. Reported costs are normalised;
-    ``FastSAResult.cost_scale`` converts back.
-
-    Defaults P = 0.999 and threshold 0 (stage 3 runs ``stage3_max_iterations``)
-    were tuned on general circuits with Legacy/fastsa_tuning.py. Under
-    normalisation a threshold of 1e-3 switches stage 3 off almost entirely.
+    The cost is divided by its mean over the start and stage-1 random layouts,
+    so P, c and the stage-3 threshold are scale-free (Chen & Chang 2006);
+    reported costs are normalised and ``FastSAResult.cost_scale`` converts
+    back. Defaults (P = 0.999, threshold 0) were tuned with
+    Legacy/fastsa_tuning.py.
     """
     if stage1_iterations < 1:
         raise ValueError("stage1_iterations must be >= 1")
@@ -306,8 +297,7 @@ def run_fastsa(
     temperature_history: list[float] = [temperature]
 
     def _record_delta(delta_c: float, *, accepted: bool) -> float:
-        nonlocal avg_uphill, avg_delta, best_cost_history, temperature_history
-        temperature = 0.0
+        nonlocal avg_uphill, avg_delta
         if delta_c > 0:
             uphill_deltas.append(delta_c)
             avg_uphill = sum(uphill_deltas) / len(uphill_deltas)

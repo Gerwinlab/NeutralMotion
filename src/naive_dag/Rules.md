@@ -1,8 +1,8 @@
 # Scheduling Rules
 
-This file sets out the problem every scheduler similar to `src/naive_dag` must solve and the
+This file sets out the problem every scheduler similar to `src/naive_n_dag` must solve and the
 rules a valid schedule must follow. It does not depend on any solver: anyone
-may write their own scheduler for it. The `Scheduler_ND.md` next to this file explains how
+may write their own scheduler for it. The `Scheduler_NND.md` next to this file explains how
 this folder's solver meets these rules, including the extra restrictions
 (heuristics) it adds that the rules do not require.
 
@@ -56,7 +56,7 @@ values it uses.
   is the suggested minimum, and experimentalists may tune it.
 
 How a solver places atoms and plans moves to avoid collisions is up to that
-solver (see `Scheduler_ND.md`).
+solver (see `Scheduler_NND.md`).
 
 ## 4. Moving atoms
 
@@ -287,7 +287,7 @@ limits above.
 
 - Each handoff between a static trap and a tweezer (a `load` or an `unload`)
   is a transfer. All handoffs in the same timestep are charged one
-  `transfer_SLM_AOD` together.
+  `transfer_SLM_AOD` together. 
 - A direct trap-to-trap move therefore costs a load transfer, its movement,
   and an unload transfer.
 - Steps in which atoms only stay held in the AOD, with no handoff, have no
@@ -315,7 +315,7 @@ limits above.
 
 Two schedules may be compared when they use the same device and timing
 parameters (Sections 2 and 7) and obey these rules. They may use different
-initial placements, strategies, and motion profiles that meet Section 7.1; any
+initial placements, and strategies that meet Section 7.1; any
 difference in the timing model must be stated.
 
 ## 8. What is not modelled

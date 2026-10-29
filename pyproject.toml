@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "NeutralMotion"
-version = "0.1.0"
+version = "0.2.0"
 description = "A solver for the shuttling problem in Neutral Atom quantum computers."
 readme = "README.md"
 authors = [
     { name = "Gage Erwin", email = "gnerwin@wisc.edu"}
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
+    "numpy",
     "pint>=0.24",
     "qiskit>=1.0",
     "fast-tsp>=0.1.5",
@@ -22,6 +23,12 @@ dependencies = [
 # Without it, displacement tours use fast-tsp with a warning.
 concorde = [
     "pyconcorde @ git+https://github.com/jvkersch/pyconcorde@a573c1b73244f0dc7cf88ddd18ccfa4c65919974",
+]
+# Packages the Examples/ notebooks use for drawing and tables.
+examples = [
+    "matplotlib",
+    "pylatexenc",
+    "pandas",
 ]
 
 [project.scripts]

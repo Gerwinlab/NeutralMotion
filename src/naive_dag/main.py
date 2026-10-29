@@ -99,7 +99,7 @@ def main(
 
     if not quiet:
         qasm_dir = config.get("qasm_dir") or config.get("qasm_base_dir")
-        print("naive Dag config loaded")
+        print("naive_dag config loaded")
         print(f"dimensions={dims} num_NA={num_na} qasm_dir={qasm_dir}")
         print(f"qasm_file={qasm_path}")
     movement_shape = config.get("movement_shape", "trapezoidal")
@@ -126,9 +126,7 @@ def main(
         raise ValueError("prefer_moving_ancillas requires ancilla_registers (the QASM's ancilla register names).")
     if "rydberg_radius" in config:
         raise ValueError(
-            "Config key 'rydberg_radius' was renamed to 'lattice_spacing' (the SLM trap pitch). "
-            "The Rydberg radius is now the constant RYDBERG_RADIUS = 15 micrometers in "
-            "naive_n_dag.dynamics."
+            "Config key 'rydberg_radius' was renamed to 'lattice_spacing' (the SLM trap pitch)."
         )
 
     for key in [
@@ -143,7 +141,7 @@ def main(
     ]:
         value = config.get(key, "0 milliseconds") if key == "measurement_time" else config[key]
         config[key] = parse_quantity(value, key)
-    
+
     config["transfer_SLM_AOD"] = config["transfer_SLM_AOD"].to("seconds")
     config["max_acceleration"] = config["max_acceleration"].to("meter/second^2")
     config["max_velocity"] = config["max_velocity"].to("meter/second")
@@ -188,13 +186,14 @@ def main(
         final_time=str(final_time_us),
         lattice_spacing=str(config["lattice_spacing"].to("micrometers")),
         T=0,
-        fill_seed= fill_seed,
+        fill_seed=fill_seed,
         events=event_log,
         initial_qubits=qubits,
         qubit_registers=format_qubit_registers((dag.metadata or {}).get("qubit_registers")),
         transpile=format_transpile(dag.metadata),
     )
-    print(final_time_us)
-    print(f"schedule_file={schedule_output}")
+    if not quiet:
+        print(final_time_us)
+        print(f"schedule_file={schedule_output}")
 
     return 0

@@ -177,7 +177,7 @@ def write_timed_schedule(
     lines += [
         f"final_time: {final_time}",
         f"lattice_spacing: {lattice_spacing}",
-        f"random number seed: {fill_seed}"
+        f"random number seed: {fill_seed}",
         "",
     ]
 

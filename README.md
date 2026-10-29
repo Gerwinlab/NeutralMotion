@@ -4,7 +4,7 @@ Phys765 is a neutral-atom circuit scheduling package. It loads QASM circuits, ma
 
 ## Install
 
-From the repository root:
+Requires Python 3.10 or newer. From the repository root:
 
 ```bash
 python3 -m pip install -e .
@@ -19,6 +19,13 @@ python3 -m pip install -e ".[concorde]"
 
 Without it, `naive_n_dag` warns once and solves displacement tours with
 `fast-tsp`, which is always installed.
+
+The notebooks in `Examples/` also need matplotlib, pylatexenc and pandas
+(the `examples` extra); drawing DAGs additionally needs graphviz:
+
+```bash
+python3 -m pip install -e ".[examples]"
+```
 
 This installs the package in editable mode and exposes these CLI commands:
 
@@ -268,19 +275,30 @@ Example configs:
 
 For usage walkthroughs:
 
-- `Examples/schedule_tutorial.ipynb`: end-to-end scheduler usage (`naive_dag` and `naive_n_dag`).
-- `Examples/qasm_to_circuit_and_dag_examples.ipynb`: QASM -> Qiskit circuit -> DAG examples.
+- `Examples/schedule_tutorial.ipynb`: end-to-end scheduler usage (`naive_dag` and `naive_n_dag`), including `step_order` input.
+- `Examples/qasm_to_circuit_and_dag_examples.ipynb`: QASM -> Qiskit circuit -> DAG examples, and the loader's transpile and ancilla options.
+- `Examples/SA_Run_Example.ipynb`: running the FastSA placer on its own.
+
+Everything the notebooks write goes to `Examples/OUTPUT/`.
 
 ## Benchmark Scripts
 
+- `benchmarks/qldpc_notebook.ipynb` runs `naive_n_dag` on every QASM in `inputs/qasm_files/qLDPC/` with its FastSA and deterministic configs (`benchmarks/configs/qLDPC/`) and saves the execution and compile times to `benchmarks/output/qLDPC/qldpc_timings.csv`.
 - `benchmarks/powermove_script.py` is used to generate runtime data for running `[[144,12,12]]` with Enola and PowerMove.
 - This script requires cloning the PowerMove repository before use.
 
 ## AI Usage Note
 
-AI assistance was used to:
+The author wrote the base code: the `naive_dag` and `naive_n_dag` schedulers,
+their lattice and movement model, and the schedule output format. AI
+assistance (Claude Code) was then used, at the author's direction, to:
 
-- create and refine tutorial notebooks
-- improve code readability
-- improve inline documentation and docstrings
-- limited usage in the writing of the actual scheduler
+- add features and changes on top of that base, for example the deterministic
+  placer, the `F_time` placement cost and FastSA tuning, TSP-based
+  displacement tours, the optional Qiskit transpile step, `ancilla_registers`,
+  multi-register QASM support, and the PowerMove/Enola benchmark scripts
+- write tests for those changes
+- write and revise the documentation: this README, `Rules.md`, the scheduler
+  docs, docstrings and comments
+- create and update the tutorial notebooks in `Examples/`
+- review and clean up the code

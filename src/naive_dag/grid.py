@@ -1,15 +1,3 @@
-from dataclasses import dataclass
-from typing import List, Optional, Tuple
-import random
-from pint import Quantity
-
-@dataclass
-class GridNode:
-    x: Quantity
-    y: Quantity
-    row: int
-    col: int
-    qubit: Optional[int] = None
 """
 grid.py
 
@@ -22,17 +10,22 @@ Each grid node stores:
     -Grid indices (row,col)
     -qubit assignment
 """
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
+import random
+from pint import Quantity
+
 
 @dataclass
 class GridNode:
     """
-    Represents a single lattice site in the neutral atom array.
+    One grid node: an SLM trap (even-even) or an AOD lane point.
     """
     x: Quantity
     y: Quantity
     row: int
     col: int
-    qubit: Optional[int] = None
+    qubit: Optional["Qubit"] = None
 
     def is_occupied(self)->bool:
         """Return True when this lattice site currently has an assigned qubit."""
@@ -45,7 +38,7 @@ class Qubit:
     id: int
     node: GridNode
 
-    def position(self)->Tuple[float,float]:
+    def position(self)->Tuple[Quantity,Quantity]:
         """Return the physical (x, y) position for this qubit."""
         return self.node.x, self.node.y
     def grid_position(self)->Tuple[int,int]:

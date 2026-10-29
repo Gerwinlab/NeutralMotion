@@ -19,8 +19,8 @@ from dataclasses import dataclass
 
 INT_MAX = 2**31 - 1
 # Largest edge weight handed to Concorde: tour lengths are doubles there, but
-# Lin-Kernighan sums move gains (at most 50 edges deep) in an int. Matches
-# dynamics._CONCORDE_EDGE_CAP.
+# Lin-Kernighan sums move gains (at most 50 edges deep) in an int. Also used by
+# dynamics for the relaxed tours.
 EDGE_CAP = INT_MAX // 256
 _CARDINAL = ((1, 0), (-1, 0), (0, 1), (0, -1))
 # Integer units given to the tour upper bound (K is just above it). Large

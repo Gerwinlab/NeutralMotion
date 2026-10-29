@@ -49,7 +49,7 @@ def _two_qubit_layers(two_qubit_dag):
 
 
 # ---------------------------------------------------------------------------
-# "time": F_time
+# F_time
 # ---------------------------------------------------------------------------
 
 def _canonical(v):
@@ -59,39 +59,16 @@ def _canonical(v):
 
 
 class TimeCost:
-    """F_time: placement-dependent two-qubit execution time, in microseconds.
+    """F_time: placement-dependent two-qubit execution time, in microseconds (differences only).
 
-    Placement-independent time (single-qubit layers, the fixed number of
-    gates) is left out, so only differences between layouts are meaningful.
-
-    Every two-qubit layer the scheduler will execute is priced as the router
-    executes it:
-
-    * loads: gates are grouped into AOD loads the way ``dynamics._build_groups``
-      does (ancilla mover when ``prefer_moving_ancillas``, otherwise either
-      operand; a load must fit the AOD span and, unless ``alignment_conc`` is
-      -1, the alignment threshold). Each load pays two SLM<->AOD transfers;
-    * stops: one Rydberg pulse per distinct displacement in a load (a free
-      mover counts v and -v once, since the router may move either operand);
-    * travel: a nearest-neighbour tour from home through the load's stops and
-      back. The order is chosen on legs minimised over the sides, as the TSP
-      prices its edges: the parity-highway route (``dynamics._route``) between
-      sites beside the two stops. The order is then priced with one side per
-      stop, as the router's side DP does (see ``_tour``); leaving and returning
-      home include the load/unload step. Atoms move along odd rows and
-      columns, never diagonally.
-
-    The layers are the DAG's two-qubit layers, or, with ``reorder_cz``, the
-    layers ``dag_helper.reorder_cz_layers_by_displacement`` will build for
-    this placement: per commuting CZ section, gates are bucketed by signed
-    displacement (ancilla mover when preferred, else the first operand),
-    split into matchings by ``dag_helper._color_cz_block`` and packed first
-    fit, exactly as the scheduler does. Not modelled: load reuse across
-    layers, Rydberg-radius pulse splitting, and the scheduler's exact tour
-    order (TSP or alignment ordering).
+    Each two-qubit layer (with ``reorder_cz``, each layer
+    ``reorder_cz_layers_by_displacement`` will build) is grouped into AOD
+    loads like ``dynamics._build_groups``; a load pays two transfers, one
+    pulse per distinct displacement, and a nearest-neighbour highway tour
+    priced with the router's side DP. Not modelled: load reuse across layers,
+    Rydberg-radius pulse splitting, the router's look-ahead mover choice and
+    one-atom-per-load fallback, and its exact tour order.
     """
-
-    name = "time"
 
     def __init__(self, two_qubit_dag, num_qubits: int, config: Mapping[str, Any],
                  reference_nodes: Sequence[Any] | None = None):
@@ -199,15 +176,10 @@ class TimeCost:
 
     # -- motion ------------------------------------------------------------
     def _sides(self, delta: tuple[int, int]) -> tuple:
-        """Route seconds between the sides of two stops ``delta`` grid steps apart.
+        """Route seconds between the four sides of two stops ``delta`` apart.
 
-        Entry ``4*s + t`` is the highway route from cardinal side ``s`` of one
-        stop to side ``t`` of the other: ``dynamics._route`` from offset ``s``
-        to ``delta + t``. Stops are even-even, so a route depends only on the
-        start side's parity and the displacement, and this one table serves
-        every pair of stops at that displacement. The last entry is the
-        minimum, the side-relaxed leg the nearest-neighbour order uses. With
-        ``delta = -v`` it also prices leaving stop ``v`` for the unload offsets.
+        Entry ``4*s + t`` is side ``s`` to side ``t``; the last entry is their
+        minimum. One table serves every pair of stops at that displacement.
         """
         table = self._side_cache.get(delta)
         if table is None:
@@ -243,14 +215,9 @@ class TimeCost:
     def _tour(self, stops) -> float:
         """Seconds for one load: home, through the stops, and back.
 
-        The order is nearest-neighbour on side-relaxed legs (cheap). The
-        order is then priced the way the router executes it: the side DP
-        of ``dynamics._optimize_visit_sides`` picks one consistent side per
-        stop. Pricing with relaxed legs alone would let the load arrive beside
-        a stop on one side and leave from another, which undercounts travel
-        more the more stops a load has. The DP here is that function's
-        recursion on the cached side tables, adding the same terms in the same
-        order, so it returns the same float without building the routes.
+        Nearest-neighbour order on side-relaxed legs, priced with the side DP
+        of ``dynamics._optimize_visit_sides`` on the cached tables (same float,
+        no routes built).
         """
         key = tuple(stops)
         cached = self._tour_cache.get(key)
@@ -307,7 +274,7 @@ class TimeCost:
         return self.load_seconds + self.t_pulse * len(ordered) + self._tour(ordered)
 
     def _grouped_layer_seconds(self, gates, movers, grid):
-        """Group a layer into AOD loads the way ``dynamics._build_groups`` does.
+        """Group a layer into AOD loads like ``dynamics._build_groups``, without its look-ahead mover choice.
 
         Each gate joins the first load whose movers still fit the AOD span and
         (with a threshold) whose vectors it aligns with; among its mover
@@ -425,14 +392,10 @@ class TimeCost:
         return [layer for layer, _ in packed]
 
     def evaluate(self, layout: Sequence[tuple[int, int]]) -> float:
-        """F_time of an injective layout of ``(row, col)`` site indices, in microseconds.
+        """F_time (microseconds) of an injective layout of ``(row, col)`` sites.
 
-        Incremental: the seconds of every unit (a two-qubit layer, or a CZ
-        section's layers) are kept from the previous call, and only units and
-        layers holding a qubit that moved since then are re-priced. A reused
-        layer has the same gates at the same sites, so its seconds are the
-        same; the total adds the same per-layer terms in the same order. So
-        the result depends only on ``layout``, never on the call history.
+        Only units touching qubits that moved since the last call are
+        re-priced; the result depends only on ``layout``, not the call history.
         """
         grid = [(2 * r, 2 * c) for r, c in layout]
         last = self._last_grid

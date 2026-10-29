@@ -1,9 +1,10 @@
 """Layered AOD movement planning, displacement tours, timing, and validation.
 
-Each DAG layer of two-qubit gates is split into rigid AOD loads, each load's
-gate visits are ordered by a displacement tour (relaxed TSP, alignment, or
-the exact gadget in ``tsp_gadget``), and a side DP picks the interaction site
-of every visit. ``schedule_circuit`` runs the whole circuit, validates it with
+Each DAG layer of two-qubit gates is split into rigid AOD loads. Each load's
+gate visits are ordered by the fastest of a relaxed TSP tour, the alignment
+order and, under ``tour_ordering: "tsp_gadget"``, an exact tour (enumeration
+or the ``tsp_gadget.py`` gadget); a side DP picks the interaction site of
+every visit. ``schedule_circuit`` runs the whole circuit, validates it with
 ``validate_schedule``, and times it with ``schedule_duration``.
 """
 
@@ -28,11 +29,10 @@ from qiskit.dagcircuit.dagnode import DAGOpNode
 
 from .dag_helper import _is_reorderable_cz, format_node_line, op_node_signature
 from .grid import Qubit
-from .tsp_gadget import GadgetError, build_gadget, decode_gadget_tour
+from .tsp_gadget import EDGE_CAP, GadgetError, build_gadget, decode_gadget_tour
 
-# Rydberg blockade radius in meters (15 micrometers). Lattice geometry comes from
-# the configured lattice_spacing; this radius only decides which two-qubit
-# gates may share one Rydberg pulse.
+# Rydberg blockade radius in meters (15 micrometers). It decides which two-qubit
+# gates may share a Rydberg pulse and must exceed lattice_spacing / 2.
 RYDBERG_RADIUS = 15e-6
 
 MoveEvent = tuple[str, int, tuple[int, int], tuple[int, int]]
@@ -152,8 +152,13 @@ _CONCORDE_SEED = 1
 
 
 _SIDE_ORDERING_REMOVED = (
-    "Config key '_side_ordering' was removed: the greedy side ordering no longer exists, and "
-    "every group uses the side-priced TSP tour (Concorde, else fast_tsp). Delete the key."
+    "Config key '_side_ordering' was removed: the greedy side ordering no longer exists; "
+    "choose the visit order with 'tour_ordering'. Delete the key."
+)
+
+_PARALLEL_REMOVED = (
+    "Config key 'parallel' was removed: gates always share AOD loads when the AOD "
+    "size allows. To move one atom at a time, set max_dimension to [1, 1]. Delete the key."
 )
 
 _TSP_GADGET_REPLACED = (
@@ -170,15 +175,11 @@ _DEFAULT_TOUR_ORDERING = "tsp_gadget"
 
 
 def _tour_ordering(config):
+    """Validated ``tour_ordering`` value (default ``"tsp_gadget"``)."""
     ordering = config.get("tour_ordering", _DEFAULT_TOUR_ORDERING)
     if ordering not in TOUR_ORDERINGS:
         raise ValueError(f"tour_ordering must be one of {', '.join(map(repr, TOUR_ORDERINGS))}.")
     return ordering
-
-_PARALLEL_REMOVED = (
-    "Config key 'parallel' was removed: gates always share AOD loads when the AOD "
-    "size allows. To move one atom at a time, set max_dimension to [1, 1]. Delete the key."
-)
 
 
 class _TourSolverError(RuntimeError):
@@ -187,17 +188,12 @@ class _TourSolverError(RuntimeError):
 
 @dataclass(frozen=True)
 class _LayeredTourGraph:
-    """Symmetric TSP instance for one AOD load that stays loaded across layers.
+    """Penalized layer-ring TSP for one AOD load kept across layers.
 
-    Node 0 is the load terminal at the current rigid offset; the last node is
-    the unload terminal at home (0, 0). Nodes in between are the distinct
-    ``cities`` in order, each a (layer, displacement) pair. Terminals count as
-    layers -1 and ``layer_count``, closing a ring of layers with one free
-    unload-to-load edge. Only edges within a layer or between consecutive
-    layers exist; every layer crossing pays ``penalty``. Missing edges are
-    ``math.inf`` (an integer solver such as Concorde needs a finite stand-in).
-    ``tour_bound`` is the weight of one feasible (layer-ordered) tour, which
-    integer scaling uses to size absent edges without an n-squared factor.
+    Node 0 is the load terminal, the last node the unload at home; between them
+    are the (layer, displacement) ``cities``. Layer crossings pay ``penalty``,
+    absent edges are ``math.inf``, and ``tour_bound`` is one layer-ordered
+    tour's weight. See Scheduler_NND.md section 7.2.
     """
 
     cities: tuple[tuple[int, tuple[int, int]], ...]
@@ -208,20 +204,12 @@ class _LayeredTourGraph:
 
 
 def _layered_tour_graph(cities, config, start_offset):
-    """Build the penalized layer-ring graph for labelled (layer, displacement) cities.
+    """Build the penalized layer-ring graph for (layer, displacement) cities.
 
-    A Hamiltonian cycle crosses every cut an even number of times. With the
-    unload-to-load edge, each of the layer_count + 1 boundaries is crossed at
-    least once; without it, at least twice. Any tour that splits a layer or
-    returns to an earlier one therefore pays two or more extra penalties. The
-    penalty exceeds a complete feasible tour's movement, so such tours always
-    lose: an exact solver returns a layer-ordered tour, and the movement cost
-    is the tour cost minus (layer_count + 1) penalties.
-
-    Edges are priced by ``_side_movement``, the cheapest interaction sides of
-    the two cities, so there is one node per city and the matrix stays
-    symmetric. That needs even-even targets and a load start at home or an
-    AOD site.
+    The penalty exceeds any feasible tour's movement, so an exact solver
+    returns a layer-ordered tour (cut-parity argument: Scheduler_NND.md
+    section 7.2). Edges use ``_side_movement``; needs even-even targets and a
+    load start at home or an AOD site.
     """
     if not all(r % 2 == 0 and c % 2 == 0 for _, (r, c) in cities) or not (
         start_offset == (0, 0) or _is_valid_aod_position(start_offset)
@@ -254,15 +242,10 @@ def _layered_tour_graph(cities, config, start_offset):
 
 
 def _side_movement(nodes, config):
-    """Cheapest parity-routed motion between any interaction sides of two nodes.
+    """Cheapest routed motion between any cardinal interaction sites of two nodes.
 
-    A city is visited from one of four cardinal sites around its even-even
-    target. The load terminal starts at its offset, or at home with any
-    transfer direction when that offset is (0, 0); the unload terminal is
-    reached by routing to any home-adjacent site and transferring down. The
-    minimum is symmetric because route costs are, so the graph keeps one node
-    per city. Leaving and arriving sides may differ, so this prices order
-    only; ``_optimize_visit_sides`` then chooses consistent sides exactly.
+    Symmetric, so the graph keeps one node per city. It prices order only;
+    ``_optimize_visit_sides`` then picks consistent sides.
     """
     end = len(nodes) - 1
     transfers = [(_step_seconds(step, config), step) for step in _CARDINAL]
@@ -313,7 +296,6 @@ def _integer_weights(weights, finite_max, missing):
 
 # Largest Concorde edge weight. Concorde keeps tour lengths in doubles, but
 # Lin-Kernighan sums move gains (at most KICK_MAXDEPTH = 50 deep) in an int.
-_CONCORDE_EDGE_CAP = (2**31 - 1) // 256  # tsp_gadget.EDGE_CAP matches
 
 
 def _bounded_integer_weights(weights, tour_bound, cap):
@@ -389,7 +371,7 @@ def _concorde_tour(weights, problem_type, solver_type, time_bound=-1, tour_bound
     """
     n = len(weights)
     if tour_bound is not None:
-        matrix = _bounded_integer_weights(weights, tour_bound, _CONCORDE_EDGE_CAP)
+        matrix = _bounded_integer_weights(weights, tour_bound, EDGE_CAP)
     else:
         finite_max = max(1, min(10**6, (2**31 - 1) // (n * n + n)))
         matrix = _integer_weights(weights, finite_max, n * finite_max + 1)
@@ -604,8 +586,8 @@ class TourStats:
 
     ``solves`` counts groups with at least two distinct cities. Unless
     ``tour_ordering`` is ``"alignment"``, each such solve prices the relaxed
-    and alignment orders and, under ``tour_ordering:
-    "tsp_gadget"``, an exact one (``enumerated`` for tiny groups, else ``gadget``).
+    and alignment orders and, under ``tour_ordering: "tsp_gadget"``, an exact
+    one (``enumerated`` for tiny groups, else ``gadget``).
     ``exact_wins`` / ``alignment_wins`` count groups where that order was
     strictly fastest, saving ``seconds_saved`` of motion against the relaxed
     order in total; ``exact_failures`` counts exact attempts that failed.
@@ -651,9 +633,9 @@ def _layer_order_count(cities):
 def _relaxed_city_order(cities, vectors, labels, config, start_offset, tour_solver):
     """City order from the side-relaxed layer ring, and whether it was repaired.
 
-    Only when every solver fails are the Hamiltonian tours they returned, but
-    validation rejected, repaired by ``_repaired_layer_orders``; the fastest
-    repair is the order. With no tour to repair, the alignment order stands in.
+    If every solver fails, the tours validation rejected are repaired by
+    ``_repaired_layer_orders`` and the fastest repair is used; with none, the
+    alignment order is used.
     """
     rejected = []
     try:
@@ -731,28 +713,13 @@ def _order_group_displacements(
     tour_solver=None,
     gadget_solver=None,
 ) -> list[int]:
-    """Return all vector indices in the fastest candidate displacement tour.
+    """Vector indices in the fastest displacement tour from ``start_offset`` to home.
 
-    Cities are partner positions relative to each mover's immutable home,
-    labelled (layer, displacement); the tour starts at the current rigid-load
-    offset, ends at home (0, 0), and visits layers in order. Repeated
-    displacements within a layer expand consecutively in input order.
-
-    Under ``tour_ordering: "alignment"`` the alignment order is returned
-    as is, with no TSP graph or solver. Otherwise up to three candidate
-    orders are priced exactly with ``_optimize_visit_sides``:
-
-    - relaxed: the side-priced layer ring of ``_layered_tour_graph`` solved by
-      ``tour_solver`` (default ``_solve_tour``; see ``_tour_solvers`` for the
-      fast_tsp/Concorde order); if no solver succeeds, a rejected tour sorted
-      into layer order, else the alignment order;
-    - alignment: the per-layer alignment heuristic, which costs almost nothing;
-    - exact, only under ``"tsp_gadget"``: enumeration when there are at most
-      ``_EXACT_ENUMERATION_LIMIT`` layer-respecting orders, else the gadget
-      solved with ``gadget_solver`` (default Concorde).
-
-    The fastest wins; ties keep the earlier candidate in that list, and any
-    failure in the exact path just drops that candidate.
+    Layers are visited in order and repeated displacements stay consecutive.
+    ``"alignment"`` returns the alignment order; otherwise the relaxed tour
+    (``tour_solver``), the alignment order and, under ``"tsp_gadget"``, an
+    exact tour (enumeration or ``gadget_solver``) are priced by the side DP,
+    and the earliest of the fastest wins. Details: Scheduler_NND.md.
     """
     labels = _displacement_layer_labels(vectors, layer_ids)
     if not vectors:
@@ -939,15 +906,11 @@ class _SideTour:
 
 
 def _optimize_visit_sides(vectors, config, *, start_offset=None):
-    """Minimum parity-routed motion for a FIXED sequence of home-relative targets.
+    """Minimum routed motion for a fixed sequence of home-relative targets.
 
-    Keep four endpoint states per visit; compare 4 x 4 transitions between
-    adjacent visits, plus four loading/unloading directions at the boundaries.
-    This is O(16*n) routing comparisons and O(n) storage, not a new subset TSP.
-    All homes are even-even, so routing the shared offset has the same parity
-    geometry as routing any loaded atom. Transfers are one cardinal step.
-    A non-None start_offset means the load is already in the AOD: start there
-    without another transfer, but still price the eventual return to home.
+    Side DP: four interaction sites per visit, 4 x 4 transitions, O(16n). A
+    non-None ``start_offset`` is a load already in the AOD (no load transfer);
+    the return home is always priced.
     """
     if not vectors:
         return _SideTour((0, 0), (), (), (), 0.0)
@@ -998,7 +961,7 @@ def _optimize_visit_sides(vectors, config, *, start_offset=None):
     return result
 
 
-def _translate(ids, positions, step, events, moves):
+def _translate(ids, positions, step, events):
     """Apply and record one shared displacement; positions are mutable copies."""
     if step == (0, 0):
         return
@@ -1008,11 +971,10 @@ def _translate(ids, positions, step, events, moves):
         end = (start[0] + dr, start[1] + dc)
         events.append(("move", qid, start, end))
         positions[i] = end
-    moves.append(step)
 
 
 def _gate_parts(line):
-    """Yield ``(statement;, pulse name, qubit ids)`` for each statement of a gate line."""
+    """Yield ``(statement with trailing ';', pulse name, qubit ids)`` for each statement of a gate line."""
     for statement in line.split(";"):
         statement = statement.strip()
         if statement:
@@ -1066,8 +1028,9 @@ def _pulse_coloring(sites, blockade_sq):
 def _append_gate(events, node, position, config, floor=0):
     """Emit a gate into the trailing pulse window using the fewest steps found.
 
-    Consecutive gate events after ``floor`` with no movement between them form
-    the window, so every atom is still at ``position(q)``. A gate joins a step
+    The window is the trailing gate steps from ``floor`` back to the first
+    move, different-pulse step, or step sharing a qubit with the gate or a
+    later step; every atom is still at ``position(q)``. A gate joins a step
     with the same pulse when it shares no qubit with that step or any later
     one, and, for two-qubit pulses, no atom lies strictly inside RYDBERG_RADIUS
     of an atom of another gate in the step. When it fits no step, the window's
@@ -1107,7 +1070,7 @@ def _append_gate(events, node, position, config, floor=0):
     events.append(("gate", line))
 
 
-def _return_(ids, moves, positions, homes, events, config):
+def _return_(ids, positions, homes, events, config):
     """Return the complete rigid AOD load to its own homes and unload once."""
     if not ids:
         return
@@ -1128,13 +1091,13 @@ def _return_(ids, moves, positions, homes, events, config):
         sum(_step_seconds(s, config) for s in steps), len(steps), tuple(steps)
     ))
     for step in route:
-        _translate(ids, positions, step, events, moves)
+        _translate(ids, positions, step, events)
     if positions != homes:
         raise ValueError("Return failed to restore home positions.")
 
 
 def _event_batches(events):
-    """Use exactly the movement compression/batching used by the text writer."""
+    """Yield event batches using the text writer's move compression and batching."""
     from .scheduling import _compress_linear_moves, _move_batch_key
     event_list = _compress_linear_moves(list(events))
     i = 0
@@ -1156,7 +1119,7 @@ def _event_batches(events):
 
 
 def schedule_duration(events, config):
-    """One common duration model for optimized, reset, and baseline schedules."""
+    """Total time: slowest step of each move batch, SLM-AOD transfers, and each 1Q/2Q/measure pulse plus t_switch."""
     seconds = 0.0
     transfers = 0
     one_pulses = two_pulses = measurement_batches = 0
@@ -1210,7 +1173,7 @@ class _Plan:
 def _return_plan(plan, homes, config):
     if plan.ids:
         positions = [plan.positions[q] for q in plan.ids]
-        _return_(plan.ids, [], positions, [homes[q] for q in plan.ids], plan.events, config)
+        _return_(plan.ids, positions, [homes[q] for q in plan.ids], plan.events, config)
         plan.positions.update(zip(plan.ids, positions))
         plan.ids = []
 
@@ -1265,7 +1228,7 @@ def _reuse_movers(nodes, previous_ids, config):
 
 
 def _build_groups(nodes, positions, config, next_use=None):
-    """Group only in the state that will actually be used after a reset.
+    """Partition a layer's gates into rigid AOD loads from ``positions`` (the post-return state).
 
     Look-ahead: unless an ancilla is preferred, the operand needed again
     soonest (``next_use``: qubit -> next layer index) moves, so its load can be
@@ -1290,8 +1253,8 @@ def _build_groups(nodes, positions, config, next_use=None):
         else:
             choices.sort(key=lambda choice: soonest([choice[0]]))
         placed = False
-        # Gates share a load whenever the AOD span allows; a [1, 1] AOD has
-        # zero span, so it moves one atom per load.
+        # Join a group whose AOD span fits and whose alignment score is
+        # >= alignment_conc; a [1, 1] AOD fits no second atom.
         for group, movers, vectors in groups:
             fits = [
                 (q, vector) for q, vector in choices
@@ -1349,7 +1312,7 @@ def _execute_group(plan, nodes, movers, homes, config, reuse=False):
         pair = op_node_signature(node)[2]
         partner = pair[1] if pair[0] == mover else pair[0]
         home_targets.append(_movement_vector(homes[mover], plan.positions[partner]))
-    # Order home-relative targets by the fastest candidate tour.
+    # Layer gates are disjoint, so any visit order is legal; take the fastest tour.
     order = _order_group_displacements(home_targets, config, start_offset=start_offset)
 
     nodes = [nodes[i] for i in order]
@@ -1361,18 +1324,16 @@ def _execute_group(plan, nodes, movers, homes, config, reuse=False):
     def position(q):
         return positions[index[q]] if q in index else plan.positions[q]
 
-    moves = []
-    # Independent gates may be routed in any order, regardless of gate type
-    # or CZ preprocessing. Shared-wire order remains fixed by the layers.
+    # Choose interaction sides for that fixed order.
     tour = _optimize_visit_sides(
         [home_targets[i] for i in order], config,
         start_offset=start_offset if reuse else None,
     )
-    _translate(ids, positions, tour.load_step, plan.events, moves)
+    _translate(ids, positions, tour.load_step, plan.events)
     loaded = set(ids)
     for i, (node, steps) in enumerate(zip(nodes, tour.routes)):
         for step in steps:
-            _translate(ids, positions, step, plan.events, moves)
+            _translate(ids, positions, step, plan.events)
         pair = op_node_signature(node)[2]
         if set(pair) & loaded != {ids[i]}:
             raise ValueError("Each interaction must have exactly one loaded operand.")
@@ -1381,8 +1342,7 @@ def _execute_group(plan, nodes, movers, homes, config, reuse=False):
         if _is_valid_aod_position(target) or sum(abs(v) for v in _movement_vector(positions[i], target)) != 1:
             raise ValueError("Side-planned interaction must be adjacent to an SLM partner.")
         _append_gate(plan.events, node, position, config, plan.pulse_floor)
-    # The return is a cost-to-go estimate. Keep the load active so the next
-    # layer can reuse it; _return_plan executes the return when needed.
+    # Leave the load active so the next layer can reuse it; _return_plan returns it when needed.
     plan.positions.update(zip(ids, positions))
     plan.ids = ids
     plan.reused_groups += int(reuse)
@@ -1434,14 +1394,14 @@ def _closed_cost(plan, homes, config):
     return schedule_duration(plan.events + ending.events, config)
 
 
-def _plan_layer(nodes, initial, homes, config, stage, next_use, allow_reuse=True):
+def _plan_layer(nodes, initial, homes, config, stage, next_use):
     """Cheapest plan for one layer: a full reset, or eligible gates on the retained load first."""
     reset = initial.copy()
     _reset_layer(reset, nodes, homes, config, next_use)
-    if not allow_reuse or not initial.ids or not nodes:
+    if not initial.ids or not nodes:
         return reset
-    # Gates in a DAG layer are disjoint. Only gates with one loaded operand
-    # can precede a reset; AOD-AOD gates remain in the reset portion.
+    # Gates in a DAG layer are disjoint; only gates _reuse_movers accepts can
+    # ride the retained load, the rest go to the reset portion.
     eligible = [n for n in nodes if _reuse_movers([n], initial.ids, config) is not None]
     # All eligible gates may ride the retained load; a single one is also
     # tried, so grouping is never costlier than individual moves from here.
@@ -1511,10 +1471,11 @@ def _check_layer(nodes, homes):
 
 
 def validate_schedule(events, homes, config, reference_nodes=None, require_home=True):
-    """Replay continuity, highway interiors, full loads, gates, and wire order.
+    """Replay ``events`` from ``homes``; raise ValueError on any rule break, return final positions.
 
-    This is validation of the project's discrete rigid-AOD model, not a model
-    of finite trap extent, laser crosstalk, or physical AOD travel bounds.
+    Checks continuity, highway interiors, transfers, AOD span, Rydberg
+    blockade, ancilla movers, barriers and per-wire order. It validates the
+    discrete rigid-AOD model, not finite trap extent, crosstalk or AOD travel.
     """
     if len(set(homes.values())) != len(homes) or any(_is_valid_aod_position(p) for p in homes.values()):
         raise ValueError("Homes must be unique even-even SLM sites.")
@@ -1615,7 +1576,7 @@ def validate_schedule(events, homes, config, reference_nodes=None, require_home=
 
 
 def _cz_commutation_enabled(config):
-    """CZ preprocessing opts in to reordering commuting unconditional CZs."""
+    """True when ``reorder_cz`` or ``reorder_cz_by_displacement`` allows reordering commuting unconditional CZs."""
     return bool(config.get("reorder_cz", False) or config.get("reorder_cz_by_displacement", False))
 
 
@@ -1640,14 +1601,11 @@ def _cz_run_traces(traces, commuting):
 
 
 def _validate_barrier_order(events, reference_nodes):
-    """Require every operation to stay on its side of each barrier it is fenced by.
+    """Raise if an operation crossed a barrier on a qubit they share.
 
-    A barrier orders only the qubits it names: every operation on one of them
-    before the barrier must be emitted in an earlier gate event (timestep)
-    than every operation on one of them after it. Operations on other qubits
-    may cross. The k-th emission of a statement is matched to its k-th
-    occurrence in the reference; identical statements are interchangeable,
-    and missing or extra ones are reported by the per-qubit trace check.
+    The k-th emission of a statement matches its k-th reference occurrence;
+    missing or extra ones are left to the per-qubit trace check. Rules:
+    Scheduler_NND.md (barriers).
     """
     occurrences = defaultdict(int)
     operations, barriers = [], []
@@ -1766,7 +1724,7 @@ def _optimize_retained_loads(events, layers, homes, config, singles=None):
 
         def translate(step):
             positions = [plan.positions[q] for q in ids]
-            _translate(ids, positions, step, plan.events, [])
+            _translate(ids, positions, step, plan.events)
             plan.positions.update(zip(ids, positions))
 
         tour = _optimize_visit_sides([targets[i] for i in order], config)
@@ -1842,7 +1800,7 @@ def _hold_reloaded_atoms(events):
     return [event for batch in batches for event in batch]
 
 
-def _layered_candidate(layers, singles, homes, config, allow_reuse):
+def _layered_candidate(layers, singles, homes, config):
     """Plan the circuit layer by layer, then reroute retained loads and hold reloads."""
     from .scheduling import single_qubit_layer_time
     next_uses = [{} for _ in layers]
@@ -1860,7 +1818,7 @@ def _layered_candidate(layers, singles, homes, config, allow_reuse):
         plan.events.extend(("gate", line) for line in lines)
         layer_plan = _plan_layer(
             nodes, _Plan(dict(plan.positions), list(plan.ids), []),
-            homes, config, i, next_uses[i], allow_reuse,
+            homes, config, i, next_uses[i],
         )
         plan.events.extend(layer_plan.events)
         plan.positions, plan.ids = layer_plan.positions, layer_plan.ids
@@ -1884,23 +1842,18 @@ class CircuitSchedule:
     duration: Any
     selected: str
     candidate_times: dict[str, Any]
-    rejected_candidates: dict[str, str]
     reused_groups: int
     # Displacement-tour counters of the selected candidate (see TourStats).
     tsp_stats: TourStats | None = None
 
 
 def schedule_circuit(layers, singles, qubits, config, reference_nodes=None):
-    """Build, validate, and return the cheaper layered schedule.
+    """Plan, validate and time the ``reuse`` and ``individual`` candidates; return the faster.
 
-    ``reuse`` is the layered planner with the configured AOD size and
-    ``T_reuse``; gates share loads whenever the AOD span allows. Unless the
-    AOD is already [1, 1], the planner also runs with a [1, 1] AOD
-    (``individual``), so a run never does worse than moving one atom at a
-    time. Both are validated and timed with the common model; the cheaper is
-    returned (``reuse`` on ties).
-    The ``tour_ordering`` tour and side DP apply to ordinary groups regardless
-    of CZ reordering. Planning or validation failures propagate.
+    ``reuse`` uses the configured AOD and ``T_reuse`` (gates share loads when
+    the AOD span and ``alignment_conc`` allow); ``individual`` moves one atom
+    per load and is skipped when the AOD is already [1, 1]. Ties keep
+    ``reuse``. Planning or validation failures propagate.
     """
     if "_side_ordering" in config:
         raise ValueError(_SIDE_ORDERING_REMOVED)
@@ -1927,12 +1880,12 @@ def schedule_circuit(layers, singles, qubits, config, reference_nodes=None):
     plans, times, stats = {}, {}, {}
     for name, candidate in candidates.items():
         candidate = dict(candidate, _tsp_stats=TourStats())
-        plans[name] = _layered_candidate(layers, singles, homes, candidate, True)
+        plans[name] = _layered_candidate(layers, singles, homes, candidate)
         stats[name] = candidate["_tsp_stats"]
         validate_schedule(plans[name].events, homes, config, reference_nodes)
         times[name] = schedule_duration(plans[name].events, config)
     selected = min(times, key=times.get)
     plan = plans[selected]
     return CircuitSchedule(
-        plan.events, times[selected], selected, times, {}, plan.reused_groups, stats[selected],
+        plan.events, times[selected], selected, times, plan.reused_groups, stats[selected],
     )

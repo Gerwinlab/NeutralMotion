@@ -4,7 +4,6 @@ from pathlib import Path
 
 from qiskit import QuantumCircuit, QuantumRegister, transpile
 from qiskit.circuit import Barrier
-from qiskit.circuit import Gate
 from qiskit.converters import circuit_to_dag
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.dagcircuit.dagnode import DAGOpNode
@@ -48,16 +47,12 @@ def prepare_circuit(
 
 
 def flatten_quantum_registers(dag: DAGCircuit) -> DAGCircuit:
-    """Merge several quantum registers into one register ``q``, in declaration order.
+    """Merge quantum registers into one register ``q`` in declaration order (``reg[i]`` -> ``q[start + i]``).
 
-    The solver identifies a qubit by its index (``extract_index_from_bit``),
-    which is local to its register, so ``l[5]`` and ``r[5]`` would collide.
-    Qubit ``reg[i]`` becomes ``q[start + i]``, where ``start`` is the number
-    of qubits declared before ``reg``: Qiskit's global bit index. Classical
-    registers are kept, so measurements still name their own register
-    (``measure q[126] -> sx[0];``). ``metadata["qubit_registers"]`` records
-    ``(name, start, size)`` per original register for the schedule header.
-    A DAG with at most one quantum register is returned unchanged.
+    ``op_node_signature`` reads register-local indices, so ``l[5]`` and ``r[5]``
+    would collide otherwise. Classical registers are kept; ``(name, start, size)``
+    per register goes to ``metadata["qubit_registers"]``. A DAG with at most one
+    quantum register is returned unchanged.
     """
     registers = list(dag.qregs.values())
     if len(registers) <= 1:
@@ -91,7 +86,7 @@ def format_qubit_registers(layout) -> str | None:
 
 
 def ancilla_qubits(dag: DAGCircuit) -> frozenset[int]:
-    """The qubits of ``ancilla_registers`` recorded by ``prepare_circuit`` (they keep the role all circuit)."""
+    """The qubits of ``ancilla_registers`` recorded by ``prepare_circuit`` (fixed for the whole circuit)."""
     return frozenset((dag.metadata or {}).get("ancilla_qubits", ()))
 
 
@@ -119,6 +114,11 @@ def dag_with_gate_ops_only(dag: DAGCircuit) -> list[DAGOpNode]:
     for node in sorted(dag.op_nodes(), key=lambda item: item._node_id):
         if node.op.name == "barrier":
             gate_only.apply_operation_back(Barrier(len(dag.qubits)), dag.qubits, [])
+        elif len(node.qargs) not in (1, 2):
+            raise ValueError(
+                f"Only one- and two-qubit operations are supported; got {node.op.name} on {len(node.qargs)} qubits. "
+                'Set transpile_basis_gates (e.g. ["u3", "cz"]) to decompose it.'
+            )
         else:
             gate_only.apply_operation_back(node.op, node.qargs, node.cargs)
 
@@ -128,8 +128,8 @@ def dag_with_gate_ops_only(dag: DAGCircuit) -> list[DAGOpNode]:
 def load_qasm_to_gate_dag(
     qasm_path: str | Path, optimization_level: int = 0, basis_gates: list[str] | None = None,
     ancilla_registers=(),
-) -> DAGCircuit:
-    """Load a QASM file and return its op nodes as filtered by ``dag_with_gate_ops_only``."""
+) -> list[DAGOpNode]:
+    """Load a QASM file and return its op nodes in source order, barriers widened (``dag_with_gate_ops_only``)."""
     return dag_with_gate_ops_only(load_qasm_to_dag(qasm_path, optimization_level, basis_gates, ancilla_registers))
 
 

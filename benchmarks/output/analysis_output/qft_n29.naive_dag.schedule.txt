@@ -1,6 +1,5 @@
 qasm_file: qft_n29_transpiled.qasm
 transpile: optimization_level=2 basis_gates=u1,u2,u3,cz,id
-swap_relabel: q[0]->q[28] q[1]->q[27] q[2]->q[26] q[3]->q[25] q[4]->q[24] q[5]->q[23] q[6]->q[22] q[7]->q[21] q[8]->q[20] q[9]->q[19] q[10]->q[18] q[11]->q[17] q[12]->q[16] q[13]->q[15] q[15]->q[13] q[16]->q[12] q[17]->q[11] q[18]->q[10] q[19]->q[9] q[20]->q[8] q[21]->q[7] q[22]->q[6] q[23]->q[5] q[24]->q[4] q[25]->q[3] q[26]->q[2] q[27]->q[1] q[28]->q[0]
 final_time: 335938.5702894245 microsecond
 lattice_spacing: 14.999999999999998 micrometer
 random number seed: 0
@@ -6004,20 +6003,6 @@ T=2998
 cz q[28],q[27];
 T=2999
 u2(pi/4, -pi) q[27]; u2(0, pi/2) q[28];
-// swap q[13],q[15] removed (relabel): from here written q[13] runs on q[15] and written q[15] on q[13]
-// swap q[12],q[16] removed (relabel): from here written q[12] runs on q[16] and written q[16] on q[12]
-// swap q[11],q[17] removed (relabel): from here written q[11] runs on q[17] and written q[17] on q[11]
-// swap q[10],q[18] removed (relabel): from here written q[10] runs on q[18] and written q[18] on q[10]
-// swap q[9],q[19] removed (relabel): from here written q[9] runs on q[19] and written q[19] on q[9]
-// swap q[8],q[20] removed (relabel): from here written q[8] runs on q[20] and written q[20] on q[8]
-// swap q[7],q[21] removed (relabel): from here written q[7] runs on q[21] and written q[21] on q[7]
-// swap q[6],q[22] removed (relabel): from here written q[6] runs on q[22] and written q[22] on q[6]
-// swap q[5],q[23] removed (relabel): from here written q[5] runs on q[23] and written q[23] on q[5]
-// swap q[4],q[24] removed (relabel): from here written q[4] runs on q[24] and written q[24] on q[4]
-// swap q[3],q[25] removed (relabel): from here written q[3] runs on q[25] and written q[25] on q[3]
-// swap q[2],q[26] removed (relabel): from here written q[2] runs on q[26] and written q[26] on q[2]
-// swap q[1],q[27] removed (relabel): from here written q[1] runs on q[27] and written q[27] on q[1]
-// swap q[0],q[28] removed (relabel): from here written q[0] runs on q[28] and written q[28] on q[0]
 T=3000
 measure q[28] -> meas[0]; measure q[27] -> meas[1]; measure q[26] -> meas[2]; measure q[25] -> meas[3]; measure q[24] -> meas[4]; measure q[23] -> meas[5]; measure q[22] -> meas[6]; measure q[21] -> meas[7]; measure q[20] -> meas[8]; measure q[19] -> meas[9]; measure q[18] -> meas[10]; measure q[17] -> meas[11]; measure q[16] -> meas[12]; measure q[15] -> meas[13]; measure q[14] -> meas[14]; measure q[13] -> meas[15]; measure q[12] -> meas[16]; measure q[11] -> meas[17]; measure q[10] -> meas[18]; measure q[9] -> meas[19]; measure q[8] -> meas[20]; measure q[7] -> meas[21]; measure q[6] -> meas[22]; measure q[5] -> meas[23]; measure q[4] -> meas[24]; measure q[3] -> meas[25]; measure q[2] -> meas[26]; measure q[1] -> meas[27]; measure q[0] -> meas[28];
 T=3001

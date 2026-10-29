@@ -18,7 +18,7 @@ from functools import lru_cache
 from qiskit.dagcircuit.dagnode import DAGOpNode
 
 from .dag_helper import op_node_signature
-from .grid import GridNode, Qubit, generate_grid, move_qubit, place_qubit
+from .grid import GridNode, generate_grid, move_qubit, place_qubit
 from .scheduling import (
     _format_node_line,
     collect_single_qubit_gate_block,
@@ -197,7 +197,7 @@ def find_next_two_qubit_gate(ops, start_index):
 
 
 def _future_pairs(ops, gate_index, mover, config):
-    """Bound the rollout by both all upcoming 2Q gates and uses of this atom."""
+    """Upcoming 2Q pairs, capped at relocation_lookahead_gates gates or relocation_lookahead_uses uses of ``mover``."""
     max_gates = int(config.get('relocation_lookahead_gates', 8))
     max_uses = int(config.get('relocation_lookahead_uses', 2))
     if max_gates < 1 or max_uses < 1:

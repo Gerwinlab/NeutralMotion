@@ -13,7 +13,7 @@ import pathlib
 
 from .main import load_config, main as naive_dag_main, resolve_config_paths
 
-#TODO: add output name 
+#TODO: add output name
 
 def _build_parser() -> argparse.ArgumentParser:
     """Create the CLI argument parser for the naive scheduler entry point."""
@@ -28,13 +28,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "qasm_file",
-        help="QASM filename or path (resolved relative to qasm_base_dir in the JSON).",
+        help="QASM path; if not found as given, resolved against qasm_base_dir/qasm_dir in the JSON.",
     )
     parser.add_argument(
         "schedule_output_dir",
         nargs="?",
         default=None,
-        help="Optional directory to write <qasm_stem>.schedule.txt. Relative paths are resolved from the current working directory.",
+        help="Directory for <qasm_stem>.schedule.txt (default: next to the QASM). Relative paths are "
+             "resolved from the current working directory.",
     )
     parser.add_argument(
         "--dump-config",
@@ -50,7 +51,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--seed",
         type=int,
         default=None,
-        help="Random seed override for random fill. Defaults to 0.",
+        help="Seed for the random fill (default 0); recorded in the schedule header.",
     )
     return parser
 

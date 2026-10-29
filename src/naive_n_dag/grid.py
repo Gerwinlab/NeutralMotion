@@ -1,8 +1,8 @@
-#TODO: Check if the number of traps is enough for the number of qubits and warn if your is an excess number of traps
+#TODO: Check if the number of traps is enough for the number of qubits and warn if there is an excess number of traps
 """
 grid.py
 
-Utilities for generating and managing a neutral atom grid with spacing defined by the lattice spacing.
+Utilities for generating and managing a neutral atom grid: SLM traps lattice_spacing apart, with AOD lanes between them.
 
 The grid has (2*rows - 1) x (2*cols - 1) nodes, lattice_spacing / 2 apart:
 even-even nodes are SLM traps, and atoms in the AOD travel along the odd
@@ -21,16 +21,16 @@ import random
 @dataclass
 class GridNode:
     """
-    Represents a single lattice site in the neutral atom array.
+    One grid node: an SLM trap (even-even) or an AOD lane point.
     """
     x: float
     y: float
     row: int
     col: int
-    qubit: Optional[int] = None
+    qubit: Optional["Qubit"] = None
 
     def is_occupied(self)->bool:
-        """Returns true if a qubit is assigned"""
+        """True if a qubit is assigned."""
         return self.qubit is not None
 @dataclass
 class Qubit:
@@ -54,7 +54,7 @@ def generate_grid(dimensions: List[int],lattice_spacing:float) -> List[List[Grid
     Parameters
     ----------
     dimensions : List[int] - [rows, cols] of SLM traps, given by initializing json file.
-    lattice_spacing : float - SLM trap pitch, given by initializing json file.
+    lattice_spacing : length - SLM trap pitch (main passes a pint quantity in metres).
 
     Returns
     -------
@@ -171,7 +171,7 @@ def initial_layout_fill(
                 f"initial_layout[{qubit_id}] must be [row, col], got {coord!r}."
             )
         row, col = coord
-        row *= 2 #puts it on a even-even spot
+        row *= 2  # trap index -> grid node
         col *= 2
         if not isinstance(row, int) or not isinstance(col, int):
             raise ValueError(
@@ -180,10 +180,6 @@ def initial_layout_fill(
         if row < 0 or row >= grid_rows or col < 0 or col >= grid_cols:
             raise ValueError(
                 f"initial_layout[{qubit_id}]={coord!r} is out of bounds for grid {grid_rows}x{grid_cols}."
-            )
-        if row % 2 != 0 or col % 2 != 0:
-            raise ValueError(
-                f"initial_layout[{qubit_id}]={coord!r} is not on an even-even trap site."
             )
         if grid[row][col].is_occupied():
             raise ValueError(
