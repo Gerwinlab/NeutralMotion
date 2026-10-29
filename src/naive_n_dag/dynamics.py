@@ -793,6 +793,10 @@ def _order_group_displacements(
     return [vector_index for city in best for vector_index in indices_by_city[cities[city]]]
 
 
+# Rest-to-rest spline leg of length d: peak acceleration c * d / T^2, so T = sqrt(c * d / a).
+SPLINE_COEFFICIENTS = {"Cubic_Spline": 6.0, "Quintic_Spline": 10 / math.sqrt(3)}
+
+
 @lru_cache(maxsize=8192)
 def _profile_seconds(distance: float, velocity: float, acceleration: float) -> float:
     """Rest-to-rest move time on a trapezoidal profile (triangular if too short to cruise)."""
@@ -810,8 +814,9 @@ def _step_seconds(step, config):
     dr = abs(step[0]) * spacing
     dc = abs(step[1]) * spacing
     movement_shape = config.get("movement_shape", "trapezoidal")
-    if movement_shape == "Cubic_Spline":
-        return math.sqrt(6 * dr / acceleration) + math.sqrt(6 * dc / acceleration)
+    if movement_shape in SPLINE_COEFFICIENTS:
+        c = SPLINE_COEFFICIENTS[movement_shape]
+        return math.sqrt(c * dr / acceleration) + math.sqrt(c * dc / acceleration)
     if movement_shape == "trapezoidal":
         return _profile_seconds(math.hypot(dr, dc), velocity, acceleration)
     raise ValueError(f"Unsupported movement_shape: {movement_shape!r}.")

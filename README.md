@@ -135,9 +135,10 @@ plus one `t_switch`, regardless of how many qubits are measured in that step.
 Scheduling behavior flags:
 
 - `movement_shape`: selects the shuttle timing profile. `trapezoidal` uses the
-  velocity-limited acceleration profile. `Cubic_Spline` uses
+  velocity-limited acceleration profile. `Cubic_Spline` (constant jerk) uses
   `sqrt(6 * delta_x / acceleration) + sqrt(6 * delta_y / acceleration)`, with
-  physical axis distances in meters.
+  physical axis distances in meters. `Quintic_Spline` (minimum jerk) uses the
+  same form with `10 / sqrt(3)` in place of `6`.
 - `ancilla_registers`: list of the QASM's ancilla register names, e.g.
   `["ax", "az"]`. Every qubit of those registers is an ancilla; a name the QASM
   does not declare is an error. The qLDPC QASMs declare `data`, `ax` and `az`
@@ -149,8 +150,9 @@ Scheduling behavior flags:
 - `transpile_optimization_level`: optional, `0`-`3`, default `0`. Runs the
   QASM through Qiskit's `transpile` at this level before anything else, in
   both solvers. Level 0 with no basis leaves the circuit as written. Levels 2-3
-  can delete near-identity gates (QFT-63: 3400 -> 2014 two-qubit gates), and the
-  schedule then preserves the transpiled circuit.
+  can delete near-identity gates (QFT-63: 3400 -> 1554 two-qubit gates with
+  Qiskit 2.5, 2014 with Qiskit 2.3), and the schedule then preserves the
+  transpiled circuit.
 - `transpile_basis_gates`: optional list of gate names, default `null` (gates
   as written). PowerMove uses `["u1", "u2", "u3", "cz", "id"]`. Settings in use
   are written to the schedule header as `transpile: ...`.

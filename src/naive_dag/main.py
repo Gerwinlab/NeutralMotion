@@ -103,9 +103,9 @@ def main(
         print(f"dimensions={dims} num_NA={num_na} qasm_dir={qasm_dir}")
         print(f"qasm_file={qasm_path}")
     movement_shape = config.get("movement_shape", "trapezoidal")
-    if movement_shape not in {"trapezoidal", "Cubic_Spline"}:
+    if movement_shape not in {"trapezoidal", "Cubic_Spline", "Quintic_Spline"}:
         raise ValueError(
-            "movement_shape must be either 'trapezoidal' or 'Cubic_Spline'."
+            "movement_shape must be 'trapezoidal', 'Cubic_Spline' or 'Quintic_Spline'."
         )
     if not isinstance(config.get("prefer_moving_ancillas", False), bool):
         raise ValueError("prefer_moving_ancillas must be a boolean.")

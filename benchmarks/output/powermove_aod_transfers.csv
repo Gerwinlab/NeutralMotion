@@ -1,29 +1,29 @@
 Benchmark,qasm,qubits,storage,gate_stages,load_steps,unload_steps,atom_loads,atom_unloads,max_loads_one_qubit,max_unloads_one_qubit,max_load_qubits,mean_loads_per_qubit,Texec (µs),Tcomp (s)
-BV-14,inputs/qasm_files/bv/bv_n14.qasm,14,off,13,24,24,25,25,2,2,0 1 2 3 4 5 6 7 8 9 11 12,1.786,6863.24,19.37
-BV-14,inputs/qasm_files/bv/bv_n14.qasm,14,on,13,26,26,26,26,2,2,0 1 2 3 4 5 6 7 8 9 11 12,1.857,12689.21,20.75
-BV-50,inputs/qasm_files/bv/bv_n50.qasm,50,off,22,42,42,43,43,2,2,1 3 6 10 11 13 15 21 23 24 25 27 32 33 37 39 43 44 45 46 47,0.86,13272.04,15.35
-BV-50,inputs/qasm_files/bv/bv_n50.qasm,50,on,22,44,44,44,44,2,2,1 3 6 10 11 13 15 21 23 24 25 27 32 33 37 39 43 44 45 46 47,0.88,27019.92,14.35
-BV-70,inputs/qasm_files/bv/bv_n70.qasm,70,off,36,68,68,71,71,2,2,1 2 7 8 9 11 12 15 18 21 22 26 28 30 31 32 33 38 39 40 43 44 45 47 51 53 54 55 56 57 59 60 61 63 68,1.014,24009.62,14.28
-BV-70,inputs/qasm_files/bv/bv_n70.qasm,70,on,36,72,72,72,72,2,2,1 2 7 8 9 11 12 15 18 21 22 26 28 30 31 32 33 38 39 40 43 44 45 47 51 53 54 55 56 57 59 60 61 63 68,1.029,45779.12,13.65
-QFT-18,inputs/qasm_files/qft/qft_n18_transpiled.qasm,18,off,95,222,222,336,336,35,35,17,18.667,54319.2,202.97
-QFT-18,inputs/qasm_files/qft/qft_n18_transpiled.qasm,18,on,98,492,492,634,634,54,54,3,35.222,334865.27,184.87
-QFT-29,inputs/qasm_files/qft/qft_n29_transpiled.qasm,29,off,161,465,465,774,774,40,40,19 20 21 22 23 24 25 26 27,26.69,123778.19,287.07
-QFT-29,inputs/qasm_files/qft/qft_n29_transpiled.qasm,29,on,171,1026,1026,1478,1478,70,70,9,50.966,758126.0,324.52
-QFT-63,inputs/qasm_files/qft/qft_n63_transpiled.qasm,63,off,365,1255,1255,2134,2134,40,40,19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61,33.873,358413.74,427.2
-QFT-63,inputs/qasm_files/qft/qft_n63_transpiled.qasm,63,on,376,2705,2705,3951,3951,86,86,38,62.714,2231300.39,456.69
-VQE-30,inputs/qasm_files/vqe/vqe_n30.qasm,30,off,29,29,29,29,29,1,1,0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28,0.967,7250.81,19.22
-VQE-30,inputs/qasm_files/vqe/vqe_n30.qasm,30,on,29,58,58,58,58,2,2,0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27,1.933,33054.85,21.33
-VQE-50,inputs/qasm_files/vqe/vqe_n50.qasm,50,off,49,49,49,49,49,1,1,0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48,0.98,13616.95,21.38
-VQE-50,inputs/qasm_files/vqe/vqe_n50.qasm,50,on,49,98,98,98,98,2,2,0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47,1.96,60047.55,21.65
-Adder-18,inputs/qasm_files/general/adder_18.qasm,18,off,114,195,195,210,210,18,18,2 4 5 6,11.667,57003.69,92.22
-Adder-18,inputs/qasm_files/general/adder_18.qasm,18,on,114,271,271,290,290,22,22,4 6,16.111,184225.54,93.05
-QV-20,inputs/qasm_files/general/qv_20.qasm,20,off,20,64,64,201,201,19,19,2,10.05,17472.06,109.37
-QV-20,inputs/qasm_files/general/qv_20.qasm,20,on,20,90,90,250,250,20,20,2,12.5,45455.07,107.16
-Heisenberg-24,inputs/qasm_files/general/heisenberg_24.qasm,24,off,61,159,159,390,390,32,32,6,16.25,41083.93,188.87
-Heisenberg-24,inputs/qasm_files/general/heisenberg_24.qasm,24,on,57,195,195,446,446,29,29,1 2,18.583,105673.95,174.77
-QAOA-24,inputs/qasm_files/general/qaoa_24.qasm,24,off,39,128,128,228,228,21,21,0,9.5,37403.3,82.42
-QAOA-24,inputs/qasm_files/general/qaoa_24.qasm,24,on,34,230,230,358,358,24,24,13,14.917,158645.6,84.85
-Random-24,inputs/qasm_files/general/random_24.qasm,24,off,62,188,188,245,245,17,17,2 3 16,10.208,65709.69,79.71
-Random-24,inputs/qasm_files/general/random_24.qasm,24,on,60,333,333,425,425,25,25,4,17.708,233851.04,92.89
-"[[144,12,12]]",inputs/qasm_files/qLDPC/bb_n144_k12_d12_cz_syndrome.qasm,288,off,16,411,411,1031,1031,8,8,149 157 160 171 178 183 186 193 204 214 219 227 239 248 250 260 263 267 270 271 273 282 284,3.58,291861.65,56.5
-"[[144,12,12]]",inputs/qasm_files/qLDPC/bb_n144_k12_d12_cz_syndrome.qasm,288,on,19,720,720,2323,2323,12,12,23 125 135,8.066,857778.06,54.37
+BV-14,inputs/qasm_files/bv/bv_n14.qasm,14,off,13,25,25,25,25,2,2,0 1 2 3 4 5 6 7 8 9 10 11,1.786,6838.72,15.74
+BV-14,inputs/qasm_files/bv/bv_n14.qasm,14,on,13,26,26,26,26,2,2,0 1 2 3 4 5 6 7 8 9 10 11,1.857,10625.29,15.53
+BV-50,inputs/qasm_files/bv/bv_n50.qasm,50,off,22,42,42,43,43,2,2,1 3 6 10 11 13 15 21 23 24 25 27 32 33 37 39 43 44 45 46 47,0.86,12854.59,10.36
+BV-50,inputs/qasm_files/bv/bv_n50.qasm,50,on,22,44,44,44,44,2,2,1 3 6 10 11 13 15 21 23 24 25 27 32 33 37 39 43 44 45 46 47,0.88,24081.94,11.41
+BV-70,inputs/qasm_files/bv/bv_n70.qasm,70,off,36,66,66,71,71,2,2,1 2 7 8 9 11 12 15 18 21 22 26 28 30 31 32 33 38 39 40 43 44 45 47 51 53 54 55 56 57 59 60 61 62 63,1.014,21977.15,13.04
+BV-70,inputs/qasm_files/bv/bv_n70.qasm,70,on,36,72,72,72,72,2,2,1 2 7 8 9 11 12 15 18 21 22 26 28 30 31 32 33 38 39 40 43 44 45 47 51 53 54 55 56 57 59 60 61 62 63,1.029,45740.28,12.96
+QFT-18,inputs/qasm_files/qft/qft_n18_transpiled.qasm,18,off,99,277,277,418,418,42,42,14,23.222,70343.19,157.73
+QFT-18,inputs/qasm_files/qft/qft_n18_transpiled.qasm,18,on,99,475,475,770,770,55,55,7,42.778,161797.19,153.1
+QFT-29,inputs/qasm_files/qft/qft_n29_transpiled.qasm,29,off,165,515,515,792,792,42,42,14,27.31,134108.72,224.46
+QFT-29,inputs/qasm_files/qft/qft_n29_transpiled.qasm,29,on,166,874,874,1474,1474,80,80,10 11,50.828,321755.01,211.76
+QFT-63,inputs/qasm_files/qft/qft_n63_transpiled.qasm,63,off,370,1229,1229,1814,1814,42,42,14,28.794,349712.68,284.05
+QFT-63,inputs/qasm_files/qft/qft_n63_transpiled.qasm,63,on,374,2166,2166,3352,3352,80,80,10 11,53.206,1159711.92,290.47
+VQE-30,inputs/qasm_files/vqe/vqe_n30.qasm,30,off,29,29,29,29,29,1,1,0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28,0.967,6876.08,17.31
+VQE-30,inputs/qasm_files/vqe/vqe_n30.qasm,30,on,29,58,58,58,58,2,2,0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27,1.933,32866.37,17.05
+VQE-50,inputs/qasm_files/vqe/vqe_n50.qasm,50,off,49,49,49,49,49,1,1,0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48,0.98,12807.64,18.17
+VQE-50,inputs/qasm_files/vqe/vqe_n50.qasm,50,on,49,98,98,98,98,2,2,0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47,1.96,68294.68,16.97
+Adder-18,inputs/qasm_files/general/adder_18.qasm,18,off,114,194,194,214,214,18,18,3 4 6,11.889,47262.29,72.85
+Adder-18,inputs/qasm_files/general/adder_18.qasm,18,on,114,243,243,271,271,19,19,4 6,15.056,122848.97,74.21
+QV-20,inputs/qasm_files/general/qv_20.qasm,20,off,20,66,66,201,201,17,17,12,10.05,17730.28,95.87
+QV-20,inputs/qasm_files/general/qv_20.qasm,20,on,22,128,128,307,307,20,20,12,15.35,41560.69,95.68
+Heisenberg-24,inputs/qasm_files/general/heisenberg_24.qasm,24,off,58,136,136,378,378,31,31,6,15.75,32385.35,151.33
+Heisenberg-24,inputs/qasm_files/general/heisenberg_24.qasm,24,on,57,182,182,446,446,29,29,2,18.583,61071.92,153.91
+QAOA-24,inputs/qasm_files/general/qaoa_24.qasm,24,off,34,111,111,212,212,20,20,8,8.833,28853.14,75.38
+QAOA-24,inputs/qasm_files/general/qaoa_24.qasm,24,on,34,192,192,346,346,21,21,18,14.417,79383.82,72.4
+Random-24,inputs/qasm_files/general/random_24.qasm,24,off,63,191,191,246,246,23,23,2,10.25,63362.76,78.54
+Random-24,inputs/qasm_files/general/random_24.qasm,24,on,61,303,303,420,420,27,27,2,17.5,130800.41,78.7
+"[[144,12,12]]",inputs/qasm_files/qLDPC/bb_n144_k12_d12_cz_syndrome.qasm,288,off,16,416,416,1031,1031,8,8,149 157 160 171 178 183 186 193 204 214 219 227 239 248 250 260 263 267 270 271 273 282 284,3.58,278306.46,46.52
+"[[144,12,12]]",inputs/qasm_files/qLDPC/bb_n144_k12_d12_cz_syndrome.qasm,288,on,19,656,656,2323,2323,12,12,23 125 135,8.066,472793.44,44.22

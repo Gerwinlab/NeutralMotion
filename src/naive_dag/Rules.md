@@ -268,12 +268,20 @@ else:
     time = 2 * sqrt(distance/a)
 ```
 
-**`Cubic_Spline`** (cubic position profile, peak acceleration `a` at the start
-and end; no velocity limit):
+**`Cubic_Spline`** (constant-jerk cubic position profile, peak acceleration
+`a` at the start and end; no velocity limit):
 
 ```text
 time = sqrt(6 * distance / a)              # one straight movement
 time = sqrt(6 * delta_x / a) + sqrt(6 * delta_y / a)   # axes one after the other
+```
+
+**`Quintic_Spline`** (minimum-jerk quintic position profile, zero acceleration
+at the start and end, peak `a` inside the movement; no velocity limit):
+
+```text
+time = sqrt(c * distance / a),  c = 10 / sqrt(3)
+time = sqrt(c * delta_x / a) + sqrt(c * delta_y / a)   # axes one after the other
 ```
 
 Other profiles may be used and added to configs, as long as they meet the

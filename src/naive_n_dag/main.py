@@ -220,9 +220,9 @@ def _validate_required_config(config: Mapping[str, Any]) -> None:
         validate_options(deterministic_options)
 
     movement_shape = config["movement_shape"]
-    if movement_shape not in {"trapezoidal", "Cubic_Spline"}:
+    if movement_shape not in {"trapezoidal", "Cubic_Spline", "Quintic_Spline"}:
         raise ValueError(
-            "movement_shape must be either 'trapezoidal' or 'Cubic_Spline'."
+            "movement_shape must be 'trapezoidal', 'Cubic_Spline' or 'Quintic_Spline'."
         )
 
     if "alignment_conc" in config:

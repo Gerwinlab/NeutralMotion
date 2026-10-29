@@ -44,7 +44,7 @@ A straight movement segment is judged by its complete interior, not only its end
 
 - SWAP operations are ordinary two-qubit gates: they are scheduled and emitted like any other gate (`swap q[a],q[b];`). The solver never removes or adds SWAPs; removing them is left to the user (edit the QASM, or transpile: Qiskit at levels 2-3 removes SWAPs and rewires the measurements).
 - Ancilla status (`ancilla_registers`) is a property of the atom: the qubits of the named QASM registers.
-- Optional Qiskit transpile at load time: `transpile_optimization_level` (0-3, default 0) and `transpile_basis_gates` (a list of gate names, default `null` = gates as written). Level 0 with no basis skips Qiskit entirely, so the circuit is kept exactly as written. Otherwise the transpiled circuit replaces the input for scheduling and for every check below, and the header records `transpile: optimization_level=... basis_gates=...`. Levels 2-3 may delete gates Qiskit judges equal to the identity (QFT-63: controlled phases below about pi/2^19, 3400 -> 2014 two-qubit gates), so the schedule then preserves the transpiled circuit, not the file.
+- Optional Qiskit transpile at load time: `transpile_optimization_level` (0-3, default 0) and `transpile_basis_gates` (a list of gate names, default `null` = gates as written). Level 0 with no basis skips Qiskit entirely, so the circuit is kept exactly as written. Otherwise the transpiled circuit replaces the input for scheduling and for every check below, and the header records `transpile: optimization_level=... basis_gates=...`. Levels 2-3 may delete gates Qiskit judges equal to the identity (QFT-63 with Qiskit 2.5: controlled phases below about pi/2^14, 3400 -> 1554 two-qubit gates; Qiskit 2.3 cut at pi/2^19, giving 2014), so the schedule then preserves the transpiled circuit, not the file.
 - Circuit comparison is performed against the prepared operation sequence (after the optional transpile).
 - Every remaining supported one- and two-qubit operation must appear exactly once. No operation may be added, duplicated, or omitted.
 - Gate identity, parameters, measurement destinations, and per-qubit operation order must be preserved.
@@ -175,17 +175,25 @@ else:
     time = 2 * sqrt(distance/a)
 ```
 
-For `movement_shape: "Cubic_Spline"`, movement uses the minimum-jerk timing
-model from *Matching_Generalized*. With physical axis distances
-`delta_x = abs(dr) * lattice_spacing / 2` and
-`delta_y = abs(dc) * lattice_spacing / 2`, its duration is
+The two spline shapes move the row axis and then the column axis, each as a
+rest-to-rest polynomial leg whose peak acceleration is `a`. With physical axis
+distances `delta_x = abs(dr) * lattice_spacing / 2` and
+`delta_y = abs(dc) * lattice_spacing / 2`, the duration is
 
 ```text
-time = sqrt(6 * delta_x / a) + sqrt(6 * delta_y / a)
+time = sqrt(c * delta_x / a) + sqrt(c * delta_y / a)
 ```
 
-The cubic-spline profile does not use `max_velocity` in its movement-time
-calculation. Both supported profiles retain the same transfer, segmentation,
+- `movement_shape: "Cubic_Spline"`: constant-jerk profile
+  `x = d (3 tau^2 - 2 tau^3)`, `c = 6`. Its acceleration is `a` at both ends
+  of the leg and jumps from and back to zero there.
+- `movement_shape: "Quintic_Spline"`: minimum-jerk profile
+  `x = d (10 tau^3 - 15 tau^4 + 6 tau^5)`, `c = 10 / sqrt(3)` (about 5.77).
+  Its acceleration starts and ends at zero and peaks at `a` inside the leg.
+
+The spline profiles do not use `max_velocity` in their movement-time
+calculation (peak speed `1.5 d / T` for the cubic, `1.875 d / T` for the
+quintic). Both supported profiles retain the same transfer, segmentation,
 batching, and gate-time rules below.
 
 Additional timing rules:

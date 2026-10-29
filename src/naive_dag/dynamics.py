@@ -29,6 +29,8 @@ MoveEvent = tuple[str, int, tuple[int, int], tuple[int, int]]
 GateEvent = tuple[str, str]
 ScheduleEvent = MoveEvent | GateEvent
 _CARDINAL = ((-1, 0), (0, -1), (0, 1), (1, 0))
+# Rest-to-rest spline leg of length d: peak acceleration c * d / T^2, so T = sqrt(c * d / a).
+SPLINE_COEFFICIENTS = {'Cubic_Spline': 6.0, 'Quintic_Spline': 10 / math.sqrt(3)}
 
 
 def _slm(point):
@@ -73,7 +75,7 @@ def _motion_seconds(distance, velocity, acceleration):
 def _path_seconds(points, parameters):
     """Seconds to traverse ``points``; each hop into or out of an SLM trap adds one transfer.
 
-    Cubic_Spline moves the row and column axes in turn (sqrt(6 d / a) each);
+    The spline shapes move the row and column axes in turn (sqrt(c d / a) each);
     trapezoidal moves along the straight line.
     """
     spacing, velocity, acceleration, transfer, movement_shape = parameters
@@ -83,8 +85,9 @@ def _path_seconds(points, parameters):
             continue
         dr = abs(b[0] - a[0]) * spacing
         dc = abs(b[1] - a[1]) * spacing
-        if movement_shape == 'Cubic_Spline':
-            total += math.sqrt(6 * dr / acceleration) + math.sqrt(6 * dc / acceleration)
+        if movement_shape in SPLINE_COEFFICIENTS:
+            c = SPLINE_COEFFICIENTS[movement_shape]
+            total += math.sqrt(c * dr / acceleration) + math.sqrt(c * dc / acceleration)
         elif movement_shape == 'trapezoidal':
             total += _motion_seconds(math.hypot(dr, dc), velocity, acceleration)
         else:

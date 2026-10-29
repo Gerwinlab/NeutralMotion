@@ -8,3 +8,5 @@ __pycache__/
 resources/
 tests/
 .pytest_cache/
+benchmarks/Fidelity.md
+benchmarks/fidelity.pu
